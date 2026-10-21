@@ -50,20 +50,26 @@ func choose_destination():
 			target_id=habitat.pond.id
 			start_route(navigation.approach(habitat.pond),"Going to greet a new friend")
 			return
-	schedule_index=(schedule_index+1)%schedule.size()
-	if schedule_index==0: cycles+=1
-	destination_kind=schedule[schedule_index]
-	var candidates=[]
-	for item in data.items:
-		if item.kind==destination_kind: candidates.append(item)
-	if candidates.is_empty():
-		target_id=""
-		current_target=HomesteadItems.cell_center(navigation.closest(Vector3.ZERO))
-		start_route(current_target,"Taking a little stroll")
+	# Visit only places actually present, instead of repeatedly walking home for
+	# missing demo destinations in a starter or partially furnished world.
+	for attempt in schedule.size():
+		schedule_index=(schedule_index+1)%schedule.size()
+		if schedule_index==0: cycles+=1
+		destination_kind=schedule[schedule_index]
+		var candidates=[]
+		for item in data.items:
+			if item.kind==destination_kind: candidates.append(item)
+		if candidates.is_empty(): continue
+		var target: Dictionary=candidates[cycles%candidates.size()]
+		target_id=target.id
+		start_route(navigation.approach(target),{"garden":"Off to tend the garden","bench":"Finding a sunny seat","pond":"Visiting the pond","cottage":"Heading home"}[destination_kind])
 		return
-	var target: Dictionary=candidates[cycles%candidates.size()]
-	target_id=target.id
-	start_route(navigation.approach(target),{"garden":"Off to tend the garden","bench":"Finding a sunny seat","pond":"Visiting the pond","cottage":"Heading home"}[destination_kind])
+	target_id=""
+	state="pause"
+	timer=2.0
+	speed=0
+	model.set_motion("idle")
+	announce("Enjoying a quiet moment")
 func start_route(destination: Vector3,text: String):
 	current_target=destination
 	var target=data.find(target_id)
@@ -76,11 +82,11 @@ func start_route(destination: Vector3,text: String):
 		announce("Looking for another way")
 		return
 	if position.distance_to(route[0])<0.12: route.remove_at(0)
-	announce(text)
 	if route.is_empty():
 		arrive()
 		return
 	state="walking"
+	announce(text)
 func world_changed():
 	if model==null: return
 	var target=data.find(target_id)
@@ -168,27 +174,46 @@ func _physics_process(delta):
 		if route.is_empty():
 			arrive()
 			return
-		var next=route[0]
-		var distance=position.distance_to(next)
-		if distance<0.035:
-			position=next
+		# Remove reached points before moving: a straight path must not lose a
+		# physics frame at every tile boundary.
+		while not route.is_empty() and position.distance_to(route[0])<0.001:
 			route.remove_at(0)
-			if route.is_empty(): arrive()
+		if route.is_empty():
+			arrive()
 			return
-		var direction=(next-position).normalized()
+		var direction=(route[0]-position).normalized()
 		desired_facing=atan2(direction.x,direction.z)
-		var remaining=distance
+		facing=rotate_toward(facing,desired_facing,delta*4.5)
+		# Turn toward the route before stepping. A sharp corner slows the body
+		# rather than sliding it sideways while its feet still face the old path.
+		var alignment=maxf(0,cos(angle_difference(facing,desired_facing)))
+		var remaining=position.distance_to(route[0])
 		for i in range(1,route.size()): remaining+=route[i-1].distance_to(route[i])
-		var desired_speed=minf(1.35,sqrt(remaining*5))
-		speed=move_toward(speed,desired_speed,delta*(3.2 if desired_speed>speed else 4.5))
-		var proposed=position+direction*minf(distance,speed*delta)
-		if navigation.open(HomesteadItems.cell_at(proposed)):
-			distance_walked+=position.distance_to(proposed)
+		var desired_speed=minf(1.2,sqrt(remaining*4.5))*alignment*alignment
+		speed=move_toward(speed,desired_speed,delta*(2.8 if desired_speed>speed else 5.0))
+		var budget=speed*delta*alignment
+		var moved=0.0
+		while budget>0.00001 and not route.is_empty():
+			var next=route[0]
+			var distance=position.distance_to(next)
+			var step=minf(distance,budget)
+			var proposed=position.move_toward(next,step)
+			if not navigation.open(HomesteadItems.cell_at(proposed)):
+				blocked_samples+=1
+				start_route(current_target,"Finding a clear path")
+				break
 			position=proposed
-		else:
-			blocked_samples+=1
-			start_route(current_target,"Finding a clear path")
-		model.set_motion("walk",speed/0.9)
+			moved+=step
+			budget-=step
+			if distance>step+0.00001: break
+			route.remove_at(0)
+			# Carry unused distance across collinear points, never around a corner
+			# until the facing/speed calculation has seen that new direction.
+			if not route.is_empty() and direction.dot((route[0]-position).normalized())<0.999: break
+		distance_walked+=moved
+		if route.is_empty(): arrive()
+		elif moved>0.0001: model.set_motion("walk",moved/maxf(delta,0.0001)/1.22)
+		else: model.set_motion("idle")
 	elif state=="align":
 		timer-=delta
 		if timer<=0: begin_activity()
@@ -212,5 +237,5 @@ func _physics_process(delta):
 	else:
 		timer-=delta
 		if timer<=0: finish_activity()
-	facing=lerp_angle(facing,desired_facing,minf(1,delta*5.5))
+	if state!="walking": facing=rotate_toward(facing,desired_facing,delta*4.5)
 	rotation.y=facing

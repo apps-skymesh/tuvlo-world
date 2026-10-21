@@ -148,10 +148,10 @@ func limb(parent: Node3D,node_name: String,pos: Vector3,length: float,radius: fl
 	mesh.rings=8
 	HomesteadMesh.instance(joint,mesh,color,Vector3(0,-length/2,0))
 	return joint
-func animation_track(animation: Animation,node: Node3D,property: String,values: Array):
+func animation_track(animation: Animation,node: Node3D,property: String,values: Array,interpolation=Animation.INTERPOLATION_CUBIC):
 	var index=animation.add_track(Animation.TYPE_VALUE)
 	animation.track_set_path(index,NodePath(str(get_path_to(node))+":"+property))
-	animation.track_set_interpolation_type(index,Animation.INTERPOLATION_CUBIC)
+	animation.track_set_interpolation_type(index,interpolation)
 	for key in values: animation.track_insert_key(index,key[0],key[1])
 func build_animations():
 	animator=AnimationPlayer.new()
@@ -164,13 +164,13 @@ func build_animations():
 	for node in [left_leg,right_leg,left_arm,right_arm]:
 		var keys=[]
 		var phase=PI if node in [right_leg,left_arm] else 0.0
-		for i in 9: keys.append([i*0.1,Vector3(sin(i*PI/4+phase)*0.52,0,0)])
+		for i in 9: keys.append([i*0.1,Vector3(sin(i*PI/4+phase)*0.42,0,0)])
 		animation_track(walk,node,"rotation",keys)
 	for node in [left_knee,right_knee]:
 		var keys=[]
 		var phase=PI if node==right_knee else 0.0
-		for i in 9: keys.append([i*0.1,Vector3(maxf(0,sin(i*PI/4+phase))*0.65,0,0)])
-		animation_track(walk,node,"rotation",keys)
+		for i in 9: keys.append([i*0.1,Vector3(maxf(0,-sin(i*PI/4+phase))*0.65,0,0)])
+		animation_track(walk,node,"rotation",keys,Animation.INTERPOLATION_LINEAR)
 	animation_track(walk,hips,"position:y",[[0,0.73],[0.2,0.755],[0.4,0.73],[0.6,0.755],[0.8,0.73]])
 	library.add_animation("walk",walk)
 	var idle=Animation.new()

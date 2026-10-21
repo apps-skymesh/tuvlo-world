@@ -10,7 +10,13 @@ var camera=Camera3D.new()
 var session=""
 var layout_signature=""
 var camera_mode="overview"
-var yaw=0.45
+var yaw=0.25
+const OVERVIEW_PITCH=PI/6 # 30 degrees: roofs and faces read without flattening the land.
+var zoom=1.0
+var camera_initialized=false
+var fit_key=Vector3(INF,INF,INF)
+var fit_cache={}
+
 var reduced_motion=false
 var paused=false
 var ready_for_snapshot=false
@@ -128,7 +134,11 @@ func receive_host_json(json: String):
  match type:
   "lifecycle": set_paused(payload.get("paused",true)==true)
   "camera":
-   if payload.get("mode") in ["overview","follow","detail"]: camera_mode=payload.mode
+   if payload.get("mode") in ["overview","follow","detail"]:
+    if camera_mode!=payload.mode: zoom=1.0
+    camera_mode=payload.mode
+   if payload.get("resetZoom",false)==true: zoom=1.0
+   zoom=clampf(zoom*clampf(float(payload.get("zoom",1)),0.75,1.3),1.0 if camera_mode=="overview" else 0.65,1.5)
    yaw+=clampf(float(payload.get("rotation",0)),-PI,PI)
   "select":
    selected_id=payload.get("id","")
@@ -203,7 +213,9 @@ func clear_host_session():
   creature.queue_free()
   creature=null
  camera_mode="overview"
- yaw=0.45
+ yaw=0.25
+ zoom=1.0
+ camera_initialized=false
  set_paused(true)
 
 func update_preview():
@@ -275,17 +287,59 @@ func _process(delta):
  presentation.reduced_motion=reduced_motion
  resident.reduced_motion=reduced_motion
  if is_instance_valid(creature): creature.reduced_motion=reduced_motion
- var focus=Vector3(0,0,0) if camera_mode=="overview" else resident.position+Vector3(0,1,0)
- var radius=25.0 if camera_mode=="overview" else (7.5 if camera_mode=="follow" else 4.5)
- var elevation=0.82 if camera_mode=="overview" else 0.4
- var desired=focus+Vector3(sin(yaw)*radius,radius*elevation,cos(yaw)*radius)
- camera.position=desired if reduced_motion else camera.position.lerp(desired,minf(1,delta*6))
- if camera.position.distance_to(focus)>0.01: camera.look_at(focus)
  var viewport=get_viewport().get_visible_rect().size
  var aspect=viewport.x/maxf(1,viewport.y)
- var size=27.5/maxf(0.45,minf(1,aspect)) if camera_mode=="overview" else (7.0 if camera_mode=="follow" else 3.5)
- camera.size=size
+ var overview=overview_fit(aspect)
+ var focus=overview.focus if camera_mode=="overview" else resident.position+Vector3(0,1,0)
+ var radius=30.0 if camera_mode=="overview" else (7.5 if camera_mode=="follow" else 4.5)
+ var elevation=tan(OVERVIEW_PITCH) if camera_mode=="overview" else 0.48
+ var desired=focus+Vector3(sin(yaw)*radius,radius*elevation,cos(yaw)*radius)
+ var size=(overview.size if camera_mode=="overview" else (6.0 if camera_mode=="follow" else 3.3))*zoom
+ var immediate=reduced_motion or not camera_initialized
+ camera.position=desired if immediate else camera.position.lerp(desired,1-exp(-delta*7))
+ camera.size=size if immediate else lerpf(camera.size,size,1-exp(-delta*7))
+ if camera.position.distance_to(focus)>0.01: camera.look_at(focus)
+ camera_initialized=true
  presentation.update_character_visibility(camera,resident.position,camera_mode!="overview")
+
+func overview_points() -> Array[Vector3]:
+ # Include inactive plots as well as the active clearing; no imaginary roofs
+ # at empty corners. Keep these extents shared with the terrain renderer.
+ var points: Array[Vector3]=[]
+ var regions=[{"center":Vector3.ZERO,"size":HomesteadItems.BASE_LAND_SIZE}]
+ for center in HomesteadItems.LAND_CENTERS.values(): regions.append({"center":center,"size":HomesteadItems.PLOT_SIZE})
+ for region in regions:
+  var half_size=region.size*0.5
+  for x in [-half_size.x,half_size.x]:
+   for z in [-half_size.y,half_size.y]:
+    for y in [-0.9,0.8]: points.append(region.center+Vector3(x,y,z))
+ for item in data.items:
+  var center=HomesteadItems.item_center(item)
+  var half_size=Vector2(HomesteadItems.footprint(item.kind,item.rotation))*0.5+Vector2.ONE*0.25
+  var height=HomesteadItems.DEFINITIONS[item.kind].height
+  for x in [-half_size.x,half_size.x]:
+   for z in [-half_size.y,half_size.y]: points.append(center+Vector3(x,height,z))
+ return points
+
+func overview_fit(aspect: float) -> Dictionary:
+ var key=Vector3(yaw,aspect,presentation.visual_revision)
+ if key.is_equal_approx(fit_key): return fit_cache
+ var horizontal=Vector3(cos(yaw),0,-sin(yaw))
+ var vertical=Vector3(-sin(yaw)*sin(OVERVIEW_PITCH),cos(OVERVIEW_PITCH),-cos(yaw)*sin(OVERVIEW_PITCH))
+ var low=Vector2(INF,INF)
+ var high=Vector2(-INF,-INF)
+ for point in overview_points():
+  var projected=Vector2(horizontal.dot(point),vertical.dot(point))
+  low=low.min(projected)
+  high=high.max(projected)
+ var center=(low+high)*0.5
+ var extent=high-low
+ fit_cache={"focus":horizontal*center.x+vertical*center.y,"size":maxf(extent.y,extent.x/maxf(aspect,0.2))*1.12}
+ fit_key=key
+ return fit_cache
+
+func overview_size(aspect: float) -> float:
+ return overview_fit(aspect).size
 
 func selected_item() -> Dictionary:
  var placed=data.find(selected_id)

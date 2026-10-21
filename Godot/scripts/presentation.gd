@@ -64,19 +64,40 @@ func rebuild():
 	refresh_grid()
 
 func build_island():
-	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(19.3,17.3,2.3),-0.18,-0.9,"c1a785")
+	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(HomesteadItems.BASE_LAND_SIZE.x,HomesteadItems.BASE_LAND_SIZE.y,2.3),-0.18,-0.9,"c1a785")
 	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(19.05,17.05,2.15),-0.07,-0.4,"d9c7a0")
 	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(18.8,16.8,2.1),0,-0.19,"9caf7c")
 	# Slightly inset grass gives the miniature a soft, continuous rim.
 	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(18.45,16.45,1.9),0.018,-0.05,"a9ba89")
-	for side in data.land_sides:
+	# All future plots remain part of the visible world. Rendering one never
+	# grants ownership: navigation/placement still read authoritative land_sides.
+	for side in HomesteadItems.LAND_CENTERS:
+		var available=side in data.land_sides
 		var patch=Node3D.new()
+		patch.name="Land_"+side
+		patch.set_meta("available",available)
 		land_root.add_child(patch)
-		patch.position=Vector3(0,0,-10) if side=="north" else Vector3(11 if side=="east" else -11,0,0)
-		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(4.5,4.6,0.7),-0.18,-0.9,"c1a785")
-		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(4.4,4.5,0.65),0.025,-0.2,"a9ba89")
-		for i in 3:
-			HomesteadMesh.box(patch,Vector3(-1.3+i*1.3,0.06,0),Vector3(0.8,0.06,0.8),"d7c7a8",0.08)
+		patch.position=HomesteadItems.LAND_CENTERS[side]
+		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(HomesteadItems.PLOT_SIZE.x,HomesteadItems.PLOT_SIZE.y,0.7),-0.18,-0.9,"c1a785")
+		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(4.4,4.5,0.65),0.025,-0.2,"a9ba89" if available else "939b80")
+		if available:
+			for i in 3:
+				HomesteadMesh.box(patch,Vector3(-1.3+i*1.3,0.06,0),Vector3(0.8,0.06,0.8),"d7c7a8",0.08)
+		else:
+			# A low closed gate and quiet scrub make the inactive boundary legible.
+			var gate=Node3D.new()
+			patch.add_child(gate)
+			gate.position=Vector3(0,0,1.7) if side=="north" else Vector3(-1.7 if side=="east" else 1.7,0,0)
+			gate.rotation.y=0 if side=="north" else PI/2
+			for x in [-1.0,0,1.0]:
+				HomesteadMesh.box(gate,Vector3(x,0.39,0),Vector3(0.10,0.78,0.10),"a18b6b",0.025)
+			for y in [0.29,0.60]:
+				HomesteadMesh.box(gate,Vector3(0,y,0),Vector3(2.2,0.10,0.09),"b8a482",0.025)
+			for i in 7:
+				var angle=i*2.4
+				var point=Vector3(cos(angle)*1.25,0.12,sin(angle)*1.05)
+				HomesteadMesh.ellipsoid(patch,point,Vector3(0.30,0.18,0.24),"7e8b6e" if i%2 else "a5ad8b")
+		HomesteadStaticBatcher.consolidate(patch,[])
 	# Low rocks and tufts outside the buildable grid frame the coast.
 	for p in [Vector3(-8.8,0,3.4),Vector3(7.6,0,-7.5),Vector3(-3.2,0,7.9),Vector3(8.5,0,5.7)]:
 		HomesteadMesh.ellipsoid(land_root,p+Vector3(0,0.2,0),Vector3(0.5,0.28,0.4),"b8b7a5")
@@ -148,14 +169,34 @@ func cottage(root: Node3D):
 	HomesteadMesh.rod(root,Vector3(0.63,1.88,1.4),Vector3(0.63,1.88,1.63),0.035,"6d705c")
 	HomesteadMesh.box(root,Vector3(0.63,1.7,1.6),Vector3(0.2,0.3,0.2),"e6be76",0.035)
 
+	# Give the cottage a finished silhouette when the camera turns: side windows,
+	# fitted sills and a continuous timber base instead of blank cream walls.
+	for side in [-1,1]:
+		var wall=Node3D.new()
+		root.add_child(wall)
+		wall.position.x=side*1.79
+		wall.rotation.y=side*PI/2
+		HomesteadMesh.box(wall,Vector3(0,1.48,0),Vector3(0.86,0.94,0.08),"eee8d0",0.045)
+		HomesteadMesh.box(wall,Vector3(0,1.48,0.06),Vector3(0.68,0.75,0.05),"82a9a1",0.025)
+		HomesteadMesh.box(wall,Vector3(0,1.48,0.1),Vector3(0.045,0.75,0.035),"f2e7c7",0.008)
+		HomesteadMesh.box(wall,Vector3(0,1.48,0.1),Vector3(0.68,0.045,0.035),"f2e7c7",0.008)
+		HomesteadMesh.box(wall,Vector3(0,0.96,0.06),Vector3(1.02,0.12,0.22),"bd8963",0.03)
+		HomesteadMesh.box(root,Vector3(side*1.76,0.33,0),Vector3(0.1,0.16,2.48),"c6ad84",0.025)
+
 func garden(root: Node3D):
 	for x in [-0.72,0.72]:
 		HomesteadMesh.box(root,Vector3(x,0.16,0),Vector3(1.23,0.3,1.72),"b48a62",0.07)
 		HomesteadMesh.box(root,Vector3(x,0.315,0),Vector3(1.03,0.05,1.5),"71614e",0.03)
 		for z in [-0.48,0,0.48]:
 			for dx in [-0.24,0.24]:
-				HomesteadMesh.ellipsoid(root,Vector3(x+dx,0.42,z),Vector3(0.16,0.15,0.18),"6e9865")
-				HomesteadMesh.ellipsoid(root,Vector3(x+dx+0.07,0.51,z),Vector3(0.1,0.11,0.12),"9db979")
+				var plant=Vector3(x+dx,0.37,z)
+				# Broad overlapping leaves read as planted vegetables at follow distance.
+				for leaf_index in 4:
+					var angle=leaf_index*TAU/4+(0.35 if x>0 else 0.0)
+					var offset=Vector3(cos(angle)*0.09,0.06,sin(angle)*0.09)
+					var leaf=HomesteadMesh.ellipsoid(root,plant+offset,Vector3(0.075,0.045,0.17),"729568" if leaf_index%2 else "91ad73")
+					leaf.rotation=Vector3(-0.25,PI/2-angle,0)
+				HomesteadMesh.ellipsoid(root,plant+Vector3(0,0.14,0),Vector3(0.075,0.10,0.075),"acc68a")
 	HomesteadMesh.rod(root,Vector3(1.28,0,-0.68),Vector3(1.28,0.88,-0.68),0.035,"a47c58")
 	HomesteadMesh.box(root,Vector3(1.28,0.75,-0.68),Vector3(0.35,0.28,0.045),"dac7a0",0.035)
 

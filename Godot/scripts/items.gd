@@ -1,6 +1,11 @@
 class_name HomesteadItems
 extends RefCounted
 
+# Visible terrain extents are independent of authoritative build permission.
+const BASE_LAND_SIZE=Vector2(19.3,17.3)
+const PLOT_SIZE=Vector2(4.5,4.6)
+const LAND_CENTERS={"north":Vector3(0,0,-10),"east":Vector3(11,0,0),"west":Vector3(-11,0,0)}
+
 const DEFINITIONS={
 	"path":{"title":"Path","size":Vector2i(1,1),"blocks":false,"height":0.12,"color":"d6c29c"},
 	"flowers":{"title":"Flowers","size":Vector2i(1,1),"blocks":false,"height":0.65,"color":"dfaa9c"},
