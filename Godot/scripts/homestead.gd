@@ -43,18 +43,19 @@ func _ready():
  var environment=WorldEnvironment.new()
  var settings=Environment.new()
  settings.background_mode=Environment.BG_COLOR
- settings.background_color=Color("e7eddf")
+ settings.background_color=Color("c5cebe")
  settings.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR
  settings.ambient_light_color=Color("cedddc")
- settings.ambient_light_energy=0.58
- # Match the character-review stage; Compatibility/WebGL must retain palette contrast.
+ settings.ambient_light_energy=0.42
+ # Keep diffuse highlights below clipping in the shipped Compatibility/WebGL renderer.
+ # Tune the lights directly: post-process exposure is not shared by every renderer.
  settings.tonemap_mode=Environment.TONE_MAPPER_LINEAR
  environment.environment=settings
  add_child(environment)
  var light=DirectionalLight3D.new()
  light.rotation_degrees=Vector3(-48,-38,0)
  light.light_color=Color("fff0d8")
- light.light_energy=1.05
+ light.light_energy=0.78
  light.light_angular_distance=0.8
  light.shadow_opacity=0.68
  light.directional_shadow_max_distance=100.0
@@ -63,7 +64,7 @@ func _ready():
  var fill=DirectionalLight3D.new()
  fill.rotation_degrees=Vector3(-28,145,0)
  fill.light_color=Color("c9e0e2")
- fill.light_energy=0.16
+ fill.light_energy=0.10
  fill.light_specular=0.0
  add_child(fill)
  add_child(camera)
