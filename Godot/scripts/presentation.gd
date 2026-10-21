@@ -68,7 +68,10 @@ func build_island():
 	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(19.05,17.05,2.15),-0.07,-0.4,"d9c7a0")
 	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(18.8,16.8,2.1),0,-0.19,"9caf7c")
 	# Slightly inset grass gives the miniature a soft, continuous rim.
-	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(18.45,16.45,1.9),0.018,-0.05,"a9ba89")
+	var lawn=HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(18.45,16.45,1.9),0.018,-0.05,"a9ba89")
+	var meadow=ShaderMaterial.new()
+	meadow.shader=preload("res://scripts/meadow.gdshader")
+	lawn.material_override=meadow
 	# All future plots remain part of the visible world. Rendering one never
 	# grants ownership: navigation/placement still read authoritative land_sides.
 	for side in HomesteadItems.LAND_CENTERS:
@@ -119,69 +122,24 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 		"nook": reading_nook(art,style)
 		"treehouse": treehouse(art,style)
 		"path": path_tile(art)
+	if kind in ["cottage","garden","tree","bench","nook","treehouse"]:
+		var size: Vector2i=HomesteadItems.DEFINITIONS[kind].size
+		HomesteadMesh.contact_shadow(art,Vector2(size)*1.2)
 	return root
 
 func cottage(root: Node3D):
-	HomesteadMesh.box(root,Vector3(0,0.13,0),Vector3(3.75,0.26,2.8),"d0c7ad",0.14)
-	HomesteadMesh.box(root,Vector3(0,1.35,0),Vector3(3.5,2.5,2.55),"f0dfbb",0.12)
-	# Gabled end panels and two broad, rounded terracotta roof planes.
-	var gable=PackedVector2Array([Vector2(-1.75,2.5),Vector2(1.75,2.5),Vector2(0,3.68)])
-	for z in [-1.275,1.275]:
-		var face=ImmediateMesh.new()
-		face.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-		for i in [0,2,1]:
-			face.surface_set_normal(Vector3(0,0,signf(z)))
-			face.surface_add_vertex(Vector3(gable[i].x,gable[i].y,z))
-		face.surface_end()
-		var mesh=MeshInstance3D.new()
-		mesh.mesh=face
-		var m=HomesteadMesh.material("f0dfbb").duplicate()
-		m.cull_mode=BaseMaterial3D.CULL_DISABLED
-		mesh.material_override=m
-		root.add_child(mesh)
-	for side in [-1,1]:
-		var roof=HomesteadMesh.box(root,Vector3(side*0.99,3.13,0),Vector3(2.42,0.2,3.1),"bd7559",0.065)
-		roof.rotation.z=-side*0.59
-		for line in range(5):
-			var beam=HomesteadMesh.box(root,Vector3(side*0.99,3.23,-1.34+line*0.66),Vector3(2.44,0.025,0.035),"c98566",0.008)
-			beam.rotation.z=-side*0.59
-	HomesteadMesh.cylinder(root,Vector3(0,3.79,0),0.13,3.1,"c78161").rotation.x=PI/2
-	HomesteadMesh.box(root,Vector3(0.95,3.65,-0.55),Vector3(0.44,1.22,0.5),"e2cda9",0.06)
-	HomesteadMesh.box(root,Vector3(0.95,4.28,-0.55),Vector3(0.59,0.14,0.63),"bd7559",0.04)
-	# Oak door with a round window and simple warm trim.
-	HomesteadMesh.box(root,Vector3(0,1.02,1.31),Vector3(0.86,1.84,0.12),"a66e4b",0.12)
-	HomesteadMesh.box(root,Vector3(0,0.99,1.39),Vector3(0.65,1.57,0.07),"be9264",0.09)
-	var round_window=HomesteadMesh.cylinder(root,Vector3(0,1.53,1.445),0.2,0.035,"c0d8cf")
-	round_window.rotation.x=PI/2
-	HomesteadMesh.ellipsoid(root,Vector3(0.23,0.91,1.46),Vector3.ONE*0.055,"ddbc70")
-	for x in [-1.1,1.1]:
-		HomesteadMesh.box(root,Vector3(x,1.48,1.32),Vector3(0.66,0.83,0.1),"eee8d0",0.04)
-		HomesteadMesh.box(root,Vector3(x,1.48,1.39),Vector3(0.51,0.65,0.06),"82a9a1",0.02)
-		for offset in [-0.4,0.4]:
-			HomesteadMesh.box(root,Vector3(x+offset,1.48,1.35),Vector3(0.18,0.79,0.1),"789b83",0.025)
-		HomesteadMesh.box(root,Vector3(x,1.48,1.44),Vector3(0.04,0.65,0.04),"f2e7c7",0.008)
-		HomesteadMesh.box(root,Vector3(x,1.48,1.44),Vector3(0.51,0.04,0.04),"f2e7c7",0.008)
-		HomesteadMesh.box(root,Vector3(x,0.98,1.47),Vector3(0.8,0.2,0.3),"bd8963",0.035)
-		for i in 3:
-			HomesteadMesh.ellipsoid(root,Vector3(x-0.22+i*0.22,1.13,1.48),Vector3(0.17,0.14,0.15),"8b9f6d")
-	HomesteadMesh.box(root,Vector3(0,0.09,1.5),Vector3(1.05,0.18,0.52),"d7c5a4",0.05)
-	# A small porch lantern stays solid and quiet.
-	HomesteadMesh.rod(root,Vector3(0.63,1.88,1.4),Vector3(0.63,1.88,1.63),0.035,"6d705c")
-	HomesteadMesh.box(root,Vector3(0.63,1.7,1.6),Vector3(0.2,0.3,0.2),"e6be76",0.035)
+	# Reproducible, original authored model; same footprint/identity as before.
+	var scene=preload("res://assets/cottage/cozy_cottage.glb").instantiate()
+	root.add_child(scene)
+	prepare_cottage_materials(scene)
 
-	# Give the cottage a finished silhouette when the camera turns: side windows,
-	# fitted sills and a continuous timber base instead of blank cream walls.
-	for side in [-1,1]:
-		var wall=Node3D.new()
-		root.add_child(wall)
-		wall.position.x=side*1.79
-		wall.rotation.y=side*PI/2
-		HomesteadMesh.box(wall,Vector3(0,1.48,0),Vector3(0.86,0.94,0.08),"eee8d0",0.045)
-		HomesteadMesh.box(wall,Vector3(0,1.48,0.06),Vector3(0.68,0.75,0.05),"82a9a1",0.025)
-		HomesteadMesh.box(wall,Vector3(0,1.48,0.1),Vector3(0.045,0.75,0.035),"f2e7c7",0.008)
-		HomesteadMesh.box(wall,Vector3(0,1.48,0.1),Vector3(0.68,0.045,0.035),"f2e7c7",0.008)
-		HomesteadMesh.box(wall,Vector3(0,0.96,0.06),Vector3(1.02,0.12,0.22),"bd8963",0.03)
-		HomesteadMesh.box(root,Vector3(side*1.76,0.33,0),Vector3(0.1,0.16,2.48),"c6ad84",0.025)
+func prepare_cottage_materials(node: Node):
+	if node is MeshInstance3D and node.mesh.get_surface_count()==1:
+		var material=node.get_active_material(0)
+		if material is StandardMaterial3D:
+			node.material_override=material
+			node.set_meta("cottage_roof",material.resource_name.begins_with("roof"))
+	for child in node.get_children(): prepare_cottage_materials(child)
 
 func garden(root: Node3D):
 	for x in [-0.72,0.72]:
@@ -263,11 +221,17 @@ func rocks(root: Node3D):
 	r.rotation.z=0.22
 	HomesteadMesh.ellipsoid(root,Vector3(0.25,0.12,0.2),Vector3(0.2,0.15,0.18),"bec4b1")
 func path_tile(root: Node3D):
-	HomesteadMesh.box(root,Vector3(0,0.035,0),Vector3(0.99,0.07,0.99),"c7bd9c",0.04)
-	if data!=null and data.approvals<55: return
-	for x in [-0.23,0.23]:
-		for z in [-0.23,0.23]:
-			HomesteadMesh.box(root,Vector3(x,0.075,z),Vector3(0.41,0.045,0.39),"dfcfad",0.07)
+	# Worn fitted stones leave small grass seams, rather than square beige blocks.
+	for i in 3:
+		var pivot=Node3D.new()
+		root.add_child(pivot)
+		pivot.position=Vector3(-0.24+i*0.23,0,0.10 if i%2 else -0.12)
+		pivot.rotation.y=-0.07+i*0.06
+		var outline=HomesteadMesh.rounded_outline(0.37,0.66 if i%2 else 0.72,0.11)
+		HomesteadMesh.polygon_slab(pivot,outline,0.06,0.025,["c4bda7","d0c4a7","bbb9a3"][i])
+	if data!=null and data.approvals>=55:
+		for x in [-0.42,0.42]:
+			HomesteadMesh.ellipsoid(root,Vector3(x,0.08,0.25),Vector3(0.05,0.035,0.07),"d8bf7d")
 
 func set_grid_visible(value: bool):
 	grid_visible=value
@@ -389,8 +353,8 @@ func treehouse(root: Node3D,style=0):
 		HomesteadMesh.box(root,Vector3(x,1.15,1.45),Vector3(0.08,2.3,0.1),"bb8055",0.02)
 
 func recolor_roof(node: Node,color: String):
-	if node is MeshInstance3D and node.material_override is StandardMaterial3D:
-		var original=node.material_override.albedo_color
-		if original.is_equal_approx(Color("bd7559")) or original.is_equal_approx(Color("c98566")):
-			node.material_override=HomesteadMesh.material(color)
+	if node is MeshInstance3D and bool(node.get_meta("cottage_roof",false)):
+		var material=node.material_override.duplicate()
+		material.albedo_color=Color(color)
+		node.material_override=material
 	for child in node.get_children(): recolor_roof(child,color)

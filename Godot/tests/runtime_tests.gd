@@ -86,13 +86,39 @@ func run():
  check(walker.destination_kind=="cottage" and walker.target_id=="cottage","Schedule must skip places that do not exist")
  scene.data.items=complete_items
  scene.navigation.rebuild(scene.data)
- # The lifted knee belongs to the forward/swing leg, not the planted/back leg.
+ # Ground contact is the contract; knee angles may change with a better gait.
  var model=walker.model
  model.set_motion("walk")
  model.animator.advance(0.3)
+ for sample in 13:
+  model.animator.seek(float(sample)*0.04,true)
+  var sole=model.left_ankle.to_global(Vector3(0,-0.105,0)).y
+  check(absf(sole-walker.position.y)<0.015,"Planted sole must remain on the ground throughout stance")
  model.animator.seek(0.2,true)
- check(model.left_leg.rotation.x>0 and absf(model.left_knee.rotation.x)<0.01,"Back leg must stay extended during stance")
- check(model.right_leg.rotation.x<0 and model.right_knee.rotation.x>0.5,"Forward leg must bend during swing")
+ var left_sole=model.left_ankle.to_global(Vector3(0,-0.105,0)).y
+ var right_sole=model.right_ankle.to_global(Vector3(0,-0.105,0)).y
+ check(right_sole-left_sole>0.04,"Swing foot must clear the ground while the other foot stays planted")
+ # Camera safety is independent of zoom and angle: all modes keep the lens
+ # outside the entire scene envelope, including intermediate opposite turns.
+ for view in ["overview","home","follow","detail"]:
+  scene.camera_mode=view
+  for turn in 16:
+   scene.yaw=turn*PI/4
+   for frame in 8:
+    scene._process(1.0/30.0)
+    var horizontal=Vector2(scene.camera.position.x,scene.camera.position.z).length()
+    check(horizontal>scene.scenery_radius+1.0,"Camera lens must remain outside all scenery through orbit transitions")
+    check(scene.camera.position.y>6.0,"Camera must remain above roofs rather than moving inside them")
+    if view=="overview":
+     var viewport=scene.get_viewport().get_visible_rect()
+     for point in scene.overview_points():
+      check(viewport.has_point(scene.camera.unproject_position(point)),"Overview must keep every plot and roof visible during rotation")
+ scene.camera_mode="overview"
+ scene.yaw=0.25
+ # Every rounded route segment retains the resident's swept-body clearance.
+ var smooth_route=scene.navigation.path(HomesteadItems.cell_center(Vector2i(7,7)),scene.navigation.approach(scene.data.find("cottage")))
+ for segment in range(1,smooth_route.size()):
+  check(scene.navigation.corridor_clear(smooth_route[segment-1],smooth_route[segment]),"Rounded routes must not clip obstacles or inactive land")
  check(scene.overview_size(2.5)<23,"Landscape overview should use the vertical space instead of shrinking the island")
  check(scene.overview_size(0.5)>scene.overview_size(2.5),"Portrait overview must still fit the full island width")
  var position=scene.resident.position

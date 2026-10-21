@@ -182,14 +182,22 @@ func _physics_process(delta):
 			arrive()
 			return
 		var direction=(route[0]-position).normalized()
-		desired_facing=atan2(direction.x,direction.z)
+		var anticipation=route[0]
+		if position.distance_to(anticipation)<0.28 and route.size()>1:
+			anticipation=anticipation.move_toward(route[1],0.28-position.distance_to(anticipation))
+		var look_direction=(anticipation-position).normalized()
+		desired_facing=atan2(look_direction.x,look_direction.z)
 		facing=rotate_toward(facing,desired_facing,delta*4.5)
 		# Turn toward the route before stepping. A sharp corner slows the body
 		# rather than sliding it sideways while its feet still face the old path.
 		var alignment=maxf(0,cos(angle_difference(facing,desired_facing)))
 		var remaining=position.distance_to(route[0])
 		for i in range(1,route.size()): remaining+=route[i-1].distance_to(route[i])
-		var desired_speed=minf(1.2,sqrt(remaining*4.5))*alignment*alignment
+		var bend_limit=1.0
+		if route.size()>1 and position.distance_to(route[0])<0.65:
+			var next_direction=(route[1]-route[0]).normalized()
+			bend_limit=lerpf(0.50,1.0,maxf(0,direction.dot(next_direction)))
+		var desired_speed=minf(1.12*bend_limit,sqrt(remaining*2.4))*alignment*alignment
 		speed=move_toward(speed,desired_speed,delta*(2.8 if desired_speed>speed else 5.0))
 		var budget=speed*delta*alignment
 		var moved=0.0
@@ -209,10 +217,10 @@ func _physics_process(delta):
 			route.remove_at(0)
 			# Carry unused distance across collinear points, never around a corner
 			# until the facing/speed calculation has seen that new direction.
-			if not route.is_empty() and direction.dot((route[0]-position).normalized())<0.999: break
+			if not route.is_empty() and direction.dot((route[0]-position).normalized())<0.94: break
 		distance_walked+=moved
 		if route.is_empty(): arrive()
-		elif moved>0.0001: model.set_motion("walk",moved/maxf(delta,0.0001)/1.22)
+		elif moved>0.0001: model.set_motion("walk",moved/maxf(delta,0.0001))
 		else: model.set_motion("idle")
 	elif state=="align":
 		timer-=delta

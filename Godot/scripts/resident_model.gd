@@ -8,6 +8,8 @@ var left_leg: Node3D
 var right_leg: Node3D
 var left_knee: Node3D
 var right_knee: Node3D
+var left_ankle: Node3D
+var right_ankle: Node3D
 var left_arm: Node3D
 var right_arm: Node3D
 var right_elbow: Node3D
@@ -33,24 +35,27 @@ var expression_root: Node3D
 var grin_teeth: MeshInstance3D
 var dimples: Node3D
 func _ready():
-	var shadow=HomesteadMesh.cylinder(self,Vector3(0,0.028,0),0.32,0.006,"64735b")
-	shadow.scale.z=0.76
-	shadow.material_override=HomesteadMesh.transparent(Color(0.22,0.29,0.21,0.13))
-	shadow.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	HomesteadMesh.contact_shadow(self,Vector2(0.85,0.68))
 	rig=Node3D.new()
 	rig.name="Rig"
 	add_child(rig)
 	hips=Node3D.new()
 	hips.name="Hips"
 	rig.add_child(hips)
-	hips.position.y=0.73
+	hips.position.y=0.705
 	garment(hips,[[-0.13,0.235,0.16],[0.04,0.235,0.17],[0.14,0.22,0.16]],"b59562")
 	left_leg=limb(hips,"LeftLeg",Vector3(-0.135,0,0),0.32,0.105,"b59562")
 	right_leg=limb(hips,"RightLeg",Vector3(0.135,0,0),0.32,0.105,"b59562")
 	left_knee=limb(left_leg,"LeftKnee",Vector3(0,-0.32,0),0.28,0.075,"d9af88")
 	right_knee=limb(right_leg,"RightKnee",Vector3(0,-0.32,0),0.28,0.075,"d9af88")
 	for knee in [left_knee,right_knee]:
-		HomesteadMesh.box(knee,Vector3(0,-0.315,0.045),Vector3(0.19,0.14,0.32),"975f48",0.065)
+		var ankle=Node3D.new()
+		ankle.name="Ankle"
+		ankle.position.y=-0.28
+		knee.add_child(ankle)
+		if knee==left_knee: left_ankle=ankle
+		else: right_ankle=ankle
+		HomesteadMesh.box(ankle,Vector3(0,-0.035,0.045),Vector3(0.19,0.14,0.32),"975f48",0.065)
 	garment(hips,[[0.02,0.225,0.16],[0.12,0.245,0.18],[0.39,0.235,0.16],[0.53,0.245,0.15],[0.60,0.13,0.115]],"83a89a")
 	outfit_details=Node3D.new()
 	hips.add_child(outfit_details)
@@ -161,24 +166,48 @@ func build_animations():
 	var walk=Animation.new()
 	walk.length=0.8
 	walk.loop_mode=Animation.LOOP_LINEAR
-	for node in [left_leg,right_leg,left_arm,right_arm]:
+	# A .70 m stride with a flat, planted stance and a short lifted swing.
+	# Analytic two-bone keys keep the knee connected and sole level, rather than
+	# swinging straight sticks through the floor. Speed follows actual movement.
+	for side in 2:
+		var leg=left_leg if side==0 else right_leg
+		var knee=left_knee if side==0 else right_knee
+		var ankle=left_ankle if side==0 else right_ankle
+		var hip_keys=[]
+		var knee_keys=[]
+		var ankle_keys=[]
+		for i in 33:
+			var time=float(i)/32
+			var phase=fposmod(time+side*0.5,1.0)
+			var stance=phase<0.60
+			var t=phase/0.60 if stance else (phase-0.60)/0.40
+			var z=lerpf(0.21,-0.21,t) if stance else lerpf(-0.21,0.21,smoothstep(0,1,t))
+			var lift=0.0 if stance else sin(t*PI)*0.09
+			var hip_y=0.66+0.012*pow(sin(time*TAU),2)
+			var down=hip_y-(0.105+lift)
+			var distance=clampf(Vector2(z,down).length(),0.08,0.599)
+			var hip_angle=-atan2(z,down)-acos(clampf((0.32*0.32+distance*distance-0.28*0.28)/(2*0.32*distance),-1,1))
+			var knee_angle=PI-acos(clampf((0.32*0.32+0.28*0.28-distance*distance)/(2*0.32*0.28),-1,1))
+			hip_keys.append([time*0.8,Vector3(hip_angle,0,0)])
+			knee_keys.append([time*0.8,Vector3(knee_angle,0,0)])
+			ankle_keys.append([time*0.8,Vector3(-hip_angle-knee_angle,0,0)])
+		animation_track(walk,leg,"rotation",hip_keys,Animation.INTERPOLATION_LINEAR)
+		animation_track(walk,knee,"rotation",knee_keys,Animation.INTERPOLATION_LINEAR)
+		animation_track(walk,ankle,"rotation",ankle_keys,Animation.INTERPOLATION_LINEAR)
+	for arm in [left_arm,right_arm]:
 		var keys=[]
-		var phase=PI if node in [right_leg,left_arm] else 0.0
-		for i in 9: keys.append([i*0.1,Vector3(sin(i*PI/4+phase)*0.42,0,0)])
-		animation_track(walk,node,"rotation",keys)
-	for node in [left_knee,right_knee]:
-		var keys=[]
-		var phase=PI if node==right_knee else 0.0
-		for i in 9: keys.append([i*0.1,Vector3(maxf(0,-sin(i*PI/4+phase))*0.65,0,0)])
-		animation_track(walk,node,"rotation",keys,Animation.INTERPOLATION_LINEAR)
-	animation_track(walk,hips,"position:y",[[0,0.73],[0.2,0.755],[0.4,0.73],[0.6,0.755],[0.8,0.73]])
+		var phase=PI if arm==left_arm else 0.0
+		for i in 17: keys.append([i*0.05,Vector3(sin(i*PI/8+phase)*0.24,0,0.035 if arm==right_arm else -0.035)])
+		animation_track(walk,arm,"rotation",keys)
+	animation_track(walk,right_elbow,"rotation",[[0,Vector3(-0.12,0,0)],[0.8,Vector3(-0.12,0,0)]])
+	animation_track(walk,hips,"position:y",[[0,0.66],[0.2,0.672],[0.4,0.66],[0.6,0.672],[0.8,0.66]])
 	library.add_animation("walk",walk)
 	var idle=Animation.new()
 	idle.length=3
 	idle.loop_mode=Animation.LOOP_LINEAR
-	for node in [left_leg,right_leg,left_knee,right_knee,left_arm,right_arm,right_elbow]:
+	for node in [left_leg,right_leg,left_knee,right_knee,left_ankle,right_ankle,left_arm,right_arm,right_elbow]:
 		animation_track(idle,node,"rotation",[[0,Vector3.ZERO],[3,Vector3.ZERO]])
-	animation_track(idle,hips,"position:y",[[0,0.73],[1.5,0.741],[3,0.73]])
+	animation_track(idle,hips,"position:y",[[0,0.705],[1.5,0.713],[3,0.705]])
 	library.add_animation("idle",idle)
 	var wave=Animation.new()
 	wave.length=2.4
@@ -191,6 +220,8 @@ func build_animations():
 	animation_track(water,right_elbow,"rotation",[[0,Vector3(-0.3,0,-0.18)],[2.4,Vector3(-0.3,0,-0.18)]])
 	animation_track(water,left_arm,"rotation",[[0,Vector3(-0.35,0,0.08)],[2.4,Vector3(-0.35,0,0.08)]])
 	library.add_animation("water",water)
+	for clip in [wave,water]:
+		for ankle in [left_ankle,right_ankle]: animation_track(clip,ankle,"rotation",[[0,Vector3.ZERO],[clip.length,Vector3.ZERO]])
 	var sit=Animation.new()
 	sit.length=1
 	sit.loop_mode=Animation.LOOP_LINEAR
@@ -199,6 +230,7 @@ func build_animations():
 	for knee in [left_knee,right_knee]: animation_track(sit,knee,"rotation",[[0,Vector3(1.5,0,0)],[1,Vector3(1.5,0,0)]])
 	for arm in [left_arm,right_arm]: animation_track(sit,arm,"rotation",[[0,Vector3(-0.5,0,0)],[1,Vector3(-0.5,0,0)]])
 	animation_track(sit,right_elbow,"rotation",[[0,Vector3.ZERO],[1,Vector3.ZERO]])
+	for ankle in [left_ankle,right_ankle]: animation_track(sit,ankle,"rotation",[[0,Vector3.ZERO],[1,Vector3.ZERO]])
 	library.add_animation("sit",sit)
 	animator.add_animation_library("",library)
 	animator.play("idle")
@@ -214,7 +246,10 @@ func set_motion(next: String,speed=1.0):
 		if reduced_motion and next!="walk":
 			animator.advance(0.3)
 			animator.seek(1.0 if next=="wave" else 0.25,true)
-	animator.speed_scale=maxf(0.25,speed) if next=="walk" else 1.0
+	# .42 m planted-foot travel over 60% of the .8 s cycle gives .875 m/s.
+	# Rig forward scale follows saved build, not its vertical height scale.
+	var stride_speed=0.875*[0.86,1.0,1.17][appearance.build]
+	animator.speed_scale=maxf(0.05,speed/stride_speed) if next=="walk" else 1.0
 func _process(delta):
 	if not reduced_motion: clock+=delta
 	if animator and mode!="walk": animator.speed_scale=0.0 if reduced_motion else 1.0

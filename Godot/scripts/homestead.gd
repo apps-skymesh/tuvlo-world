@@ -14,6 +14,11 @@ var yaw=0.25
 const OVERVIEW_PITCH=PI/6 # 30 degrees: roofs and faces read without flattening the land.
 var zoom=1.0
 var camera_initialized=false
+var orbit_yaw=0.25
+var orbit_focus=Vector3.ZERO
+var orbit_pitch=OVERVIEW_PITCH
+var envelope_revision=-1
+var scenery_radius=24.0
 var fit_key=Vector3(INF,INF,INF)
 var fit_cache={}
 
@@ -38,21 +43,32 @@ func _ready():
  var environment=WorldEnvironment.new()
  var settings=Environment.new()
  settings.background_mode=Environment.BG_COLOR
- settings.background_color=Color("e5e2d4")
+ settings.background_color=Color("e7eddf")
  settings.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR
- settings.ambient_light_color=Color("fff7ec")
- settings.ambient_light_energy=0.4
+ settings.ambient_light_color=Color("cedddc")
+ settings.ambient_light_energy=0.58
  # Match the character-review stage; Compatibility/WebGL must retain palette contrast.
  settings.tonemap_mode=Environment.TONE_MAPPER_LINEAR
  environment.environment=settings
  add_child(environment)
  var light=DirectionalLight3D.new()
- light.rotation_degrees=Vector3(-50,-35,0)
- light.light_color=Color("fff9f0")
- light.light_energy=0.7
+ light.rotation_degrees=Vector3(-48,-38,0)
+ light.light_color=Color("fff0d8")
+ light.light_energy=1.05
+ light.light_angular_distance=0.8
+ light.shadow_opacity=0.68
+ light.directional_shadow_max_distance=100.0
  light.shadow_enabled=true
  add_child(light)
+ var fill=DirectionalLight3D.new()
+ fill.rotation_degrees=Vector3(-28,145,0)
+ fill.light_color=Color("c9e0e2")
+ fill.light_energy=0.16
+ fill.light_specular=0.0
+ add_child(fill)
  add_child(camera)
+ camera.near=0.08
+ camera.far=180.0
  camera.projection=Camera3D.PROJECTION_ORTHOGONAL
  camera.current=true
  add_child(presentation)
@@ -134,7 +150,7 @@ func receive_host_json(json: String):
  match type:
   "lifecycle": set_paused(payload.get("paused",true)==true)
   "camera":
-   if payload.get("mode") in ["overview","follow","detail"]:
+   if payload.get("mode") in ["overview","home","follow","detail"]:
     if camera_mode!=payload.mode: zoom=1.0
     camera_mode=payload.mode
    if payload.get("resetZoom",false)==true: zoom=1.0
@@ -289,18 +305,42 @@ func _process(delta):
  if is_instance_valid(creature): creature.reduced_motion=reduced_motion
  var viewport=get_viewport().get_visible_rect().size
  var aspect=viewport.x/maxf(1,viewport.y)
- var overview=overview_fit(aspect)
- var focus=overview.focus if camera_mode=="overview" else resident.position+Vector3(0,1,0)
- var radius=30.0 if camera_mode=="overview" else (7.5 if camera_mode=="follow" else 4.5)
- var elevation=tan(OVERVIEW_PITCH) if camera_mode=="overview" else 0.48
- var desired=focus+Vector3(sin(yaw)*radius,radius*elevation,cos(yaw)*radius)
- var size=(overview.size if camera_mode=="overview" else (6.0 if camera_mode=="follow" else 3.3))*zoom
  var immediate=reduced_motion or not camera_initialized
- camera.position=desired if immediate else camera.position.lerp(desired,1-exp(-delta*7))
- camera.size=size if immediate else lerpf(camera.size,size,1-exp(-delta*7))
- if camera.position.distance_to(focus)>0.01: camera.look_at(focus)
+ var blend=1-exp(-delta*5.5)
+ orbit_yaw=yaw if immediate else lerp_angle(orbit_yaw,yaw,blend)
+ var overview=overview_fit(aspect,orbit_yaw)
+ var focus=overview.focus
+ var size=overview.size*zoom
+ var pitch=OVERVIEW_PITCH
+ if camera_mode in ["follow","detail"]:
+  focus=resident.position+Vector3(0,1.0,0)
+  size=(7.0 if camera_mode=="follow" else 3.8)*zoom
+  pitch=deg_to_rad(28)
+ elif camera_mode=="home":
+  for item in data.items:
+   if item.kind=="cottage":
+    focus=HomesteadItems.item_center(item)+Vector3(0,1.1,1.4)
+    size=9.0*zoom
+    break
+ # The fitted center already changes smoothly with orbit_yaw. A second lag
+ # here can crop a plot while Overview rotates or returns from a closer view.
+ orbit_focus=focus if immediate or camera_mode=="overview" else orbit_focus.lerp(focus,blend)
+ orbit_pitch=pitch if immediate else lerpf(orbit_pitch,pitch,blend)
+ if envelope_revision!=presentation.visual_revision:
+  scenery_radius=0.0
+  for point in overview_points(): scenery_radius=maxf(scenery_radius,Vector2(point.x,point.z).length())
+  scenery_radius+=2.0 # authored roof/eave margin, independent of placement collision boxes
+  envelope_revision=presentation.visual_revision
+ # Orthographic magnification is camera.size. The lens stays beyond the entire
+ # scenery envelope at every angle, even while focus/mode changes. Interpolate
+ # angles, never the camera's Cartesian position (a chord can cross a building).
+ var radius=maxf(32.0,scenery_radius+Vector2(orbit_focus.x,orbit_focus.z).length()+8.0)
+ camera.position=orbit_focus+Vector3(sin(orbit_yaw)*radius,radius*tan(orbit_pitch),cos(orbit_yaw)*radius)
+ camera.size=size if immediate else lerpf(camera.size,size,blend)
+ if camera_mode=="overview": camera.size=maxf(size,camera.size)
+ camera.look_at(orbit_focus)
  camera_initialized=true
- presentation.update_character_visibility(camera,resident.position,camera_mode!="overview")
+ presentation.update_character_visibility(camera,resident.position,camera_mode in ["follow","detail"])
 
 func overview_points() -> Array[Vector3]:
  # Include inactive plots as well as the active clearing; no imaginary roofs
@@ -321,11 +361,12 @@ func overview_points() -> Array[Vector3]:
    for z in [-half_size.y,half_size.y]: points.append(center+Vector3(x,height,z))
  return points
 
-func overview_fit(aspect: float) -> Dictionary:
- var key=Vector3(yaw,aspect,presentation.visual_revision)
+func overview_fit(aspect: float,angle: float=INF) -> Dictionary:
+ if is_inf(angle): angle=yaw
+ var key=Vector3(angle,aspect,presentation.visual_revision)
  if key.is_equal_approx(fit_key): return fit_cache
- var horizontal=Vector3(cos(yaw),0,-sin(yaw))
- var vertical=Vector3(-sin(yaw)*sin(OVERVIEW_PITCH),cos(OVERVIEW_PITCH),-cos(yaw)*sin(OVERVIEW_PITCH))
+ var horizontal=Vector3(cos(angle),0,-sin(angle))
+ var vertical=Vector3(-sin(angle)*sin(OVERVIEW_PITCH),cos(OVERVIEW_PITCH),-cos(angle)*sin(OVERVIEW_PITCH))
  var low=Vector2(INF,INF)
  var high=Vector2(-INF,-INF)
  for point in overview_points():

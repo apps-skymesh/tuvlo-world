@@ -129,3 +129,19 @@ static func rounded_outline(width: float,depth: float,radius: float) -> PackedVe
 			var a=angle+step*PI/12
 			result.append(center+Vector2(cos(a),sin(a))*radius)
 	return result
+
+# Shared, soft contact shade works in both Mobile and Compatibility renderers.
+static var contact_material: ShaderMaterial
+static func contact_shadow(parent: Node3D, size: Vector2) -> MeshInstance3D:
+	if contact_material==null:
+		contact_material=ShaderMaterial.new()
+		contact_material.shader=preload("res://scripts/contact_shadow.gdshader")
+	var plane=PlaneMesh.new()
+	plane.size=size
+	var node=MeshInstance3D.new()
+	node.mesh=plane
+	node.material_override=contact_material
+	node.position.y=0.032
+	node.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(node)
+	return node

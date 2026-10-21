@@ -16,6 +16,7 @@ var next_sample=0.0
 var started_ms=0
 var initial_camera="overview"
 var equipped=false
+var cottage_slice=false
 func _initialize(): call_deferred("run")
 func run():
  started_ms=Time.get_ticks_msec()
@@ -25,6 +26,7 @@ func run():
  var args=OS.get_cmdline_user_args()
  for index in args.size():
   if args[index]=="--equipped": equipped=true
+  if args[index]=="--cottage": cottage_slice=true
   if args[index]=="--camera" and index+1<args.size(): initial_camera=args[index+1]
   if args[index]=="--seconds" and index+1<args.size(): duration=clampf(float(args[index+1]),1,60)
   if args[index]=="--capture" and index+1<args.size(): output=args[index+1]
@@ -51,6 +53,12 @@ func reset(equipped: bool):
   {"id":"tree","kind":"tree","cell":{"x":11,"z":3},"rotation":0}],
   "land":[],"appearance":{"hair":3,"outfit":0},"approvedWins":21,"growthTreeID":"tree"}
  for z in range(5,10): payload.items.append({"id":"path-%d"%z,"kind":"path","cell":{"x":7,"z":z},"rotation":0})
+ if cottage_slice:
+  payload.items=[
+   {"id":"cottage","kind":"cottage","cell":{"x":7,"z":3},"rotation":0},
+   {"id":"garden","kind":"garden","cell":{"x":4,"z":8},"rotation":0},
+   {"id":"tree","kind":"tree","cell":{"x":12,"z":7},"rotation":0}]
+  for z in range(6,11): payload.items.append({"id":"path-%d"%z,"kind":"path","cell":{"x":9,"z":z},"rotation":0})
  if equipped:
   payload.items.append({"id":"bench","kind":"bench","cell":{"x":8,"z":10},"rotation":0})
   payload.items.append({"id":"pond","kind":"pond","cell":{"x":12,"z":7},"rotation":0})
@@ -67,18 +75,27 @@ func build_controls():
  var toolbar=HBoxContainer.new()
  toolbar.position=Vector2(16,14)
  layer.add_child(toolbar)
- for mode in ["overview","follow","detail"]: button(toolbar,mode.capitalize(),func(): camera(mode))
+ for mode in ["home","overview","follow","detail"]: button(toolbar,mode.capitalize(),func(): camera(mode))
  button(toolbar,"↶",func(): send("camera",{"rotation":-PI/4}))
  button(toolbar,"↷",func(): send("camera",{"rotation":PI/4}))
  button(toolbar,"+",func():
   if world.camera_mode=="overview": camera("follow")
   send("camera",{"zoom":0.85}))
  button(toolbar,"−",func(): send("camera",{"zoom":1.18}))
- button(toolbar,"Starter",func(): reset(false))
+ button(toolbar,"Cottage",func():
+  cottage_slice=true
+  reset(false)
+  camera("home"))
+ button(toolbar,"Starter",func():
+  cottage_slice=false
+  reset(false))
  button(toolbar,"Equipped",func(): reset(true))
  button(toolbar,"Look",func():
   appearance_index+=1
   payload.appearance={"hair":appearance_index%13,"outfit":appearance_index%6}
+  snapshot())
+ button(toolbar,"Quiet",func():
+  payload.reducedMotion=not payload.get("reducedMotion",false)
   snapshot())
  button(toolbar,"Pause",func(): send("lifecycle",{"paused":not world.paused}))
  var footer=VBoxContainer.new()
