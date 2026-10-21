@@ -10,6 +10,10 @@ var camera=Camera3D.new()
 var session=""
 var layout_signature=""
 var camera_mode="overview"
+var focus_item_id=""
+var panel_framing=0.0
+var camera_preview_frames=0
+var panel_preview=false
 var yaw=0.25
 const OVERVIEW_PITCH=PI/6 # 30 degrees: roofs and faces read without flattening the land.
 var zoom=1.0
@@ -162,11 +166,17 @@ func receive_host_json(json: String):
   return
  if packet.get("session")!=session or session=="": return
  match type:
-  "lifecycle": set_paused(payload.get("paused",true)==true)
+  "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "camera":
-   if payload.get("mode") in ["overview","home","follow","detail"]:
+   camera_preview_frames=1 if reduced_motion else 90
+   if paused and panel_preview:
+    process_mode=Node.PROCESS_MODE_INHERIT
+    RenderingServer.render_loop_enabled=true
+   if payload.get("mode") in ["overview","home","follow","detail","place"]:
     if camera_mode!=payload.mode: zoom=1.0
     camera_mode=payload.mode
+   if payload.has("id"): focus_item_id=str(payload.id)
+   if payload.has("framing"): panel_framing=clampf(float(payload.framing),0,0.3)
    if payload.get("resetZoom",false)==true: zoom=1.0
    zoom=clampf(zoom*clampf(float(payload.get("zoom",1)),0.75,1.3),1.0 if camera_mode=="overview" else 0.65,1.5)
    yaw+=clampf(float(payload.get("rotation",0)),-PI,PI)
@@ -201,14 +211,21 @@ func receive_host_json(json: String):
     if pending_intent=="": pending_intent=new_command_id()
     emit_message("placementIntent",{"commandID":pending_intent,"id":selected_id,"cell":{"x":preview_cell.x,"z":preview_cell.y},"rotation":preview_rotation})
 
-func set_paused(value: bool):
+func set_paused(value: bool, previewing: bool=false):
  var was_paused=paused
  paused=value
+ panel_preview=value and previewing
+ camera_preview_frames=(1 if reduced_motion else 90) if panel_preview else 0
  if value:
   pending_pick=null
   dragging=false
- process_mode=Node.PROCESS_MODE_DISABLED if value else Node.PROCESS_MODE_INHERIT
- RenderingServer.render_loop_enabled=not value
+ # A native window freezes simulation but may briefly render a new camera or
+ # appearance. Background/teardown still stop the entire render loop.
+ process_mode=Node.PROCESS_MODE_INHERIT if not value or panel_preview else Node.PROCESS_MODE_DISABLED
+ RenderingServer.render_loop_enabled=not value or panel_preview
+ resident.process_mode=Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
+ presentation.process_mode=Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
+ if is_instance_valid(creature): creature.process_mode=Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
  resident.set_physics_process(not paused and session!="")
  resident.model.set_process(not paused)
  presentation.set_process(not paused)
@@ -243,6 +260,8 @@ func clear_host_session():
   creature.queue_free()
   creature=null
  camera_mode="overview"
+ focus_item_id=""
+ panel_framing=0.0
  yaw=0.25
  zoom=1.0
  camera_initialized=false
@@ -308,9 +327,17 @@ func _physics_process(_delta):
   if not item.is_empty(): emit_message("selected",{"id":item.id})
 
 func _process(delta):
- if paused: return
- clock+=delta
- metrics_clock+=delta
+ if session=="": return
+ if paused:
+  if not panel_preview or camera_preview_frames<=0:
+   process_mode=Node.PROCESS_MODE_DISABLED
+   RenderingServer.render_loop_enabled=false
+   return
+  camera_preview_frames-=1
+ # Native overlay windows pause residents, not the camera/appearance preview.
+ if not paused:
+  clock+=delta
+  metrics_clock+=delta
  if diagnostics and metrics_clock>=5:
   metrics_clock=0
   emit_message("metrics",{"fps":Engine.get_frames_per_second(),"processSeconds":Performance.get_monitor(Performance.TIME_PROCESS),"staticBytes":Performance.get_monitor(Performance.MEMORY_STATIC),"drawCalls":Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),"residentSteps":resident.steps})
@@ -330,6 +357,11 @@ func _process(delta):
   focus=resident.position+Vector3(0,1.0,0)
   size=(7.0 if camera_mode=="follow" else 3.8)*zoom
   pitch=deg_to_rad(28)
+ elif camera_mode=="place":
+  var item=data.find(focus_item_id)
+  if not item.is_empty():
+   focus=HomesteadItems.item_center(item)+Vector3(0,0.7,0)
+   size=9.0*zoom
  elif camera_mode=="home":
   for item in data.items:
    if item.kind=="cottage":
@@ -352,6 +384,7 @@ func _process(delta):
  camera.position=orbit_focus+Vector3(sin(orbit_yaw)*radius,radius*tan(orbit_pitch),cos(orbit_yaw)*radius)
  camera.size=size if immediate else lerpf(camera.size,size,blend)
  if camera_mode=="overview": camera.size=maxf(size,camera.size)
+ camera.h_offset=camera.size*panel_framing
  camera.look_at(orbit_focus)
  camera_initialized=true
  presentation.update_character_visibility(camera,resident.position,camera_mode in ["follow","detail"])

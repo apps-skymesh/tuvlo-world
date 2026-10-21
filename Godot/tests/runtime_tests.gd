@@ -175,6 +175,22 @@ func run():
  check(scene.data.items.size()==old_count,"Malformed snapshots must leave committed state intact")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"lifecycle","payload":{"paused":true}}))
  check(scene.paused and not scene.resident.is_physics_processing(),"Background must pause simulation")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"lifecycle","payload":{"paused":true,"previewing":true}}))
+ var preview_position=scene.resident.position
+ var preview_rig=scene.resident.model.rig
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"mode":"detail","framing":0.22}}))
+ check(scene.process_mode==Node.PROCESS_MODE_INHERIT and RenderingServer.render_loop_enabled,"An on-map editor must render its preview while simulation stays paused")
+ scene._process(1.0/60.0)
+ check(scene.camera.size<4.0 and scene.camera.h_offset>0.0,"Editor focuses the real character beside the panel")
+ check(scene.resident.position==preview_position and not scene.resident.is_physics_processing() and scene.resident.model.rig==preview_rig,"Preview must not move residents or replace the rig")
+ check(scene.resident.process_mode==Node.PROCESS_MODE_DISABLED and scene.presentation.process_mode==Node.PROCESS_MODE_DISABLED,"Preview must freeze descendant animations as well as simulation")
+ scene.camera_preview_frames=0
+ scene._process(1.0/60.0)
+ check(scene.process_mode==Node.PROCESS_MODE_DISABLED and not RenderingServer.render_loop_enabled,"A settled editor preview must stop rendering")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"mode":"place","id":"cottage","framing":0.22}}))
+ check(RenderingServer.render_loop_enabled,"Another preview camera change wakes the render loop")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"lifecycle","payload":{"paused":true}}))
+ check(not scene.panel_preview and not RenderingServer.render_loop_enabled,"Backgrounding an editor must stop preview rendering")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"wrong-child","type":"lifecycle","payload":{"paused":false}}))
  check(scene.paused,"Stale child session must not control scene")
  var retained_rig=scene.resident.model.rig
