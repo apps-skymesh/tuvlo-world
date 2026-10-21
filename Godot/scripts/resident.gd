@@ -197,7 +197,7 @@ func _physics_process(delta):
 		if route.size()>1 and position.distance_to(route[0])<0.65:
 			var next_direction=(route[1]-route[0]).normalized()
 			bend_limit=lerpf(0.50,1.0,maxf(0,direction.dot(next_direction)))
-		var desired_speed=minf(1.12*bend_limit,sqrt(remaining*2.4))*alignment*alignment
+		var desired_speed=minf(1.2*bend_limit,sqrt(remaining*2.4))*alignment*alignment
 		speed=move_toward(speed,desired_speed,delta*(2.8 if desired_speed>speed else 5.0))
 		var budget=speed*delta*alignment
 		var moved=0.0
