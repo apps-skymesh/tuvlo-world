@@ -67,6 +67,19 @@ func _ready():
  fill.light_energy=0.10
  fill.light_specular=0.0
  add_child(fill)
+ # Grade the final 3D image as well as its lights. Native SwiftUI controls
+ # stay outside this pass; no screen-space depth/normal buffers are needed.
+ var grade_layer=CanvasLayer.new()
+ grade_layer.layer=0
+ add_child(grade_layer)
+ var grade=ColorRect.new()
+ grade.name="WorldColorGrade"
+ grade.mouse_filter=Control.MOUSE_FILTER_IGNORE
+ grade_layer.add_child(grade)
+ grade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ var grade_material=ShaderMaterial.new()
+ grade_material.shader=preload("res://scripts/world_grade.gdshader")
+ grade.material=grade_material
  add_child(camera)
  camera.near=0.08
  camera.far=180.0
