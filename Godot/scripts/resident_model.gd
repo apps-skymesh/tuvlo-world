@@ -18,6 +18,8 @@ var clock=0.0
 var reduced_motion=false
 var eyes: Array[MeshInstance3D]=[]
 var eye_glints: Array[MeshInstance3D]=[]
+var eye_whites: Array[MeshInstance3D]=[]
+var pupils: Array[MeshInstance3D]=[]
 var mode="idle"
 var appearance=HomesteadAppearance.DEFAULT.duplicate()
 var hair_root: Node3D
@@ -56,6 +58,12 @@ func _ready():
 		if knee==left_knee: left_ankle=ankle
 		else: right_ankle=ankle
 		HomesteadMesh.box(ankle,Vector3(0,-0.035,0.045),Vector3(0.19,0.14,0.32),"975f48",0.065)
+		# A fitted sole, heel tab and inset laces follow the existing ankle rig.
+		HomesteadMesh.box(ankle,Vector3(0,-0.091,0.045),Vector3(0.195,0.032,0.325),"e8deca",0.015)
+		HomesteadMesh.box(ankle,Vector3(0,0.014,-0.09),Vector3(0.045,0.055,0.025),"e8deca",0.008)
+		for z in [0.07,0.11,0.15]:
+			HomesteadMesh.rod(ankle,Vector3(-0.045,0.035,z),Vector3(0.045,0.035,z),0.006,"e8deca")
+		soft_form(knee,Vector3.ZERO,Vector3(0.076,0.076,0.076),"d9af88")
 	garment(hips,[[0.02,0.225,0.16],[0.12,0.245,0.18],[0.39,0.235,0.16],[0.53,0.245,0.15],[0.60,0.13,0.115]],"83a89a")
 	outfit_details=Node3D.new()
 	hips.add_child(outfit_details)
@@ -67,8 +75,12 @@ func _ready():
 	right_arm=limb(hips,"RightArm",Vector3(0.245,0.49,0),0.27,0.09,"83a89a")
 	var left_elbow=limb(left_arm,"LeftElbow",Vector3(0,-0.27,0),0.23,0.065,"dfb38c")
 	right_elbow=limb(right_arm,"RightElbow",Vector3(0,-0.27,0),0.23,0.065,"dfb38c")
+	for arm in [left_arm,right_arm]:
+		HomesteadMesh.torus(arm,Vector3(0,-0.25,0),0.083,0.012,"83a89a")
 	for elbow in [left_elbow,right_elbow]:
-		soft_form(elbow,Vector3(0,-0.25,0),Vector3(0.065,0.083,0.06),"dfb38c")
+		soft_form(elbow,Vector3.ZERO,Vector3(0.066,0.066,0.066),"dfb38c")
+		soft_form(elbow,Vector3(0,-0.245,0),Vector3(0.062,0.078,0.055),"dfb38c")
+		soft_form(elbow,Vector3(-0.045 if elbow==right_elbow else 0.045,-0.23,0.02),Vector3(0.025,0.04,0.03),"dfb38c")
 	HomesteadMesh.cylinder(hips,Vector3(0,0.65,0),0.09,0.16,"dfb38c")
 	head=Node3D.new()
 	head.name="Head"
@@ -78,9 +90,11 @@ func _ready():
 	for x in [-0.27,0.27]:
 		soft_form(head,Vector3(x,-0.025,0),Vector3(0.044,0.064,0.045),"d6a482")
 	for x in [-0.1,0.1]:
-		var eye=soft_form(head,Vector3(x,0.005,0.237),Vector3(0.031,0.043,0.014),"4c443b")
+		eye_whites.append(soft_form(head,Vector3(x,0.005,0.235),Vector3(0.039,0.051,0.013),"fff9ed"))
+		var eye=soft_form(head,Vector3(x,0.005,0.246),Vector3(0.031,0.043,0.014),"4c443b")
 		eyes.append(eye)
-		eye_glints.append(soft_form(head,Vector3(x-0.008,0.019,0.252),Vector3.ONE*0.007,"f8ecd5"))
+		pupils.append(soft_form(head,Vector3(x,0.005,0.258),Vector3(0.014,0.026,0.005),"28342f"))
+		eye_glints.append(soft_form(head,Vector3(x-0.007,0.019,0.265),Vector3.ONE*0.006,"fff9ed"))
 		soft_form(head,Vector3(x*1.65,-0.075,0.207),Vector3(0.041,0.022,0.007),"d3987f")
 	soft_form(head,Vector3(0,-0.043,0.249),Vector3(0.029,0.028,0.027),"d6a17d")
 	expression_root=Node3D.new()
@@ -260,6 +274,8 @@ func _process(delta):
 		skirt.scale.z=lerpf(skirt.scale.z,1.5 if mode=="walk" else 1.0,minf(1,delta*12))
 	var blink=not reduced_motion and fmod(clock,4.9)>4.76
 	for glint in eye_glints: glint.visible=not blink
+	for white in eye_whites: white.scale.y=normal_eye_height*0.16 if blink else normal_eye_height*1.18
+	for pupil in pupils: pupil.scale.y=normal_eye_height*0.08 if blink else normal_eye_height*0.58
 	for eye in eyes: eye.scale.y=normal_eye_height*0.15 if blink else normal_eye_height
 	if not reduced_motion:
 		head.rotation.y=sin(clock*0.7)*0.09 if mode=="idle" else lerpf(head.rotation.y,0,minf(1,delta*5))
@@ -400,6 +416,8 @@ func apply_appearance(raw: Dictionary):
 	rig.scale=Vector3(widths[appearance.build],heights[appearance.height],widths[appearance.build])
 	head.scale=[Vector3.ONE,Vector3(1.05,0.95,1),Vector3(0.92,1.12,1),Vector3(1.1,0.96,1)][appearance.face]
 	normal_eye_height=[0.043,0.051,0.029][appearance.eyes]
+	for white in eye_whites: white.scale.y=normal_eye_height*1.18
+	for pupil in pupils: pupil.scale.y=normal_eye_height*0.58
 	for eye in eyes:
 		eye.scale.x=0.037 if appearance.eyes==2 else 0.031
 		eye.scale.y=normal_eye_height
@@ -410,6 +428,13 @@ func update_wardrobe():
 			root.remove_child(child)
 			child.queue_free()
 	var color=HomesteadAppearance.TOPS[appearance.top]
+	# Tailored fabric hems and a small tonal pocket; no rig replacement.
+	var trim=Color(color).darkened(0.14).to_html(false)
+	var hem=HomesteadMesh.torus(wardrobe,Vector3(0,0.07,0),0.226,0.009,trim)
+	hem.scale.z=0.73
+	if appearance.outfit in [0,1]:
+		HomesteadMesh.box(wardrobe,Vector3(0.105,0.36,0.166),Vector3(0.075,0.075,0.012),trim,0.016)
+		HomesteadMesh.rod(wardrobe,Vector3(0.075,0.386,0.178),Vector3(0.135,0.386,0.178),0.004,Color(color).lightened(0.15).to_html(false))
 	if appearance.outfit==1:
 		HomesteadMesh.torus(wardrobe,Vector3(0,0.58,0),0.125,0.035,color).rotation.x=PI/2
 		for x in [-0.045,0.045]: HomesteadMesh.rod(wardrobe,Vector3(x,0.53,0.19),Vector3(x,0.35,0.205),0.009,"e8deca")

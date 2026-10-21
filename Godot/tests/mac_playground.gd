@@ -75,13 +75,12 @@ func build_controls():
  var toolbar=HBoxContainer.new()
  toolbar.position=Vector2(16,14)
  layer.add_child(toolbar)
- for mode in ["home","overview","follow","detail"]: button(toolbar,mode.capitalize(),func(): camera(mode))
- button(toolbar,"↶",func(): send("camera",{"rotation":-PI/4}))
- button(toolbar,"↷",func(): send("camera",{"rotation":PI/4}))
- button(toolbar,"+",func():
-  if world.camera_mode=="overview": camera("follow")
-  send("camera",{"zoom":0.85}))
- button(toolbar,"−",func(): send("camera",{"zoom":1.18}))
+ for mode in ["home","overview","follow"]: button(toolbar,mode.capitalize(),func(): camera(mode))
+ var options=MenuButton.new()
+ options.text="Camera options"
+ toolbar.add_child(options)
+ for title in ["Close up","Rotate left","Rotate right","Zoom in","Zoom out"]: options.get_popup().add_item(title)
+ options.get_popup().id_pressed.connect(camera_option)
  button(toolbar,"Cottage",func():
   cottage_slice=true
   reset(false)
@@ -108,6 +107,15 @@ func build_controls():
  hint.add_theme_color_override("font_color",Color("304c49"))
  hint.text="Mac visual lab • disposable layout • no family data\nSelect a place · arrows move · R rotate · Enter place · Esc cancel"
  footer.add_child(hint)
+func camera_option(id: int):
+ match id:
+  0: camera("detail")
+  1: send("camera",{"rotation":-PI/4})
+  2: send("camera",{"rotation":PI/4})
+  3:
+   if world.camera_mode=="overview": camera("follow")
+   send("camera",{"zoom":0.85})
+  4: send("camera",{"zoom":1.18})
 func on_message(raw: String):
  var message=JSON.parse_string(raw)
  if message.type=="activity":

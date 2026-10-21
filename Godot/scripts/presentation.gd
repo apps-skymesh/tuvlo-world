@@ -152,15 +152,15 @@ func garden(root: Node3D):
 				for leaf_index in 4:
 					var angle=leaf_index*TAU/4+(0.35 if x>0 else 0.0)
 					var offset=Vector3(cos(angle)*0.09,0.06,sin(angle)*0.09)
-					var leaf=HomesteadMesh.ellipsoid(root,plant+offset,Vector3(0.075,0.045,0.17),"729568" if leaf_index%2 else "91ad73")
+					var leaf=HomesteadMesh.ellipsoid(root,plant+offset,Vector3(0.075,0.045,0.17),"548d57" if leaf_index%2 else "80af61")
 					leaf.rotation=Vector3(-0.25,PI/2-angle,0)
-				HomesteadMesh.ellipsoid(root,plant+Vector3(0,0.14,0),Vector3(0.075,0.10,0.075),"acc68a")
+				HomesteadMesh.ellipsoid(root,plant+Vector3(0,0.14,0),Vector3(0.075,0.10,0.075),"b3d47b")
 	HomesteadMesh.rod(root,Vector3(1.28,0,-0.68),Vector3(1.28,0.88,-0.68),0.035,"a47c58")
 	HomesteadMesh.box(root,Vector3(1.28,0.75,-0.68),Vector3(0.35,0.28,0.045),"dac7a0",0.035)
 
 func pond(root: Node3D,ghost: bool,style=0):
 	HomesteadMesh.ellipsoid(root,Vector3(0,0.05,0),Vector3(1.46,0.12,1.4),"a49d81")
-	var surface=HomesteadMesh.cylinder(root,Vector3(0,0.13,0),1.27,0.055,"7fb8bc")
+	var surface=HomesteadMesh.cylinder(root,Vector3(0,0.13,0),1.27,0.055,"55a9b4")
 	surface.scale.z=0.95
 	var material=ShaderMaterial.new()
 	material.shader=preload("res://scripts/water.gdshader")

@@ -1,6 +1,6 @@
 shader_type spatial;
 render_mode specular_disabled;
-uniform vec4 grass_color : source_color = vec4(0.61, 0.70, 0.45, 1.0);
+uniform vec4 grass_color : source_color = vec4(0.47, 0.67, 0.34, 1.0);
 varying vec3 world_point;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
 float noise(vec2 p) {
