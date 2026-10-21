@@ -1,0 +1,16 @@
+{
+  "reference": "/Users/saeed/Projects/Apps/tuvlo-world/Tuvlo3DTrial",
+  "engine": "4.7.2.stable.official.ed1daf0bf",
+  "originalSHA256": {
+    "scripts/mesh_factory.gd": "3003aa52bd287d4cd11c4970d7c5383a6f494ed02ab0d502d44a10d6e78b3f4f",
+    "scripts/presentation.gd": "c86b0344ca6356541d41bff5f2b3b7a9f70f3188ed1499314eac3505684387e8",
+    "scripts/navigation.gd": "5c1a03ddff9cf6dd923cd2243d95a211941e0da73a7cea31dcfd5e2f7a7c4e8c",
+    "scripts/resident.gd": "6841bba761b4a2384c91bd9c87d0fb135842a83acf64afb8b043f514b7b38c6e",
+    "scripts/resident_model.gd": "e6d76c8cf57d7a695c7a97854654d7f19f199dc536273a761a10d071dd102b71",
+    "scripts/creature.gd": "85c9aa211c60fd6d545aab8acbf026ae24dc83107050463ea0b8c2b3fcc8cd4c",
+    "scripts/habitat.gd": "0b2442a2639e6514b63d3953ee5e155deee68e2a50bd09c867849d5198cc5bcb",
+    "scripts/water.gdshader": "b6956b0461d25f45e11bb3aa67bda78261b1f899d78c034f23d13a53563ee671",
+    "scripts/items.gd": "9f175b1311a95e7146d1057b67244f6fede37d53197a05dd98942015abc00d7e"
+  },
+  "reuse": "Owner-supplied procedural reference; production adaptation is separate. No prototype save or QA artifacts imported."
+}
