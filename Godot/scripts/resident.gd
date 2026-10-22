@@ -165,7 +165,7 @@ func finish_activity():
 			return
 	model.set_motion("idle")
 	state="pause"
-	timer=rng.randf_range(0.8,1.8)*activity_scale
+	timer=rng.randf_range(1.2,2.6)*activity_scale
 func _physics_process(delta):
 	if model==null: return
 	steps+=1
@@ -197,8 +197,11 @@ func _physics_process(delta):
 		if route.size()>1 and position.distance_to(route[0])<0.65:
 			var next_direction=(route[1]-route[0]).normalized()
 			bend_limit=lerpf(0.50,1.0,maxf(0,direction.dot(next_direction)))
-		var desired_speed=minf(1.2*bend_limit,sqrt(remaining*2.4))*alignment*alignment
-		speed=move_toward(speed,desired_speed,delta*(2.8 if desired_speed>speed else 5.0))
+		# An unhurried child's pace: ease into the first steps and settle into
+		# the stop instead of reaching full speed in a few frames.
+		var desired_speed=minf(0.9*bend_limit,sqrt(remaining*1.6))*alignment*alignment
+		var accel=lerpf(0.9,2.0,clampf(speed/0.9,0,1)) if desired_speed>speed else 3.2
+		speed=move_toward(speed,desired_speed,delta*accel)
 		var budget=speed*delta*alignment
 		var moved=0.0
 		while budget>0.00001 and not route.is_empty():
@@ -246,4 +249,5 @@ func _physics_process(delta):
 		timer-=delta
 		if timer<=0: finish_activity()
 	if state!="walking": facing=rotate_toward(facing,desired_facing,delta*4.5)
+	model.look_yaw=angle_difference(facing,desired_facing)
 	rotation.y=facing

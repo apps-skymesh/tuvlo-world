@@ -13,6 +13,7 @@ var right_ankle: Node3D
 var left_arm: Node3D
 var right_arm: Node3D
 var right_elbow: Node3D
+var left_elbow: Node3D
 var can: Node3D
 var clock=0.0
 var reduced_motion=false
@@ -36,7 +37,17 @@ var scarf_root: Node3D
 var expression_root: Node3D
 var grin_teeth: MeshInstance3D
 var dimples: Node3D
+var ears: Array[MeshInstance3D]=[]
+# Gentle attention: the head eases toward a glance or the path ahead.
+var look_yaw=0.0
+var glance=Vector2.ZERO
+var glance_target=Vector2.ZERO
+var next_glance=2.0
+var next_blink=3.0
+var blink_left=0.0
+var look_rng=RandomNumberGenerator.new()
 func _ready():
+	look_rng.seed=91357
 	HomesteadMesh.contact_shadow(self,Vector2(0.85,0.68))
 	rig=Node3D.new()
 	rig.name="Rig"
@@ -73,7 +84,7 @@ func _ready():
 		soft_form(outfit_details,Vector3(x,0.32,0.23),Vector3.ONE*0.022,"eddbb2")
 	left_arm=limb(hips,"LeftArm",Vector3(-0.245,0.49,0),0.27,0.09,"83a89a")
 	right_arm=limb(hips,"RightArm",Vector3(0.245,0.49,0),0.27,0.09,"83a89a")
-	var left_elbow=limb(left_arm,"LeftElbow",Vector3(0,-0.27,0),0.23,0.065,"dfb38c")
+	left_elbow=limb(left_arm,"LeftElbow",Vector3(0,-0.27,0),0.23,0.065,"dfb38c")
 	right_elbow=limb(right_arm,"RightElbow",Vector3(0,-0.27,0),0.23,0.065,"dfb38c")
 	for arm in [left_arm,right_arm]:
 		HomesteadMesh.torus(arm,Vector3(0,-0.25,0),0.083,0.012,"83a89a")
@@ -88,13 +99,14 @@ func _ready():
 	head.position.y=0.91
 	soft_form(head,Vector3.ZERO,Vector3(0.285,0.30,0.255),"e1b68f")
 	for x in [-0.27,0.27]:
-		soft_form(head,Vector3(x,-0.025,0),Vector3(0.044,0.064,0.045),"d6a482")
+		ears.append(soft_form(head,Vector3(x,-0.025,0),Vector3(0.044,0.064,0.045),"d6a482"))
 	for x in [-0.1,0.1]:
 		eye_whites.append(soft_form(head,Vector3(x,0.005,0.235),Vector3(0.039,0.051,0.013),"fff9ed"))
 		var eye=soft_form(head,Vector3(x,0.005,0.246),Vector3(0.031,0.043,0.014),"4c443b")
 		eyes.append(eye)
 		pupils.append(soft_form(head,Vector3(x,0.005,0.258),Vector3(0.014,0.026,0.005),"28342f"))
-		eye_glints.append(soft_form(head,Vector3(x-0.007,0.019,0.265),Vector3.ONE*0.006,"fff9ed"))
+		eye_glints.append(soft_form(head,Vector3(x-0.008,0.02,0.266),Vector3.ONE*0.0085,"fff9ed"))
+		eye_glints.append(soft_form(head,Vector3(x+0.009,-0.012,0.264),Vector3.ONE*0.0042,"fff9ed"))
 		soft_form(head,Vector3(x*1.65,-0.075,0.207),Vector3(0.041,0.022,0.007),"d3987f")
 	soft_form(head,Vector3(0,-0.043,0.249),Vector3(0.029,0.028,0.027),"d6a17d")
 	expression_root=Node3D.new()
@@ -180,9 +192,20 @@ func build_animations():
 	var walk=Animation.new()
 	walk.length=0.8
 	walk.loop_mode=Animation.LOOP_LINEAR
-	# A .70 m stride with a flat, planted stance and a short lifted swing.
-	# Analytic two-bone keys keep the knee connected and sole level, rather than
-	# swinging straight sticks through the floor. Speed follows actual movement.
+	# Relaxed child gait: a .36 m planted stride under a slightly forward,
+	# swaying pelvis. Two-bone keys are solved in the leaning hip frame so the
+	# stance sole stays flat on the ground; the swing foot rolls off its toe
+	# and lifts its toe before contact. Speed follows actual movement.
+	var lean=0.045
+	var hip_track=[]
+	var sway_track=[]
+	var body_track=[]
+	for i in 33:
+		var time=float(i)/32
+		var shift=cos(TAU*(time-0.3))
+		hip_track.append([time*0.8,0.668+0.014*pow(sin(time*TAU),2)])
+		sway_track.append([time*0.8,-0.011*shift])
+		body_track.append([time*0.8,Vector3(lean,0,0.028*shift)])
 	for side in 2:
 		var leg=left_leg if side==0 else right_leg
 		var knee=left_knee if side==0 else right_knee
@@ -195,33 +218,57 @@ func build_animations():
 			var phase=fposmod(time+side*0.5,1.0)
 			var stance=phase<0.60
 			var t=phase/0.60 if stance else (phase-0.60)/0.40
-			var z=lerpf(0.21,-0.21,t) if stance else lerpf(-0.21,0.21,smoothstep(0,1,t))
-			var lift=0.0 if stance else sin(t*PI)*0.09
-			var hip_y=0.66+0.012*pow(sin(time*TAU),2)
+			var z=lerpf(0.18,-0.18,t) if stance else lerpf(-0.18,0.18,smoothstep(0,1,t))
+			var lift=0.0 if stance else sin(pow(t,0.8)*PI)*0.085
+			var hip_y=0.668+0.014*pow(sin(time*TAU),2)
 			var down=hip_y-(0.105+lift)
-			var distance=clampf(Vector2(z,down).length(),0.08,0.599)
-			var hip_angle=-atan2(z,down)-acos(clampf((0.32*0.32+distance*distance-0.28*0.28)/(2*0.32*distance),-1,1))
+			# Express the ground target in the forward-leaning hip frame.
+			var lz=z*cos(lean)+down*sin(lean)
+			var ld=down*cos(lean)-z*sin(lean)
+			var distance=clampf(Vector2(lz,ld).length(),0.08,0.599)
+			var hip_angle=-atan2(lz,ld)-acos(clampf((0.32*0.32+distance*distance-0.28*0.28)/(2*0.32*distance),-1,1))
 			var knee_angle=PI-acos(clampf((0.32*0.32+0.28*0.28-distance*distance)/(2*0.32*0.28),-1,1))
+			var roll=0.0
+			if not stance: roll=0.32*smoothstep(0.0,0.12,t)*(1.0-smoothstep(0.25,0.55,t))-0.2*smoothstep(0.55,0.85,t)*(1.0-smoothstep(0.9,1.0,t))
 			hip_keys.append([time*0.8,Vector3(hip_angle,0,0)])
 			knee_keys.append([time*0.8,Vector3(knee_angle,0,0)])
-			ankle_keys.append([time*0.8,Vector3(-hip_angle-knee_angle,0,0)])
+			ankle_keys.append([time*0.8,Vector3(-hip_angle-knee_angle-lean+roll,0,0)])
 		animation_track(walk,leg,"rotation",hip_keys,Animation.INTERPOLATION_LINEAR)
 		animation_track(walk,knee,"rotation",knee_keys,Animation.INTERPOLATION_LINEAR)
 		animation_track(walk,ankle,"rotation",ankle_keys,Animation.INTERPOLATION_LINEAR)
-	for arm in [left_arm,right_arm]:
-		var keys=[]
-		var phase=PI if arm==left_arm else 0.0
-		for i in 17: keys.append([i*0.05,Vector3(sin(i*PI/8+phase)*0.24,0,0.035 if arm==right_arm else -0.035)])
-		animation_track(walk,arm,"rotation",keys)
-	animation_track(walk,right_elbow,"rotation",[[0,Vector3(-0.12,0,0)],[0.8,Vector3(-0.12,0,0)]])
-	animation_track(walk,hips,"position:y",[[0,0.66],[0.2,0.672],[0.4,0.66],[0.6,0.672],[0.8,0.66]])
+	# Arms swing opposite their leg, bending more on the forward swing.
+	for side in 2:
+		var arm=left_arm if side==0 else right_arm
+		var elbow=left_elbow if side==0 else right_elbow
+		var arm_keys=[]
+		var elbow_keys=[]
+		for i in 17:
+			var time=float(i)/16
+			var swing=cos(TAU*(time+0.06))*(1 if side==0 else -1)
+			arm_keys.append([time*0.8,Vector3(swing*0.36-lean,0,0.06 if side==1 else -0.06)])
+			elbow_keys.append([time*0.8,Vector3(-0.16-0.28*maxf(0,-swing),0,0)])
+		animation_track(walk,arm,"rotation",arm_keys)
+		animation_track(walk,elbow,"rotation",elbow_keys)
+	animation_track(walk,hips,"position:y",hip_track,Animation.INTERPOLATION_LINEAR)
+	animation_track(walk,hips,"position:x",sway_track,Animation.INTERPOLATION_LINEAR)
+	animation_track(walk,hips,"rotation",body_track,Animation.INTERPOLATION_LINEAR)
 	library.add_animation("walk",walk)
 	var idle=Animation.new()
-	idle.length=3
+	idle.length=4.8
 	idle.loop_mode=Animation.LOOP_LINEAR
-	for node in [left_leg,right_leg,left_knee,right_knee,left_ankle,right_ankle,left_arm,right_arm,right_elbow]:
-		animation_track(idle,node,"rotation",[[0,Vector3.ZERO],[3,Vector3.ZERO]])
-	animation_track(idle,hips,"position:y",[[0,0.705],[1.5,0.713],[3,0.705]])
+	# Quiet standing: slow breath, a soft weight shift onto one leg and arms
+	# that settle with it, rather than a frozen mannequin.
+	for node in [left_leg,right_leg,left_ankle,right_ankle]:
+		animation_track(idle,node,"rotation",[[0,Vector3.ZERO],[4.8,Vector3.ZERO]])
+	animation_track(idle,left_knee,"rotation",[[0,Vector3.ZERO],[1.2,Vector3.ZERO],[2.4,Vector3(0.10,0,0)],[3.6,Vector3(0.10,0,0)],[4.8,Vector3.ZERO]])
+	animation_track(idle,right_knee,"rotation",[[0,Vector3(0.06,0,0)],[1.2,Vector3(0.06,0,0)],[2.4,Vector3.ZERO],[3.6,Vector3.ZERO],[4.8,Vector3(0.06,0,0)]])
+	animation_track(idle,left_arm,"rotation",[[0,Vector3(0.02,0,-0.05)],[1.2,Vector3(0.03,0,-0.07)],[2.4,Vector3(-0.02,0,-0.04)],[3.6,Vector3(0.01,0,-0.06)],[4.8,Vector3(0.02,0,-0.05)]])
+	animation_track(idle,right_arm,"rotation",[[0,Vector3(-0.02,0,0.04)],[1.2,Vector3(0.01,0,0.06)],[2.4,Vector3(0.03,0,0.07)],[3.6,Vector3(-0.01,0,0.05)],[4.8,Vector3(-0.02,0,0.04)]])
+	for elbow in [left_elbow,right_elbow]:
+		animation_track(idle,elbow,"rotation",[[0,Vector3(-0.10,0,0)],[2.4,Vector3(-0.14,0,0)],[4.8,Vector3(-0.10,0,0)]])
+	animation_track(idle,hips,"position:y",[[0,0.703],[1.2,0.708],[2.4,0.700],[3.6,0.707],[4.8,0.703]])
+	animation_track(idle,hips,"position:x",[[0,0.006],[1.2,0.006],[2.4,-0.006],[3.6,-0.006],[4.8,0.006]])
+	animation_track(idle,hips,"rotation",[[0,Vector3(0,0,-0.015)],[1.2,Vector3(0,0,-0.015)],[2.4,Vector3(0,0,0.015)],[3.6,Vector3(0,0,0.015)],[4.8,Vector3(0,0,-0.015)]])
 	library.add_animation("idle",idle)
 	var wave=Animation.new()
 	wave.length=2.4
@@ -236,6 +283,8 @@ func build_animations():
 	library.add_animation("water",water)
 	for clip in [wave,water]:
 		for ankle in [left_ankle,right_ankle]: animation_track(clip,ankle,"rotation",[[0,Vector3.ZERO],[clip.length,Vector3.ZERO]])
+		animation_track(clip,hips,"position:y",[[0,0.705],[clip.length,0.705]])
+		animation_track(clip,left_elbow,"rotation",[[0,Vector3(-0.1,0,0)],[clip.length,Vector3(-0.1,0,0)]])
 	var sit=Animation.new()
 	sit.length=1
 	sit.loop_mode=Animation.LOOP_LINEAR
@@ -245,7 +294,11 @@ func build_animations():
 	for arm in [left_arm,right_arm]: animation_track(sit,arm,"rotation",[[0,Vector3(-0.5,0,0)],[1,Vector3(-0.5,0,0)]])
 	animation_track(sit,right_elbow,"rotation",[[0,Vector3.ZERO],[1,Vector3.ZERO]])
 	for ankle in [left_ankle,right_ankle]: animation_track(sit,ankle,"rotation",[[0,Vector3.ZERO],[1,Vector3.ZERO]])
+	for elbow in [left_elbow]: animation_track(sit,elbow,"rotation",[[0,Vector3.ZERO],[1,Vector3.ZERO]])
 	library.add_animation("sit",sit)
+	for clip in [wave,water,sit]:
+		animation_track(clip,hips,"position:x",[[0,0.0],[clip.length,0.0]])
+		animation_track(clip,hips,"rotation",[[0,Vector3.ZERO],[clip.length,Vector3.ZERO]])
 	animator.add_animation_library("",library)
 	animator.play("idle")
 func set_motion(next: String,speed=1.0):
@@ -260,9 +313,9 @@ func set_motion(next: String,speed=1.0):
 		if reduced_motion and next!="walk":
 			animator.advance(0.3)
 			animator.seek(1.0 if next=="wave" else 0.25,true)
-	# .42 m planted-foot travel over 60% of the .8 s cycle gives .875 m/s.
+	# .36 m planted-foot travel over 60% of the .8 s cycle gives .75 m/s.
 	# Rig forward scale follows saved build, not its vertical height scale.
-	var stride_speed=0.875*[0.86,1.0,1.17][appearance.build]
+	var stride_speed=0.75*[0.86,1.0,1.17][appearance.build]
 	animator.speed_scale=maxf(0.05,speed/stride_speed) if next=="walk" else 1.0
 func _process(delta):
 	if not reduced_motion: clock+=delta
@@ -272,15 +325,33 @@ func _process(delta):
 	if skirt:
 		skirt.rotation.x=lerpf(skirt.rotation.x,-0.95 if mode=="sit" else 0.0,minf(1,delta*12))
 		skirt.scale.z=lerpf(skirt.scale.z,1.5 if mode=="walk" else 1.0,minf(1,delta*12))
-	var blink=not reduced_motion and fmod(clock,4.9)>4.76
+	# Natural blinks: irregular spacing with an occasional double blink.
+	if not reduced_motion:
+		next_blink-=delta
+		if next_blink<=0:
+			blink_left=0.13
+			next_blink=look_rng.randf_range(2.2,5.5) if look_rng.randf()>0.18 else 0.28
+		blink_left-=delta
+	var blink=blink_left>0
 	for glint in eye_glints: glint.visible=not blink
 	for white in eye_whites: white.scale.y=normal_eye_height*0.16 if blink else normal_eye_height*1.18
 	for pupil in pupils: pupil.scale.y=normal_eye_height*0.08 if blink else normal_eye_height*0.58
 	for eye in eyes: eye.scale.y=normal_eye_height*0.15 if blink else normal_eye_height
-	if not reduced_motion:
-		head.rotation.y=sin(clock*0.7)*0.09 if mode=="idle" else lerpf(head.rotation.y,0,minf(1,delta*5))
-	else:
-		head.rotation.y=0
+	if reduced_motion:
+		head.rotation=Vector3.ZERO
+		return
+	# Idle glances settle on a point for a few seconds; walking looks into the
+	# coming turn. Both ease, so the head never snaps.
+	next_glance-=delta
+	if next_glance<=0:
+		next_glance=look_rng.randf_range(1.8,4.2)
+		glance_target=Vector2(look_rng.randf_range(-0.45,0.45),look_rng.randf_range(-0.10,0.12)) if look_rng.randf()>0.3 else Vector2.ZERO
+	var goal=Vector2.ZERO
+	if mode=="idle": goal=glance_target
+	elif mode=="walk": goal=Vector2(clampf(look_yaw*0.6,-0.5,0.5),0.06)
+	glance=glance.lerp(goal,minf(1,delta*(3.0 if mode=="walk" else 2.2)))
+	head.rotation.y=glance.x
+	head.rotation.x=glance.y+(sin(clock*0.9)*0.015 if mode=="idle" else 0.0)
 
 func remember_colors(node: Node):
 	if node is MeshInstance3D and node.material_override is StandardMaterial3D and not node.has_meta("original_color"):
@@ -414,7 +485,10 @@ func apply_appearance(raw: Dictionary):
 	var heights=[0.9,1.0,1.12]
 	var widths=[0.86,1.0,1.17]
 	rig.scale=Vector3(widths[appearance.build],heights[appearance.height],widths[appearance.build])
-	head.scale=[Vector3.ONE,Vector3(1.05,0.95,1),Vector3(0.92,1.12,1),Vector3(1.1,0.96,1)][appearance.face]
+	# A slightly larger head keeps the friendly storybook proportion.
+	head.scale=[Vector3.ONE,Vector3(1.05,0.95,1),Vector3(0.92,1.12,1),Vector3(1.1,0.96,1)][appearance.face]*1.06
+	# Long and full styles cover the ears; a skin dot on the hair reads as a defect.
+	for ear in ears: ear.visible=not appearance.hair in [3,4,7,9]
 	normal_eye_height=[0.043,0.051,0.029][appearance.eyes]
 	for white in eye_whites: white.scale.y=normal_eye_height*1.18
 	for pupil in pupils: pupil.scale.y=normal_eye_height*0.58
