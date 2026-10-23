@@ -105,7 +105,7 @@ func build_controls():
  footer.add_child(activity_label)
  var hint=Label.new()
  hint.add_theme_color_override("font_color",Color("304c49"))
- hint.text="Mac visual lab • disposable layout • no family data\nSelect a place · arrows move · R rotate · Enter place · Esc cancel"
+ hint.text="Mac visual lab • disposable layout • no family data\nTap to visit · hold to pick up · drag to move · R rotate · Enter place · Esc cancel"
  footer.add_child(hint)
 func camera_option(id: int):
  match id:
@@ -120,7 +120,8 @@ func on_message(raw: String):
  var message=JSON.parse_string(raw)
  if message.type=="activity":
   events.append({"seconds":snapped(elapsed,0.01),"state":world.resident.state,"destination":world.resident.destination_kind})
- if message.type=="selected": send("select",{"id":message.payload.id})
+ if message.type=="selected": send("select",{"id":message.payload.id,"fromHold":message.payload.get("gesture","")=="hold"})
+ if message.type=="visited": send("visit",{"id":message.payload.id})
  if message.type=="placementIntent":
   for item in payload.items:
    if item.id==message.payload.id:

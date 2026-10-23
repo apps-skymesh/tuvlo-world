@@ -23,7 +23,7 @@ func apply_snapshot(raw: Dictionary) -> bool:
    return false
   ids[object.id] = true
   if not object.get("cell") is Dictionary:
-   unplaced[object.id] = {"id":object.id,"kind":object.kind,"cell":Vector2i(8,8),"rotation":0,"style":0}
+   unplaced[object.id] = {"id":object.id,"kind":object.kind,"cell":Vector2i(8,8),"rotation":int(object.get("rotation",0)),"style":int(object.get("style",0))}
    continue
   var x = object.cell.get("x")
   var z = object.cell.get("z")

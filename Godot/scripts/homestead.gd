@@ -37,6 +37,17 @@ var preview_revision=0
 var dragging=false
 var pending_pick=null
 var previous_touch=Vector2.ZERO
+const HOLD_SECONDS=0.45
+const HOLD_SLOP=12.0
+var pointer_down=false
+var pointer_index=-1
+var press_origin=Vector2.ZERO
+var press_elapsed=0.0
+var press_cancelled=false
+var hold_candidate=""
+var hold_emitted=false
+var pending_visit=null
+var grab_offset=Vector2i.ZERO
 var clock=0.0
 var metrics_clock=0.0
 var diagnostics=false
@@ -133,6 +144,7 @@ func receive_host_json(json: String):
   var growth=0 if wins<3 else (1 if wins<13 else 2)
   var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55])
   data.items=next_data.items
+  data.inventory=next_data.inventory
   data.land_sides=next_data.land_sides
   data.approvals=next_data.approvals
   data.growth_tree_id=next_data.growth_tree_id
@@ -189,7 +201,13 @@ func receive_host_json(json: String):
    else:
     preview_cell=item.cell
     preview_rotation=item.rotation
+    grab_offset=Vector2i.ZERO
+    if payload.get("fromHold",false)==true and selected_id==hold_candidate:
+     var grabbed=ground_cell(press_origin)
+     if grabbed!=null: grab_offset=grabbed-preview_cell
+    reset_press(false)
     update_preview()
+    set_paused(paused,panel_preview)
   "nudge":
    preview_cell+=Vector2i(clampi(int(payload.get("x",0)),-1,1),clampi(int(payload.get("z",0)),-1,1))
    preview_cell=preview_cell.clamp(Vector2i(-4,-4),Vector2i(21,15))
@@ -204,7 +222,11 @@ func receive_host_json(json: String):
   "cancel":
    pending_intent=""
    selected_id=""
+   reset_press()
    presentation.clear_preview()
+   set_paused(paused,panel_preview)
+  "visit":
+   if not paused and selected_id=="": resident.visit(str(payload.get("id","")))
   "confirm":
    var item=selected_item()
    if not item.is_empty() and data.placement_error(item.kind,preview_cell,preview_rotation,selected_id)=="":
@@ -217,24 +239,25 @@ func set_paused(value: bool, previewing: bool=false):
  panel_preview=value and previewing
  camera_preview_frames=(1 if reduced_motion else 90) if panel_preview else 0
  if value:
-  pending_pick=null
+  reset_press()
   dragging=false
  # A native window freezes simulation but may briefly render a new camera or
  # appearance. Background/teardown still stop the entire render loop.
  process_mode=Node.PROCESS_MODE_INHERIT if not value or panel_preview else Node.PROCESS_MODE_DISABLED
  RenderingServer.render_loop_enabled=not value or panel_preview
- resident.process_mode=Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
+ resident.process_mode=Node.PROCESS_MODE_DISABLED if paused or selected_id!="" else Node.PROCESS_MODE_INHERIT
  presentation.process_mode=Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
- if is_instance_valid(creature): creature.process_mode=Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
- resident.set_physics_process(not paused and session!="")
- resident.model.set_process(not paused)
+ if is_instance_valid(creature): creature.process_mode=Node.PROCESS_MODE_DISABLED if paused or selected_id!="" else Node.PROCESS_MODE_INHERIT
+ resident.set_physics_process(not paused and session!="" and selected_id=="")
+ resident.model.set_process(not paused and selected_id=="")
  presentation.set_process(not paused)
- if is_instance_valid(creature): creature.set_physics_process(not paused)
+ if is_instance_valid(creature): creature.set_physics_process(not paused and selected_id=="")
  if was_paused and not paused and selected_id!="": update_preview()
 
 # The native app retains one engine but releases all child-specific scene state.
 func clear_host_session():
  session=""
+ reset_press()
  selected_id=""
  pending_intent=""
  pending_pick=null
@@ -273,58 +296,144 @@ func update_preview():
  var item=selected_item()
  if item.is_empty(): return
  var valid=data.placement_error(item.kind,preview_cell,preview_rotation,selected_id)==""
+ presentation.preview_object(item,preview_cell,preview_rotation)
  presentation.highlight(preview_cell,HomesteadItems.footprint(item.kind,preview_rotation),valid)
  emit_message("preview",{"revision":preview_revision,"valid":valid,"cell":{"x":preview_cell.x,"z":preview_cell.y},"rotation":preview_rotation})
 
+# The same gesture state serves real touch and the disposable desktop host.
+# A small movement cancels holding and becomes camera orbit, so looking around
+# never accidentally picks up a building.
+func reset_press(release=true):
+ pending_pick=null
+ pending_visit=null
+ hold_candidate=""
+ hold_emitted=false
+ press_elapsed=0.0
+ press_cancelled=true
+ if release:
+  pointer_down=false
+  pointer_index=-1
+  dragging=false
+ if selected_id=="": presentation.clear_preview()
+
+func ground_cell(point: Vector2):
+ var hit=Plane(Vector3.UP,0).intersects_ray(camera.project_ray_origin(point),camera.project_ray_normal(point))
+ return null if hit==null else HomesteadItems.cell_at(hit)
+
+func begin_press(point: Vector2,index: int):
+ reset_press()
+ pointer_down=true
+ pointer_index=index
+ dragging=true
+ press_origin=point
+ previous_touch=point
+ press_cancelled=false
+ grab_offset=Vector2i.ZERO
+ if selected_id=="": pending_pick=point
+ else:
+  var cell=ground_cell(point)
+  var item=selected_item()
+  if cell!=null and not item.is_empty() and Rect2i(preview_cell,HomesteadItems.footprint(item.kind,preview_rotation)).has_point(cell):
+   grab_offset=cell-preview_cell
+  point_at(point)
+
+func move_press(point: Vector2):
+ if not pointer_down: return
+ var movement=point-previous_touch
+ previous_touch=point
+ if selected_id!="":
+  point_at(point)
+ elif not hold_emitted:
+  if press_origin.distance_to(point)>HOLD_SLOP:
+   if not press_cancelled:
+    presentation.clear_preview()
+    # Include the initial slop in the first orbit movement.
+    movement=point-press_origin
+   press_cancelled=true
+   pending_pick=null
+   hold_candidate=""
+  if press_cancelled: yaw-=movement.x*0.006
+
+func end_press(point: Vector2,cancelled=false):
+ if not pointer_down: return
+ if not cancelled and selected_id=="" and not press_cancelled and not hold_emitted and press_origin.distance_to(point)<=HOLD_SLOP:
+  pending_visit=press_origin
+ pointer_down=false
+ pointer_index=-1
+ dragging=false
+ pending_pick=null
+ if selected_id=="": presentation.clear_preview()
+
 func _input(event):
  if paused or session=="": return
- if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed:
-  dragging=false
-  return
- if event is InputEventScreenTouch or event is InputEventScreenDrag or event is InputEventMouseButton or event is InputEventMouseMotion:
-  if not get_viewport().get_visible_rect().has_point(event.position): return
- if event is InputEventScreenDrag:
-  if selected_id=="": yaw-=event.relative.x*0.006
-  else: point_at(event.position)
- elif event is InputEventScreenTouch and event.pressed: point_at(event.position)
+ if event is InputEventScreenTouch:
+  if not event.pressed:
+   if pointer_index==event.index: end_press(event.position,event.canceled)
+   return
+  if pointer_down:
+   reset_press()
+   return
+  if get_viewport().get_visible_rect().has_point(event.position): begin_press(event.position,event.index)
+ elif event is InputEventScreenDrag:
+  if pointer_index!=event.index: return
+  if not get_viewport().get_visible_rect().has_point(event.position):
+   reset_press()
+   return
+  move_press(event.position)
  elif event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
-  dragging=event.pressed
-  previous_touch=event.position
-  if event.pressed: point_at(event.position)
- elif event is InputEventMouseMotion and dragging:
-  if selected_id=="": yaw-=event.relative.x*0.006
-  else: point_at(event.position)
+  if not event.pressed: end_press(event.position)
+  elif get_viewport().get_visible_rect().has_point(event.position): begin_press(event.position,-2)
+ elif event is InputEventMouseMotion and pointer_index==-2:
+  if not get_viewport().get_visible_rect().has_point(event.position): reset_press()
+  else: move_press(event.position)
 
 func point_at(point: Vector2):
- if selected_id=="":
-  pending_pick=point
-  return
- var from=camera.project_ray_origin(point)
- var direction=camera.project_ray_normal(point)
- var hit=Plane(Vector3.UP,0).intersects_ray(from,direction)
- if hit==null: return
- var cell=HomesteadItems.cell_at(hit)
+ if selected_id=="": return
+ var cell=ground_cell(point)
+ if cell==null: return
+ cell-=grab_offset
  if preview_cell!=cell:
   preview_cell=cell
   update_preview()
 
-func _physics_process(_delta):
- if paused or pending_pick==null: return
- var point: Vector2=pending_pick
- pending_pick=null
+func object_at_screen(point: Vector2) -> Dictionary:
  var from=camera.project_ray_origin(point)
  var direction=camera.project_ray_normal(point)
  var query=PhysicsRayQueryParameters3D.create(from,from+direction*100,1)
  var result=get_world_3d().direct_space_state.intersect_ray(query)
  if not result.is_empty():
-  var id=result.collider.get_meta("item_id","")
-  if not data.find(id).is_empty():
-   emit_message("selected",{"id":id})
-   return
- var hit=Plane(Vector3.UP,0).intersects_ray(from,direction)
- if hit!=null:
-  var item=data.item_at(HomesteadItems.cell_at(hit))
-  if not item.is_empty(): emit_message("selected",{"id":item.id})
+  var item=data.find(result.collider.get_meta("item_id",""))
+  if not item.is_empty(): return item
+ var cell=ground_cell(point)
+ return {} if cell==null else data.item_at(cell)
+
+func advance_hold(delta: float):
+ if not pointer_down or press_cancelled or hold_emitted or selected_id!="": return
+ press_elapsed+=delta
+ if hold_candidate=="": return
+ var item=data.find(hold_candidate)
+ if item.is_empty():
+  reset_press()
+  return
+ if press_elapsed>=0.12 and not is_instance_valid(presentation.preview_node):
+  presentation.highlight(item.cell,HomesteadItems.footprint(item.kind,item.rotation),true,true)
+ if press_elapsed>=HOLD_SECONDS:
+  hold_emitted=true
+  emit_message("selected",{"id":hold_candidate,"gesture":"hold"})
+
+func _physics_process(delta):
+ if paused: return
+ if pending_pick!=null:
+  var point: Vector2=pending_pick
+  pending_pick=null
+  var item=object_at_screen(point)
+  if pointer_down and not press_cancelled: hold_candidate=str(item.get("id",""))
+ if pending_visit!=null:
+  var point: Vector2=pending_visit
+  pending_visit=null
+  var item=object_at_screen(point)
+  if not item.is_empty(): emit_message("visited",{"id":item.id})
+ advance_hold(delta)
 
 func _process(delta):
  if session=="": return

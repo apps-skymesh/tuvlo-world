@@ -70,6 +70,14 @@ func choose_destination():
 	speed=0
 	model.set_motion("idle")
 	announce("Enjoying a quiet moment")
+# Tap visits are read-only play. The host still owns placement and progression.
+func visit(id: String):
+	var target=data.find(id)
+	if target.is_empty(): return
+	target_id=id
+	destination_kind=target.kind
+	model.set_motion("idle")
+	start_route(navigation.approach(target),"Visiting a favorite place")
 func start_route(destination: Vector3,text: String):
 	current_target=destination
 	var target=data.find(target_id)
@@ -152,7 +160,7 @@ func begin_activity():
 		state="look"
 		timer=rng.randf_range(3.0,5.0)*activity_scale
 		model.set_motion("idle")
-		announce("Watching the water" if destination_kind=="pond" else "A little pause at home")
+		announce("Watching the water" if destination_kind=="pond" else "A little pause at home" if destination_kind=="cottage" else "Enjoying this little place")
 func finish_activity():
 	if state=="rest":
 		var target=data.find(target_id)

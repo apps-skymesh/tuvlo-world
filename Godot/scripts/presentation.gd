@@ -9,6 +9,8 @@ var clock=0.0
 var reduced_motion=false
 var nodes: Dictionary={}
 var preview_node: Node3D
+var preview_item: Node3D
+var preview_item_id=""
 var grid_root: Node3D
 var grid_visible=false
 var visual_revision=0
@@ -284,7 +286,28 @@ func highlight(cell: Vector2i,size: Vector2i,valid: bool,selected=false):
 	var outline=MeshInstance3D.new()
 	outline.mesh=border
 	preview_node.add_child(outline)
+# Keep the authoritative world untouched while the actual piece follows the
+# child's pointer. Only the native host can commit this draft.
+func preview_object(item: Dictionary,cell: Vector2i,rotation: int):
+	if preview_item_id!=item.id or not is_instance_valid(preview_item):
+		clear_preview_object()
+		preview_item_id=item.id
+		preview_item=make_item(item.kind,rotation,true,int(item.get("style",0)))
+		add_child(preview_item)
+		if item.kind=="tree" and item.id==data.growth_tree_id:
+			preview_item.get_child(0).scale=Vector3.ONE*(0.35 if data.approvals<3 else 0.65 if data.approvals<13 else 1.0)
+	if nodes.has(item.id): nodes[item.id].visible=false
+	preview_item.position=HomesteadItems.center(cell,HomesteadItems.footprint(item.kind,rotation))+Vector3(0,0.12,0)
+	preview_item.get_child(0).rotation.y=rotation*PI/2
+func clear_preview_object():
+	if nodes.has(preview_item_id): nodes[preview_item_id].visible=true
+	if is_instance_valid(preview_item):
+		remove_child(preview_item)
+		preview_item.queue_free()
+	preview_item=null
+	preview_item_id=""
 func clear_preview():
+	clear_preview_object()
 	if is_instance_valid(preview_node):
 		remove_child(preview_node)
 		preview_node.queue_free()

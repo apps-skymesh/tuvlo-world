@@ -146,10 +146,65 @@ func run():
  scene._input(touch)
  check(scene.pending_pick==null,"Touches outside the embedded viewport cannot select world objects")
  touch.position=scene.camera.unproject_position(HomesteadItems.item_center(scene.data.find("cottage"))+Vector3(0,2,0))
+ var cottage_point=touch.position
  scene._input(touch)
- scene._physics_process(1.0/60.0)
- check(messages.any(func(message): return message.type=="selected" and message.payload.id=="cottage"),"Visible cottage must be selectable by its 3D collider")
- var command={"version":1,"session":"test-child-session","type":"select","payload":{"id":"cottage"}}
+ scene._physics_process(0.1)
+ check(not messages.any(func(message): return message.type=="selected"),"A quick touch must not start editing")
+ touch.pressed=false
+ scene._input(touch)
+ scene._physics_process(0.016)
+ check(messages.any(func(message): return message.type=="visited" and message.payload.id=="cottage"),"A tap visits the visible cottage")
+ check(not messages.any(func(message): return message.type=="selected"),"Visiting does not enter edit mode")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"visit","payload":{"id":"cottage"}}))
+ check(scene.resident.target_id=="cottage","Tap visit uses the existing resident navigation")
+ check(scene.selected_id=="" and scene.data.items.size()==4,"Visiting never edits the world")
+ messages.clear()
+ touch.pressed=true
+ scene._input(touch)
+ scene._physics_process(0.3)
+ check(not messages.any(func(message): return message.type=="selected"),"Holding waits for the deliberate threshold")
+ scene._physics_process(0.2)
+ scene._physics_process(0.2)
+ check(messages.filter(func(message): return message.type=="selected" and message.payload.id=="cottage").size()==1,"A completed hold selects exactly once")
+ var command={"version":1,"session":"test-child-session","type":"select","payload":{"id":"cottage","fromHold":true}}
+ scene.receive_host_json(JSON.stringify(command))
+ check(not scene.resident.is_physics_processing(),"Residents pause while a piece is being edited")
+ var anchor=scene.preview_cell
+ scene.move_press(cottage_point)
+ check(scene.preview_cell==anchor,"A held piece keeps its grab point without jumping")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"cancel","payload":{}}))
+ check(scene.resident.is_physics_processing(),"Cancel resumes World life")
+ messages.clear()
+ scene._input(touch)
+ scene._physics_process(0.1)
+ var camera_yaw=scene.yaw
+ var motion=InputEventScreenDrag.new()
+ motion.position=cottage_point+Vector2(28,0)
+ motion.relative=Vector2(28,0)
+ scene._input(motion)
+ scene._physics_process(0.6)
+ check(scene.yaw!=camera_yaw,"Dragging the map orbits the camera")
+ check(not messages.any(func(message): return message.type=="selected"),"An orbit drag cancels the hold")
+ scene.reset_press()
+ scene._input(touch)
+ scene._physics_process(0.2)
+ var second_touch=InputEventScreenTouch.new()
+ second_touch.index=1
+ second_touch.pressed=true
+ second_touch.position=cottage_point+Vector2(30,0)
+ scene._input(second_touch)
+ scene._physics_process(0.6)
+ check(not scene.pointer_down and not messages.any(func(message): return message.type=="selected"),"A second finger cancels object pickup")
+ scene.receive_host_json(JSON.stringify(command))
+ var home_before=scene.data.find("cottage").cell
+ check(is_instance_valid(scene.presentation.preview_item),"Selection shows the actual moving piece")
+ check(not scene.presentation.nodes.cottage.visible,"Only one visible cottage during placement")
+ scene.preview_cell=Vector2i(6,2)
+ scene.update_preview()
+ check(scene.presentation.preview_item.position==HomesteadItems.center(Vector2i(6,2),HomesteadItems.footprint("cottage",0))+Vector3(0,0.12,0),"Piece follows draft location")
+ check(scene.data.find("cottage").cell==home_before,"Dragging never changes committed data")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"cancel","payload":{}}))
+ check(scene.presentation.preview_item==null and scene.presentation.nodes.cottage.visible,"Cancel restores original artwork")
  scene.receive_host_json(JSON.stringify(command))
  command.type="confirm"
  command.payload={}
