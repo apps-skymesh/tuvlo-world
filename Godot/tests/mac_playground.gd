@@ -20,6 +20,7 @@ var cottage_slice=false
 var meadow_slice=false
 var greenhouse_slice=false
 var orchard_slice=false
+var waterside_slice=false
 func _initialize(): call_deferred("run")
 func run():
  started_ms=Time.get_ticks_msec()
@@ -30,6 +31,7 @@ func run():
  for index in args.size():
   if args[index]=="--equipped": equipped=true
   if args[index]=="--cottage": cottage_slice=true
+  if args[index]=="--waterside": meadow_slice=true; waterside_slice=true
   if args[index]=="--meadow": meadow_slice=true
   if args[index]=="--orchard": meadow_slice=true; greenhouse_slice=true; orchard_slice=true
   if args[index]=="--greenhouse": meadow_slice=true; greenhouse_slice=true
@@ -71,6 +73,8 @@ func reset(equipped: bool):
  if meadow_slice:
   payload.land=["west"]
   payload.items.append({"id":"workshop","kind":"workshop","cell":{"x":1,"z":11},"rotation":0})
+ if waterside_slice:
+  payload.land.append("east")
  if greenhouse_slice:
   payload.items.append({"id":"greenhouse","kind":"greenhouse","cell":{"x":-3,"z":8},"rotation":0})
  if orchard_slice:

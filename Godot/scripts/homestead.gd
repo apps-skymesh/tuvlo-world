@@ -180,9 +180,10 @@ func receive_host_json(json: String):
  if packet.get("session")!=session or session=="": return
  match type:
   "landPreview":
-   var show=payload.get("west",false)==true
+   var side=str(payload.get("side","west" if payload.get("west",false)==true else ""))
+   var show=side in ["west","east"]
    if show:
-    presentation.highlight(Vector2i(-4,6),Vector2i(4,4),true)
+    presentation.highlight(Vector2i(-4 if side=="west" else 18,6),Vector2i(4,4),true)
    elif land_preview:
     presentation.clear_preview()
    land_preview=show
@@ -441,7 +442,18 @@ func _physics_process(delta):
   pending_visit=null
   var item=object_at_screen(point)
   if not item.is_empty(): emit_message("visited",{"id":item.id})
+  else:
+   var cell=ground_cell(point)
+   if cell!=null:
+    var side=unowned_land_at(cell)
+    if side!="": emit_message("landRequested",{"side":side})
  advance_hold(delta)
+
+func unowned_land_at(cell: Vector2i) -> String:
+ for side in ["west","east"]:
+  var origin=Vector2i(-4 if side=="west" else 18,6)
+  if side not in data.land_sides and Rect2i(origin,Vector2i(4,4)).has_point(cell): return side
+ return ""
 
 func _process(delta):
  if session=="": return
@@ -512,6 +524,7 @@ func overview_points() -> Array[Vector3]:
  var points: Array[Vector3]=[]
  var regions=[{"center":Vector3.ZERO,"size":HomesteadItems.BASE_LAND_SIZE}]
  for center in HomesteadItems.LAND_CENTERS.values(): regions.append({"center":center,"size":HomesteadItems.PLOT_SIZE})
+ if "east" in data.land_sides: regions.append({"center":Vector3(11,0,-2.48),"size":Vector2(4.35,1.02)})
  for region in regions:
   var half_size=region.size*0.5
   for x in [-half_size.x,half_size.x]:

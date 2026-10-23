@@ -87,6 +87,7 @@ func build_island():
 		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(4.4,4.5,0.65),0.025,-0.2,"a9ba89" if available else "939b80")
 		if available:
 			if side=="west": meadow_border(patch)
+			if side=="east": waterside_bank(patch)
 			for i in 3:
 				HomesteadMesh.box(patch,Vector3(-1.3+i*1.3,0.06,0),Vector3(0.8,0.06,0.8),"d7c7a8",0.08)
 		else:
@@ -274,6 +275,36 @@ func meadow_border(root: Node3D):
 		HomesteadMesh.ellipsoid(root,point+Vector3(0,0.12,0),Vector3(0.19,0.13,0.14),"80966e")
 		HomesteadMesh.rod(root,point+Vector3(0,0.09,0),point+Vector3(0,0.36,0),0.018,"829774")
 		HomesteadMesh.ellipsoid(root,point+Vector3(0,0.38,0),Vector3(0.10,0.06,0.10),"e2c4a3" if i%3 else "bda7b3")
+
+func waterside_bank(root: Node3D):
+	# The stream sits outside the saved 4x4 buildable cells. Its dry bank
+	# stays open for walking and future paid places; scenery grants no items.
+	var stream=Node3D.new()
+	stream.name="WatersideStream"
+	root.add_child(stream)
+	stream.position=Vector3(0,0,-2.48)
+	HomesteadMesh.box(stream,Vector3(0,-0.18,0),Vector3(4.35,0.43,1.02),"c1a785",0.18)
+	HomesteadMesh.box(stream,Vector3(0,0.025,0),Vector3(4.15,0.06,0.78),"b7b59a",0.12)
+	var water=HomesteadMesh.box(stream,Vector3(0,0.065,0),Vector3(3.95,0.025,0.57),"70abb0",0.10)
+	var material=ShaderMaterial.new()
+	material.shader=preload("res://scripts/water.gdshader")
+	water.material_override=material
+	waters.append(material)
+	for i in 11:
+		var x=-1.88+i*0.37
+		for z in [-0.40,0.40]:
+			HomesteadMesh.ellipsoid(stream,Vector3(x,0.10,z),Vector3(0.22,0.13,0.12),"c9c7af" if i%3 else "a9b4a1")
+	for x in [-1.72,1.65]:
+		for i in 4:
+			var p=Vector3(x+i*0.055,0.1,-0.40)
+			HomesteadMesh.rod(stream,p,p+Vector3(-0.06,0.37+i*0.04,0),0.018,"7a9479")
+			HomesteadMesh.ellipsoid(stream,p+Vector3(-0.06,0.47+i*0.04,0),Vector3(0.035,0.09,0.035),"a38b69")
+	for x in [-1.0,0.9]:
+		var lily=HomesteadMesh.cylinder(stream,Vector3(x,0.09,0),0.13,0.012,"94ab80")
+		lily.scale.z=0.75
+	# Pale edge markers frame the arrival without placing a paid footbridge.
+	for z in [-1.55,1.55]:
+		HomesteadMesh.box(root,Vector3(-1.95,0.20,z),Vector3(0.15,0.40,0.15),"d0c2a5",0.04)
 
 func garden(root: Node3D):
 	for x in [-0.72,0.72]:
