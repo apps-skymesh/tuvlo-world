@@ -34,6 +34,23 @@ func run():
  scene.data.land_sides.clear()
  scene.presentation.rebuild()
  scene.navigation.rebuild(scene.data)
+ # The host may preview a future meadow without granting land. A committed
+ # west-only snapshot opens west cells while leaving east and north blocked.
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"landPreview","payload":{"west":true}}))
+ check(not scene.navigation.open(Vector2i(-2,7)),"A meadow preview must never grant land")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"landPreview","payload":{"west":false}}))
+ scene.data.land_sides.append("west")
+ scene.presentation.rebuild()
+ scene.navigation.rebuild(scene.data)
+ check(scene.navigation.open(Vector2i(-2,7)),"Committed west meadow becomes walkable")
+ check(not scene.navigation.open(Vector2i(19,7)),"Meadow purchase cannot unlock east")
+ check(HomesteadItems.footprint("workshop",0)==Vector2i(3,3),"Workshop native and runtime footprints must match")
+ var workshop=scene.presentation.make_item("workshop",0)
+ check(workshop.get_child(0).get_child_count()>30,"Workshop has its own authored joinery and workbench")
+ workshop.free()
+ scene.data.land_sides.clear()
+ scene.presentation.rebuild()
+ scene.navigation.rebuild(scene.data)
  # Fit the complete terrain and actual roof extents through a full orbit and
  # tablet/phone landscape aspects, not just the initial attractive angle.
  for aspect in [1.3,1.8,2.5,3.0]:

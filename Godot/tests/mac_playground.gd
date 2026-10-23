@@ -17,6 +17,7 @@ var started_ms=0
 var initial_camera="overview"
 var equipped=false
 var cottage_slice=false
+var meadow_slice=false
 func _initialize(): call_deferred("run")
 func run():
  started_ms=Time.get_ticks_msec()
@@ -27,6 +28,7 @@ func run():
  for index in args.size():
   if args[index]=="--equipped": equipped=true
   if args[index]=="--cottage": cottage_slice=true
+  if args[index]=="--meadow": meadow_slice=true
   if args[index]=="--camera" and index+1<args.size(): initial_camera=args[index+1]
   if args[index]=="--seconds" and index+1<args.size(): duration=clampf(float(args[index+1]),1,60)
   if args[index]=="--capture" and index+1<args.size(): output=args[index+1]
@@ -62,6 +64,9 @@ func reset(equipped: bool):
  if equipped:
   payload.items.append({"id":"bench","kind":"bench","cell":{"x":8,"z":10},"rotation":0})
   payload.items.append({"id":"pond","kind":"pond","cell":{"x":12,"z":7},"rotation":0})
+ if meadow_slice:
+  payload.land=["west"]
+  payload.items.append({"id":"workshop","kind":"workshop","cell":{"x":1,"z":11},"rotation":0})
  snapshot()
 func camera(mode: String): send("camera",{"mode":mode})
 func button(parent: Node,text: String,action: Callable):

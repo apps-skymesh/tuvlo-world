@@ -7,6 +7,7 @@ const PLOT_SIZE=Vector2(4.5,4.6)
 const LAND_CENTERS={"north":Vector3(0,0,-10),"east":Vector3(11,0,0),"west":Vector3(-11,0,0)}
 
 const DEFINITIONS={
+	"workshop":{"title":"Maker Workshop","size":Vector2i(3,3),"blocks":true,"height":2.8,"color":"b79470"},
 	"path":{"title":"Path","size":Vector2i(1,1),"blocks":false,"height":0.12,"color":"d6c29c"},
 	"flowers":{"title":"Flowers","size":Vector2i(1,1),"blocks":false,"height":0.65,"color":"dfaa9c"},
 	"bench":{"title":"Bench","size":Vector2i(2,1),"blocks":true,"height":1.1,"color":"bb8055"},

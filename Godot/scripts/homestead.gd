@@ -30,6 +30,7 @@ var reduced_motion=false
 var paused=false
 var ready_for_snapshot=false
 var web_callback
+var land_preview=false
 var selected_id=""
 var preview_cell=Vector2i.ZERO
 var preview_rotation=0
@@ -178,6 +179,13 @@ func receive_host_json(json: String):
   return
  if packet.get("session")!=session or session=="": return
  match type:
+  "landPreview":
+   var show=payload.get("west",false)==true
+   if show:
+    presentation.highlight(Vector2i(-4,6),Vector2i(4,4),true)
+   elif land_preview:
+    presentation.clear_preview()
+   land_preview=show
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "camera":
    camera_preview_frames=1 if reduced_motion else 90

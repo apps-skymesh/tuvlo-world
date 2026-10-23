@@ -86,6 +86,7 @@ func build_island():
 		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(HomesteadItems.PLOT_SIZE.x,HomesteadItems.PLOT_SIZE.y,0.7),-0.18,-0.9,"c1a785")
 		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(4.4,4.5,0.65),0.025,-0.2,"a9ba89" if available else "939b80")
 		if available:
+			if side=="west": meadow_border(patch)
 			for i in 3:
 				HomesteadMesh.box(patch,Vector3(-1.3+i*1.3,0.06,0),Vector3(0.8,0.06,0.8),"d7c7a8",0.08)
 		else:
@@ -114,6 +115,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 	root.add_child(art)
 	art.rotation.y=rotation*PI/2
 	match kind:
+		"workshop": workshop(art)
 		"cottage": cottage(art)
 		"garden": garden(art)
 		"pond": pond(art,ghost,style)
@@ -124,7 +126,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 		"nook": reading_nook(art,style)
 		"treehouse": treehouse(art,style)
 		"path": path_tile(art)
-	if kind in ["cottage","garden","tree","bench","nook","treehouse"]:
+	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop"]:
 		var size: Vector2i=HomesteadItems.DEFINITIONS[kind].size
 		HomesteadMesh.contact_shadow(art,Vector2(size)*1.2)
 	return root
@@ -142,6 +144,50 @@ func prepare_cottage_materials(node: Node):
 			node.material_override=material
 			node.set_meta("cottage_roof",material.resource_name.begins_with("roof"))
 	for child in node.get_children(): prepare_cottage_materials(child)
+
+# Original miniature joinery, open front and paper details stay readable from
+# the normal landscape camera. The footprint is the same authoritative 3x3.
+func workshop(root: Node3D):
+	HomesteadMesh.box(root,Vector3(0,0.08,0),Vector3(2.78,0.16,2.65),"c8b18a",0.10)
+	for i in 8:
+		HomesteadMesh.box(root,Vector3(-1.15+i*0.33,0.18,0),Vector3(0.31,0.08,2.45),"d8c09a",0.025)
+	for x in [-1.18,1.18]:
+		for z in [-1.03,0.98]:
+			HomesteadMesh.box(root,Vector3(x,1.18,z),Vector3(0.14,2.1,0.14),"a48360",0.035)
+	for i in 7:
+		HomesteadMesh.box(root,Vector3(0,0.42+i*0.23,-1.05),Vector3(2.36,0.21,0.10),"d3bd96" if i%2 else "c9af87",0.02)
+	for x in [-0.69,0.69]:
+		var roof=HomesteadMesh.box(root,Vector3(x,2.34,0),Vector3(1.53,0.12,2.85),"78978b",0.045)
+		roof.rotation.z=0.32 if x<0 else -0.32
+	HomesteadMesh.rod(root,Vector3(0,2.57,-1.39),Vector3(0,2.57,1.39),0.07,"a8bdad")
+	# Cream valance and brass badge frame the open work area.
+	HomesteadMesh.box(root,Vector3(0,2.04,1.08),Vector3(2.32,0.22,0.08),"eee1c3",0.035)
+	HomesteadMesh.cylinder(root,Vector3(0,2.03,1.15),0.13,0.045,"c6a15e").rotation.x=PI/2
+	for x in [-0.79,0.79]:
+		for z in [-0.12,0.61]:
+			HomesteadMesh.box(root,Vector3(x,0.61,z),Vector3(0.10,0.84,0.10),"967554",0.02)
+	HomesteadMesh.box(root,Vector3(0,1.04,0.23),Vector3(2.02,0.14,1.02),"c59970",0.05)
+	HomesteadMesh.box(root,Vector3(0,1.12,0.26),Vector3(1.1,0.018,0.68),"eee3c9",0.01)
+	# A folded bird, pencil cup and little tool rack make it a maker's place.
+	var wing=HomesteadMesh.box(root,Vector3(0,1.20,0.29),Vector3(0.48,0.035,0.34),"c58f73",0.012)
+	wing.rotation.z=0.18
+	HomesteadMesh.rod(root,Vector3(-0.23,1.17,0.29),Vector3(0.29,1.27,0.20),0.035,"e7c2a1")
+	HomesteadMesh.cylinder(root,Vector3(0.73,1.23,0.04),0.12,0.28,"88a195")
+	for i in 3:
+		HomesteadMesh.rod(root,Vector3(0.67+i*0.06,1.24,0.04),Vector3(0.64+i*0.08,1.58,0.06),0.018,"cba46d")
+	HomesteadMesh.box(root,Vector3(0,1.52,-0.94),Vector3(1.58,0.58,0.05),"83998a",0.035)
+	for x in [-0.47,0,0.47]:
+		HomesteadMesh.rod(root,Vector3(x,1.34,-0.88),Vector3(x,1.68,-0.88),0.025,"dec49b")
+		HomesteadMesh.box(root,Vector3(x,1.68,-0.88),Vector3(0.18,0.07,0.08),"bea06b",0.02)
+	HomesteadMesh.cylinder(root,Vector3(-0.95,0.48,1.06),0.24,0.49,"dfc79e",0.29)
+
+func meadow_border(root: Node3D):
+	# Peripheral planting never occupies or conceals usable expansion cells.
+	for i in 10:
+		var point=Vector3(-1.75+i*0.38,0,2.1 if i%2==0 else -2.1)
+		HomesteadMesh.ellipsoid(root,point+Vector3(0,0.12,0),Vector3(0.19,0.13,0.14),"80966e")
+		HomesteadMesh.rod(root,point+Vector3(0,0.09,0),point+Vector3(0,0.36,0),0.018,"829774")
+		HomesteadMesh.ellipsoid(root,point+Vector3(0,0.38,0),Vector3(0.10,0.06,0.10),"e2c4a3" if i%3 else "bda7b3")
 
 func garden(root: Node3D):
 	for x in [-0.72,0.72]:
