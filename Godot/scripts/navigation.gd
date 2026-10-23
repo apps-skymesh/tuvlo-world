@@ -5,14 +5,14 @@ var data: HomesteadWorldData
 var revision=0
 func rebuild(world_data: HomesteadWorldData):
 	data=world_data
-	grid.region=Rect2i(-4,-4,26,20)
+	grid.region=HomesteadItems.WORLD_BOUNDS
 	grid.cell_size=Vector2.ONE
 	grid.diagonal_mode=AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	grid.default_compute_heuristic=AStarGrid2D.HEURISTIC_OCTILE
 	grid.default_estimate_heuristic=AStarGrid2D.HEURISTIC_OCTILE
 	grid.update()
-	for z in range(-4,16):
-		for x in range(-4,22):
+	for z in range(HomesteadItems.WORLD_BOUNDS.position.y,HomesteadItems.WORLD_BOUNDS.end.y):
+		for x in range(HomesteadItems.WORLD_BOUNDS.position.x,HomesteadItems.WORLD_BOUNDS.end.x):
 			var cell=Vector2i(x,z)
 			var occupied=data.item_at(cell)
 			var blocked=not data.buildable(cell) or (not occupied.is_empty() and HomesteadItems.DEFINITIONS[occupied.kind].blocks)
@@ -26,8 +26,8 @@ func closest(point: Vector3) -> Vector2i:
 	if open(desired): return desired
 	var best_cell=Vector2i(5,5)
 	var best_distance=INF
-	for z in range(-4,16):
-		for x in range(-4,22):
+	for z in range(HomesteadItems.WORLD_BOUNDS.position.y,HomesteadItems.WORLD_BOUNDS.end.y):
+		for x in range(HomesteadItems.WORLD_BOUNDS.position.x,HomesteadItems.WORLD_BOUNDS.end.x):
 			var cell=Vector2i(x,z)
 			if not open(cell): continue
 			var distance=HomesteadItems.cell_center(cell).distance_squared_to(point)

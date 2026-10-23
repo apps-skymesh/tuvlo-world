@@ -67,17 +67,27 @@ func rebuild():
 	visual_revision+=1
 	refresh_grid()
 
+func plot_seams(root: Node3D, plots: int, color: String):
+	var span=float(plots*HomesteadItems.SQUARES_PER_PLOT)
+	for line in range(1,plots):
+		var offset=-span/2+line*HomesteadItems.SQUARES_PER_PLOT
+		HomesteadMesh.box(root,Vector3(offset,0.035,0),Vector3(0.035,0.012,span-0.2),color,0)
+		HomesteadMesh.box(root,Vector3(0,0.035,offset),Vector3(span-0.2,0.012,0.035),color,0)
+
 func build_island():
-	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(HomesteadItems.BASE_LAND_SIZE.x,HomesteadItems.BASE_LAND_SIZE.y,2.3),-0.18,-0.9,"c1a785")
-	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(19.05,17.05,2.15),-0.07,-0.4,"d9c7a0")
-	HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(18.8,16.8,2.1),0,-0.19,"9caf7c")
-	# Slightly inset grass gives the miniature a soft, continuous rim.
-	var lawn=HomesteadMesh.polygon_slab(land_root,HomesteadMesh.rounded_outline(18.45,16.45,1.9),0.018,-0.05,"a9ba89")
+	var clearing=Node3D.new()
+	clearing.name="StartingLand"
+	land_root.add_child(clearing)
+	clearing.position=HomesteadItems.BASE_LAND_CENTER
+	HomesteadMesh.polygon_slab(clearing,HomesteadMesh.rounded_outline(20.7,20.7,0.35),-0.18,-0.9,"c1a785")
+	HomesteadMesh.polygon_slab(clearing,HomesteadMesh.rounded_outline(20.45,20.45,0.3),-0.07,-0.4,"d9c7a0")
+	HomesteadMesh.polygon_slab(clearing,HomesteadMesh.rounded_outline(20.3,20.3,0.25),0,-0.19,"9caf7c")
+	var lawn=HomesteadMesh.polygon_slab(clearing,HomesteadMesh.rounded_outline(20.12,20.12,0.2),0.018,-0.05,"a9ba89")
 	var meadow=ShaderMaterial.new()
 	meadow.shader=preload("res://scripts/meadow.gdshader")
 	lawn.material_override=meadow
-	# All future plots remain part of the visible world. Rendering one never
-	# grants ownership: navigation/placement still read authoritative land_sides.
+	plot_seams(clearing,HomesteadItems.STARTER_PLOTS,"9eaf80")
+	# Terrain is visible before purchase; only the host can activate its cells.
 	for side in HomesteadItems.LAND_CENTERS:
 		var available=side in data.land_sides
 		var patch=Node3D.new()
@@ -85,32 +95,25 @@ func build_island():
 		patch.set_meta("available",available)
 		land_root.add_child(patch)
 		patch.position=HomesteadItems.LAND_CENTERS[side]
-		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(HomesteadItems.PLOT_SIZE.x,HomesteadItems.PLOT_SIZE.y,0.7),-0.18,-0.9,"c1a785")
-		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(4.4,4.5,0.65),0.025,-0.2,"a9ba89" if available else "939b80")
+		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(HomesteadItems.PLOT_SIZE.x,HomesteadItems.PLOT_SIZE.y,0.35),-0.18,-0.9,"c1a785")
+		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(10.12,10.12,0.2),0.025,-0.2,"a9ba89" if available else "929b80")
+		plot_seams(patch,HomesteadItems.EXPANSION_PLOTS,"9eaf80" if available else "bcc0a4")
 		if available:
 			if side=="west": meadow_border(patch)
 			if side=="east": waterside_bank(patch)
-			for i in 3:
-				HomesteadMesh.box(patch,Vector3(-1.3+i*1.3,0.06,0),Vector3(0.8,0.06,0.8),"d7c7a8",0.08)
 		else:
-			# A low closed gate and quiet scrub make the inactive boundary legible.
 			var gate=Node3D.new()
 			patch.add_child(gate)
-			gate.position=Vector3(0,0,1.7) if side=="north" else Vector3(-1.7 if side=="east" else 1.7,0,0)
+			gate.position=Vector3(0,0,4.85) if side=="north" else Vector3(-4.85 if side=="east" else 4.85,0,0)
 			gate.rotation.y=0 if side=="north" else PI/2
 			for x in [-1.0,0,1.0]:
 				HomesteadMesh.box(gate,Vector3(x,0.39,0),Vector3(0.10,0.78,0.10),"a18b6b",0.025)
 			for y in [0.29,0.60]:
 				HomesteadMesh.box(gate,Vector3(0,y,0),Vector3(2.2,0.10,0.09),"b8a482",0.025)
-			for i in 7:
-				var angle=i*2.4
-				var point=Vector3(cos(angle)*1.25,0.12,sin(angle)*1.05)
-				HomesteadMesh.ellipsoid(patch,point,Vector3(0.30,0.18,0.24),"7e8b6e" if i%2 else "a5ad8b")
+			for x in [-2.5,2.5]:
+				for z in [-2.5,2.5]:
+					HomesteadMesh.ellipsoid(patch,Vector3(x,0.12,z),Vector3(0.5,0.22,0.4),"7e8b6e")
 		HomesteadStaticBatcher.consolidate(patch,[])
-	# Low rocks and tufts outside the buildable grid frame the coast.
-	for p in [Vector3(-8.8,0,3.4),Vector3(7.6,0,-7.5),Vector3(-3.2,0,7.9),Vector3(8.5,0,5.7)]:
-		HomesteadMesh.ellipsoid(land_root,p+Vector3(0,0.2,0),Vector3(0.5,0.28,0.4),"b8b7a5")
-		HomesteadMesh.ellipsoid(land_root,p+Vector3(0.4,0.12,0.25),Vector3(0.27,0.16,0.22),"ced0bb")
 
 func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 	var root=Node3D.new()
@@ -319,27 +322,27 @@ func orchard(root: Node3D,style=0):
 func meadow_border(root: Node3D):
 	# Peripheral planting never occupies or conceals usable expansion cells.
 	for i in 10:
-		var point=Vector3(-1.75+i*0.38,0,2.1 if i%2==0 else -2.1)
+		var point=Vector3(-4.5+i,0,5.1 if i%2==0 else -5.1)
 		HomesteadMesh.ellipsoid(root,point+Vector3(0,0.12,0),Vector3(0.19,0.13,0.14),"80966e")
 		HomesteadMesh.rod(root,point+Vector3(0,0.09,0),point+Vector3(0,0.36,0),0.018,"829774")
 		HomesteadMesh.ellipsoid(root,point+Vector3(0,0.38,0),Vector3(0.10,0.06,0.10),"e2c4a3" if i%3 else "bda7b3")
 
 func waterside_bank(root: Node3D):
-	# The stream sits outside the saved 4x4 buildable cells. Its dry bank
+	# The stream sits outside the 2x2-plot buildable cells. Its dry bank
 	# stays open for walking and future paid places; scenery grants no items.
 	var stream=Node3D.new()
 	stream.name="WatersideStream"
 	root.add_child(stream)
-	stream.position=Vector3(0,0,-2.48)
-	HomesteadMesh.box(stream,Vector3(0,-0.18,0),Vector3(4.35,0.43,1.02),"c1a785",0.18)
-	HomesteadMesh.box(stream,Vector3(0,0.025,0),Vector3(4.15,0.06,0.78),"b7b59a",0.12)
-	var water=HomesteadMesh.box(stream,Vector3(0,0.065,0),Vector3(3.95,0.025,0.57),"70abb0",0.10)
+	stream.position=Vector3(0,0,-5.48)
+	HomesteadMesh.box(stream,Vector3(0,-0.18,0),Vector3(10.35,0.43,1.02),"c1a785",0.18)
+	HomesteadMesh.box(stream,Vector3(0,0.025,0),Vector3(10.15,0.06,0.78),"b7b59a",0.12)
+	var water=HomesteadMesh.box(stream,Vector3(0,0.065,0),Vector3(9.95,0.025,0.57),"70abb0",0.10)
 	var material=ShaderMaterial.new()
 	material.shader=preload("res://scripts/water.gdshader")
 	water.material_override=material
 	waters.append(material)
-	for i in 11:
-		var x=-1.88+i*0.37
+	for i in 26:
+		var x=-4.88+i*0.39
 		for z in [-0.40,0.40]:
 			HomesteadMesh.ellipsoid(stream,Vector3(x,0.10,z),Vector3(0.22,0.13,0.12),"c9c7af" if i%3 else "a9b4a1")
 	for x in [-1.72,1.65]:
@@ -458,8 +461,8 @@ func refresh_grid():
 	var mat=HomesteadMesh.transparent(Color(0.28,0.4,0.28,0.15))
 	var lines=ImmediateMesh.new()
 	lines.surface_begin(Mesh.PRIMITIVE_LINES,mat)
-	for z in range(-4,16):
-		for x in range(-4,22):
+	for z in range(HomesteadItems.WORLD_BOUNDS.position.y,HomesteadItems.WORLD_BOUNDS.end.y):
+		for x in range(HomesteadItems.WORLD_BOUNDS.position.x,HomesteadItems.WORLD_BOUNDS.end.x):
 			var cell=Vector2i(x,z)
 			if not data.buildable(cell): continue
 			var center=HomesteadItems.cell_center(cell)

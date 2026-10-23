@@ -17,6 +17,9 @@ var panel_preview=false
 var yaw=0.25
 const OVERVIEW_PITCH=PI/6 # 30 degrees: roofs and faces read without flattening the land.
 var zoom=1.0
+var pan_focus=Vector3.ZERO
+var pan_size=12.0
+var pan_pitch=OVERVIEW_PITCH
 var camera_initialized=false
 var orbit_yaw=0.25
 var orbit_focus=Vector3.ZERO
@@ -183,7 +186,8 @@ func receive_host_json(json: String):
    var side=str(payload.get("side","west" if payload.get("west",false)==true else ""))
    var show=side in ["west","east"]
    if show:
-    presentation.highlight(Vector2i(-4 if side=="west" else 18,6),Vector2i(4,4),true)
+    var bounds: Rect2i=HomesteadItems.LAND_BOUNDS[side]
+    presentation.highlight(bounds.position,bounds.size,true)
    elif land_preview:
     presentation.clear_preview()
    land_preview=show
@@ -193,7 +197,7 @@ func receive_host_json(json: String):
    if paused and panel_preview:
     process_mode=Node.PROCESS_MODE_INHERIT
     RenderingServer.render_loop_enabled=true
-   if payload.get("mode") in ["overview","home","follow","detail","place"]:
+   if payload.get("mode") in ["overview","home","follow","detail","place","pan"]:
     if camera_mode!=payload.mode: zoom=1.0
     camera_mode=payload.mode
    if payload.has("id"): focus_item_id=str(payload.id)
@@ -310,7 +314,7 @@ func update_preview():
  emit_message("preview",{"revision":preview_revision,"valid":valid,"cell":{"x":preview_cell.x,"z":preview_cell.y},"rotation":preview_rotation})
 
 # The same gesture state serves real touch and the disposable desktop host.
-# A small movement cancels holding and becomes camera orbit, so looking around
+# A small movement cancels holding and pans the map, so looking around
 # never accidentally picks up a building.
 func reset_press(release=true):
  pending_pick=null
@@ -356,12 +360,33 @@ func move_press(point: Vector2):
   if press_origin.distance_to(point)>HOLD_SLOP:
    if not press_cancelled:
     presentation.clear_preview()
-    # Include the initial slop in the first orbit movement.
+    # Include the initial slop so the terrain stays under the finger.
     movement=point-press_origin
    press_cancelled=true
    pending_pick=null
    hold_candidate=""
-  if press_cancelled: yaw-=movement.x*0.006
+  if press_cancelled: pan_camera(point-movement,point)
+
+func ground_point(point: Vector2):
+ return Plane(Vector3.UP,0).intersects_ray(camera.project_ray_origin(point),camera.project_ray_normal(point))
+
+func pan_camera(from: Vector2,to: Vector2):
+ var start=ground_point(from)
+ var finish=ground_point(to)
+ if start==null or finish==null: return
+ if camera_mode!="pan":
+  pan_focus=orbit_focus
+  pan_size=camera.size
+  pan_pitch=orbit_pitch
+  zoom=1.0
+  camera_mode="pan"
+  emit_message("cameraPanned",{})
+ pan_focus+=start-finish
+ # Camera movement never unlocks land. Bound the center to the owned world.
+ var bounds=HomesteadItems.BASE_BOUNDS
+ for side in data.land_sides: bounds=bounds.merge(HomesteadItems.LAND_BOUNDS[side])
+ pan_focus.x=clampf(pan_focus.x,bounds.position.x-9.0,bounds.end.x-9.0)
+ pan_focus.z=clampf(pan_focus.z,bounds.position.y-8.0,bounds.end.y-8.0)
 
 func end_press(point: Vector2,cancelled=false):
  if not pointer_down: return
@@ -450,9 +475,8 @@ func _physics_process(delta):
  advance_hold(delta)
 
 func unowned_land_at(cell: Vector2i) -> String:
- for side in ["west","east"]:
-  var origin=Vector2i(-4 if side=="west" else 18,6)
-  if side not in data.land_sides and Rect2i(origin,Vector2i(4,4)).has_point(cell): return side
+ for side in HomesteadItems.LAND_BOUNDS:
+  if side not in data.land_sides and HomesteadItems.LAND_BOUNDS[side].has_point(cell): return side
  return ""
 
 func _process(delta):
@@ -482,7 +506,11 @@ func _process(delta):
  var focus=overview.focus
  var size=overview.size*zoom
  var pitch=OVERVIEW_PITCH
- if camera_mode in ["follow","detail"]:
+ if camera_mode=="pan":
+  focus=pan_focus
+  size=pan_size*zoom
+  pitch=pan_pitch
+ elif camera_mode in ["follow","detail"]:
   focus=resident.position+Vector3(0,1.0,0)
   size=(7.0 if camera_mode=="follow" else 3.8)*zoom
   pitch=deg_to_rad(28)
@@ -499,7 +527,7 @@ func _process(delta):
     break
  # The fitted center already changes smoothly with orbit_yaw. A second lag
  # here can crop a plot while Overview rotates or returns from a closer view.
- orbit_focus=focus if immediate or camera_mode=="overview" else orbit_focus.lerp(focus,blend)
+ orbit_focus=focus if immediate or camera_mode in ["overview","pan"] else orbit_focus.lerp(focus,blend)
  orbit_pitch=pitch if immediate else lerpf(orbit_pitch,pitch,blend)
  if envelope_revision!=presentation.visual_revision:
   scenery_radius=0.0
@@ -522,9 +550,9 @@ func overview_points() -> Array[Vector3]:
  # Include inactive plots as well as the active clearing; no imaginary roofs
  # at empty corners. Keep these extents shared with the terrain renderer.
  var points: Array[Vector3]=[]
- var regions=[{"center":Vector3.ZERO,"size":HomesteadItems.BASE_LAND_SIZE}]
+ var regions=[{"center":HomesteadItems.BASE_LAND_CENTER,"size":HomesteadItems.BASE_LAND_SIZE}]
  for center in HomesteadItems.LAND_CENTERS.values(): regions.append({"center":center,"size":HomesteadItems.PLOT_SIZE})
- if "east" in data.land_sides: regions.append({"center":Vector3(11,0,-2.48),"size":Vector2(4.35,1.02)})
+ if "east" in data.land_sides: regions.append({"center":HomesteadItems.LAND_CENTERS.east+Vector3(0,0,-5.48),"size":Vector2(10.35,1.02)})
  for region in regions:
   var half_size=region.size*0.5
   for x in [-half_size.x,half_size.x]:

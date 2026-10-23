@@ -1,10 +1,17 @@
 class_name HomesteadItems
 extends RefCounted
 
-# Visible terrain extents are independent of authoritative build permission.
-const BASE_LAND_SIZE=Vector2(19.3,17.3)
-const PLOT_SIZE=Vector2(4.5,4.6)
-const LAND_CENTERS={"north":Vector3(0,0,-10),"east":Vector3(11,0,0),"west":Vector3(-11,0,0)}
+# Land units contain 5x5 building squares. Saved item coordinates never move.
+const SQUARES_PER_PLOT=5
+const STARTER_PLOTS=4
+const EXPANSION_PLOTS=2
+const BASE_BOUNDS=Rect2i(0,0,20,20)
+const WORLD_BOUNDS=Rect2i(-10,-10,40,30)
+const LAND_BOUNDS={"west":Rect2i(-10,5,10,10),"east":Rect2i(20,5,10,10),"north":Rect2i(5,-10,10,10)}
+const BASE_LAND_SIZE=Vector2(20.7,20.7)
+const BASE_LAND_CENTER=Vector3(1,0,2)
+const PLOT_SIZE=Vector2(10.5,10.5)
+const LAND_CENTERS={"north":Vector3(1,0,-13),"east":Vector3(16,0,2),"west":Vector3(-14,0,2)}
 
 const DEFINITIONS={
 	"windmill":{"title":"Windmill","size":Vector2i(3,3),"blocks":true,"height":4.1,"color":"d9c8a5"},

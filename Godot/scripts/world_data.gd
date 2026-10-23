@@ -45,12 +45,10 @@ func apply_snapshot(raw: Dictionary) -> bool:
  return true
 
 func buildable(cell: Vector2i) -> bool:
- if cell.x >= 0 and cell.x < 18 and cell.y >= 0 and cell.y < 16:
-  return not ((cell.x < 2 or cell.x > 15) and (cell.y < 2 or cell.y > 13))
- if cell.y >= 6 and cell.y < 10:
-  if "east" in land_sides and cell.x >= 18 and cell.x < 22: return true
-  if "west" in land_sides and cell.x >= -4 and cell.x < 0: return true
- return "north" in land_sides and cell.x >= 7 and cell.x < 11 and cell.y >= -4 and cell.y < 0
+ if HomesteadItems.BASE_BOUNDS.has_point(cell): return true
+ for side in land_sides:
+  if HomesteadItems.LAND_BOUNDS[side].has_point(cell): return true
+ return false
 
 func find(id) -> Dictionary:
  for item in items:
@@ -65,7 +63,7 @@ func placement_error(kind: String, cell: Vector2i, rotation: int, excluding = ""
  for z in HomesteadItems.footprint(kind,rotation).y:
   for x in HomesteadItems.footprint(kind,rotation).x:
    var square = cell + Vector2i(x,z)
-   if kind in ["greenhouse","orchard"] and not (square.x>=-4 and square.x<0 and square.y>=6 and square.y<10): return "outside-land"
+   if kind in ["greenhouse","orchard"] and not HomesteadItems.LAND_BOUNDS.west.has_point(square): return "outside-land"
    if not buildable(square): return "outside-land"
    if not item_at(square,excluding).is_empty(): return "occupied"
  return ""

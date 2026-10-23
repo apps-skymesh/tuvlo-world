@@ -19,29 +19,35 @@ func run():
  var packet={"version":1,"session":"test-child-session","type":"snapshot","payload":payload}
  scene.receive_host_json(JSON.stringify(packet))
  check(scene.data.items.size()==4,"Host snapshot must replace empty scene")
+ check(HomesteadItems.BASE_BOUNDS.size==Vector2i(20,20),"The starter has 4x4 five-square plots")
+ for side in HomesteadItems.LAND_BOUNDS:
+  var bounds: Rect2i=HomesteadItems.LAND_BOUNDS[side]
+  check(bounds.size==Vector2i(10,10),"Every expansion has 2x2 five-square plots")
+  check(not scene.data.buildable(bounds.position),"Merely displaying a large extension grants no land")
+ check(scene.unowned_land_at(Vector2i(8,-8))=="north","The future northern plot is inspectable on the map")
  # Rendering future terrain must never make it navigable or placeable.
  for side in HomesteadItems.LAND_CENTERS:
   var patch=scene.presentation.land_root.get_node_or_null("Land_"+side)
   check(patch!=null and not patch.get_meta("available",true),"Every inactive plot must remain visibly represented")
- for cell in [Vector2i(-2,7),Vector2i(19,7),Vector2i(8,-2)]:
+ for cell in [Vector2i(-2,7),Vector2i(21,7),Vector2i(8,-2)]:
   check(not scene.navigation.open(cell),"Inactive land cannot be used by residents")
   check(scene.data.placement_error("flowers",cell,0)=="outside-land","Visible inactive land cannot accept placement")
- check(scene.unowned_land_at(Vector2i(19,7))=="east","Tapping locked waterside requests its host preview")
+ check(scene.unowned_land_at(Vector2i(21,7))=="east","Tapping locked waterside requests its host preview")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"landPreview","payload":{"side":"east"}}))
  check(scene.land_preview,"East preview highlights its actual cells")
- check(not scene.navigation.open(Vector2i(19,7)),"Preview must never open navigation")
- check(scene.data.placement_error("flowers",Vector2i(19,7),0)=="outside-land","Preview must never grant placement")
+ check(not scene.navigation.open(Vector2i(21,7)),"Preview must never open navigation")
+ check(scene.data.placement_error("flowers",Vector2i(21,7),0)=="outside-land","Preview must never grant placement")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"landPreview","payload":{"side":""}}))
  check(not scene.land_preview,"Closing preview clears its highlight")
  scene.data.land_sides.append("east")
  scene.presentation.rebuild()
  scene.navigation.rebuild(scene.data)
  check(scene.presentation.land_root.get_node("Land_east").get_meta("available")==true,"An authoritative activation updates its visual state")
- check(scene.navigation.open(Vector2i(19,7)),"Only an authoritative active plot becomes navigable")
- check(scene.unowned_land_at(Vector2i(19,7))=="","Owned waterside is no longer a purchase target")
+ check(scene.navigation.open(Vector2i(21,7)),"Only an authoritative active plot becomes navigable")
+ check(scene.unowned_land_at(Vector2i(21,7))=="","Owned waterside is no longer a purchase target")
  check(scene.presentation.land_root.get_node_or_null("Land_east/WatersideStream")!=null,"Owned waterside reveals its authored stream")
- for x in range(18,22):
-  for z in range(6,10):
+ for x in range(20,30):
+  for z in range(5,15):
    check(scene.navigation.open(Vector2i(x,z)),"The whole dry bank stays usable")
  check(not scene.navigation.path(HomesteadItems.cell_center(Vector2i(17,7)),HomesteadItems.cell_center(Vector2i(21,7))).is_empty(),"Residents can reach the bank from the original clearing")
  check(not scene.navigation.open(Vector2i(8,-2)),"Waterside never opens north")
@@ -57,7 +63,7 @@ func run():
  scene.presentation.rebuild()
  scene.navigation.rebuild(scene.data)
  check(scene.navigation.open(Vector2i(-2,7)),"Committed west meadow becomes walkable")
- check(not scene.navigation.open(Vector2i(19,7)),"Meadow purchase cannot unlock east")
+ check(not scene.navigation.open(Vector2i(21,7)),"Meadow purchase cannot unlock east")
  check(HomesteadItems.footprint("workshop",0)==Vector2i(3,3),"Workshop native and runtime footprints must match")
  check(HomesteadItems.footprint("windmill",0)==Vector2i(3,3),"Mill footprint matches native 3x3")
  var mill=scene.presentation.make_item("windmill",0,false,1)
@@ -246,13 +252,18 @@ func run():
  scene._input(touch)
  scene._physics_process(0.1)
  var camera_yaw=scene.yaw
+ var pan_before=scene.orbit_focus
  var motion=InputEventScreenDrag.new()
  motion.position=cottage_point+Vector2(28,0)
  motion.relative=Vector2(28,0)
  scene._input(motion)
  scene._physics_process(0.6)
- check(scene.yaw!=camera_yaw,"Dragging the map orbits the camera")
- check(not messages.any(func(message): return message.type=="selected"),"An orbit drag cancels the hold")
+ check(scene.yaw==camera_yaw and scene.camera_mode=="pan","Dragging the map pans without rotating")
+ check(scene.pan_focus.distance_to(pan_before)>0.1,"Horizontal finger travel moves the map")
+ var horizontal_pan=scene.pan_focus
+ scene.move_press(cottage_point+Vector2(28,35))
+ check(scene.pan_focus.distance_to(horizontal_pan)>0.1,"Vertical finger travel also moves the map")
+ check(not messages.any(func(message): return message.type=="selected"),"A map drag cancels the hold")
  scene.reset_press()
  scene._input(touch)
  scene._physics_process(0.2)
