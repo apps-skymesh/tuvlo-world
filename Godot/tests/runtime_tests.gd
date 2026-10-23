@@ -49,13 +49,13 @@ func run():
  scene.navigation.view_direction=Vector3(sin(0.25),0,cos(0.25))
 
  scene.data.land_sides.append("east")
- scene.data.inventory["edge-flower"]={"id":"edge-flower","kind":"flowers","cell":Vector2i(28,14),"rotation":0,"style":0}
+ scene.data.inventory["edge-flower"]={"id":"edge-flower","kind":"flowers","cell":Vector2i(28,9),"rotation":0,"style":0}
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"edge-flower"}}))
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"nudge","payload":{"x":1}}))
- check(scene.preview_cell==Vector2i(29,14) and scene.data.placement_error("flowers",scene.preview_cell,0)=="","Nudging reaches the last usable square of the expanded waterside")
+ check(scene.preview_cell==Vector2i(29,9) and scene.data.placement_error("flowers",scene.preview_cell,0)=="","Nudging reaches the last usable square of the expanded waterside")
  scene._process(1.0/60)
- scene.point_at(scene.camera.unproject_position(HomesteadItems.cell_center(Vector2i(40,14))))
- check(scene.preview_cell==Vector2i(29,14),"Dragging beyond the map keeps the preview within the host's accepted coordinate range")
+ scene.point_at(scene.camera.unproject_position(HomesteadItems.cell_center(Vector2i(40,9))))
+ check(scene.preview_cell==Vector2i(29,9),"Dragging beyond the map keeps the preview within the host's accepted coordinate range")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"cancel","payload":{}}))
  scene.data.inventory.erase("edge-flower")
  scene.data.land_sides.erase("east")
@@ -63,6 +63,7 @@ func run():
  for side in HomesteadItems.LAND_BOUNDS:
   var bounds: Rect2i=HomesteadItems.LAND_BOUNDS[side]
   check(bounds.size==Vector2i(10,10),"Every expansion has 2x2 five-square plots")
+  check(bounds.position.x%10==0 and bounds.position.y%10==0,"Expansions align to a shared 2x2-plot lattice without one-plot gaps")
   check(not scene.data.buildable(bounds.position),"Merely displaying a large extension grants no land")
  check(scene.unowned_land_at(Vector2i(8,-8))=="north","The future northern plot is inspectable on the map")
  # Rendering future terrain must never make it navigable or placeable.
@@ -85,9 +86,18 @@ func run():
  check(scene.presentation.land_root.get_node("Land_east").get_meta("available")==true,"An authoritative activation updates its visual state")
  check(scene.navigation.open(Vector2i(21,7)),"Only an authoritative active plot becomes navigable")
  check(scene.unowned_land_at(Vector2i(21,7))=="","Owned waterside is no longer a purchase target")
+ var lawns=scene.presentation.land_root.get_node("StartingLand").get_children().filter(func(node): return node.get_meta("continuous_grass",false))
+ check(lawns.size()==1,"Purchased land joins the clearing as one continuous grass surface")
+ if lawns.size()==1:
+  var outline: PackedVector2Array=lawns[0].get_meta("ground_outline")
+  for square in [Vector2i(0,0),Vector2i(19,19),Vector2i(20,0),Vector2i(29,9)]:
+   var point=HomesteadItems.cell_center(square)
+   check(Geometry2D.is_point_in_polygon(Vector2(point.x,point.z),outline),"The joined turf covers every owned corner without a grass seam or hole")
+  var locked=HomesteadItems.cell_center(Vector2i(8,-2))
+  check(not Geometry2D.is_point_in_polygon(Vector2(locked.x,locked.z),outline),"Unbought North remains outside the active grass surface")
  check(scene.presentation.land_root.get_node_or_null("Land_east/WatersideStream")!=null,"Owned waterside reveals its authored stream")
  for x in range(20,30):
-  for z in range(5,15):
+  for z in range(0,10):
    check(scene.navigation.open(Vector2i(x,z)),"The whole dry bank stays usable")
  check(not scene.navigation.path(HomesteadItems.cell_center(Vector2i(17,7)),HomesteadItems.cell_center(Vector2i(21,7))).is_empty(),"Residents can reach the bank from the original clearing")
  check(not scene.navigation.open(Vector2i(8,-2)),"Waterside never opens north")

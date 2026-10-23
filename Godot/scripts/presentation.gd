@@ -102,27 +102,38 @@ func rebuild():
 	visual_revision+=1
 	refresh_grid()
 
-func plot_seams(root: Node3D, plots: int, color: String):
-	var span=float(plots*HomesteadItems.SQUARES_PER_PLOT)
-	for line in range(1,plots):
-		var offset=-span/2+line*HomesteadItems.SQUARES_PER_PLOT
-		HomesteadMesh.box(root,Vector3(offset,0.035,0),Vector3(0.035,0.012,span-0.2),color,0)
-		HomesteadMesh.box(root,Vector3(0,0.035,offset),Vector3(span-0.2,0.012,0.035),color,0)
+# Owned regions form one surface: there is no colored tile or raised seam at
+# purchase boundaries. The shader samples world coordinates across all land.
+func land_outline(bounds: Rect2i) -> PackedVector2Array:
+	var corner=HomesteadItems.cell_center(bounds.position)-Vector3(0.5,0,0.5)
+	return PackedVector2Array([Vector2(corner.x,corner.z),Vector2(corner.x+bounds.size.x,corner.z),Vector2(corner.x+bounds.size.x,corner.z+bounds.size.y),Vector2(corner.x,corner.z+bounds.size.y)])
+
+func terrain_surface(parent: Node3D, outline: PackedVector2Array, dormant=false):
+	var soil=Geometry2D.offset_polygon(outline,0.3,Geometry2D.JOIN_ROUND)
+	var rim=Geometry2D.offset_polygon(outline,0.12,Geometry2D.JOIN_ROUND)
+	for shape in soil: HomesteadMesh.polygon_slab(parent,shape,-0.12,-0.9,"bda782")
+	for shape in rim: HomesteadMesh.polygon_slab(parent,shape,-0.025,-0.25,"c8bc95")
+	var lawn=HomesteadMesh.polygon_slab(parent,outline,0.018,-0.06,"a9ba89")
+	var grass=ShaderMaterial.new()
+	grass.shader=preload("res://scripts/meadow.gdshader")
+	grass.set_shader_parameter("dormant",1.0 if dormant else 0.0)
+	lawn.material_override=grass
+	lawn.set_meta("continuous_grass",true)
+	lawn.set_meta("ground_outline",outline)
 
 func build_island():
 	var clearing=Node3D.new()
 	clearing.name="StartingLand"
 	land_root.add_child(clearing)
-	clearing.position=HomesteadItems.BASE_LAND_CENTER
-	HomesteadMesh.polygon_slab(clearing,HomesteadMesh.rounded_outline(20.7,20.7,0.35),-0.18,-0.9,"c1a785")
-	HomesteadMesh.polygon_slab(clearing,HomesteadMesh.rounded_outline(20.45,20.45,0.3),-0.07,-0.4,"d9c7a0")
-	HomesteadMesh.polygon_slab(clearing,HomesteadMesh.rounded_outline(20.3,20.3,0.25),0,-0.19,"9caf7c")
-	var lawn=HomesteadMesh.polygon_slab(clearing,HomesteadMesh.rounded_outline(20.12,20.12,0.2),0.018,-0.05,"a9ba89")
-	var meadow=ShaderMaterial.new()
-	meadow.shader=preload("res://scripts/meadow.gdshader")
-	lawn.material_override=meadow
-	plot_seams(clearing,HomesteadItems.STARTER_PLOTS,"9eaf80")
-	# Terrain is visible before purchase; only the host can activate its cells.
+	var outline=land_outline(HomesteadItems.BASE_BOUNDS)
+	for side in data.land_sides:
+		var merged=Geometry2D.merge_polygons(outline,land_outline(HomesteadItems.LAND_BOUNDS[side]))
+		if merged.size()==1: outline=merged[0]
+	# Round only the outside shoreline, never the former purchase seams.
+	for inset in Geometry2D.offset_polygon(outline,-0.16,Geometry2D.JOIN_ROUND):
+		for softened in Geometry2D.offset_polygon(inset,0.16,Geometry2D.JOIN_ROUND):
+			terrain_surface(clearing,softened)
+	# Locked land stays distinct and unbuildable; purchasing joins it seamlessly.
 	for side in HomesteadItems.LAND_CENTERS:
 		var available=side in data.land_sides
 		var patch=Node3D.new()
@@ -130,13 +141,11 @@ func build_island():
 		patch.set_meta("available",available)
 		land_root.add_child(patch)
 		patch.position=HomesteadItems.LAND_CENTERS[side]
-		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(HomesteadItems.PLOT_SIZE.x,HomesteadItems.PLOT_SIZE.y,0.35),-0.18,-0.9,"c1a785")
-		HomesteadMesh.polygon_slab(patch,HomesteadMesh.rounded_outline(10.12,10.12,0.2),0.025,-0.2,"a9ba89" if available else "929b80")
-		plot_seams(patch,HomesteadItems.EXPANSION_PLOTS,"9eaf80" if available else "bcc0a4")
 		if available:
 			if side=="west": meadow_border(patch)
 			if side=="east": waterside_bank(patch)
 		else:
+			terrain_surface(patch,HomesteadMesh.rounded_outline(10.0,10.0,0.14),true)
 			var gate=Node3D.new()
 			patch.add_child(gate)
 			gate.position=Vector3(0,0,4.85) if side=="north" else Vector3(-4.85 if side=="east" else 4.85,0,0)
@@ -145,9 +154,8 @@ func build_island():
 				HomesteadMesh.box(gate,Vector3(x,0.39,0),Vector3(0.10,0.78,0.10),"a18b6b",0.025)
 			for y in [0.29,0.60]:
 				HomesteadMesh.box(gate,Vector3(0,y,0),Vector3(2.2,0.10,0.09),"b8a482",0.025)
-			for x in [-2.5,2.5]:
-				for z in [-2.5,2.5]:
-					HomesteadMesh.ellipsoid(patch,Vector3(x,0.12,z),Vector3(0.5,0.22,0.4),"7e8b6e")
+			for point in [Vector2(-3.1,-2.3),Vector2(2.7,-1.8),Vector2(-1.8,3.2)]:
+				HomesteadMesh.ellipsoid(patch,Vector3(point.x,0.12,point.y),Vector3(0.5,0.22,0.4),"7e8b6e")
 		HomesteadStaticBatcher.consolidate(patch,[])
 
 func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:

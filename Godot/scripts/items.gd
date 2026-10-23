@@ -7,11 +7,11 @@ const STARTER_PLOTS=4
 const EXPANSION_PLOTS=2
 const BASE_BOUNDS=Rect2i(0,0,20,20)
 const WORLD_BOUNDS=Rect2i(-10,-10,40,30)
-const LAND_BOUNDS={"west":Rect2i(-10,5,10,10),"east":Rect2i(20,5,10,10),"north":Rect2i(5,-10,10,10)}
+const LAND_BOUNDS={"west":Rect2i(-10,0,10,10),"east":Rect2i(20,0,10,10),"north":Rect2i(0,-10,10,10)}
 const BASE_LAND_SIZE=Vector2(20.7,20.7)
 const BASE_LAND_CENTER=Vector3(1,0,2)
 const PLOT_SIZE=Vector2(10.5,10.5)
-const LAND_CENTERS={"north":Vector3(1,0,-13),"east":Vector3(16,0,2),"west":Vector3(-14,0,2)}
+const LAND_CENTERS={"north":Vector3(-4,0,-13),"east":Vector3(16,0,-3),"west":Vector3(-14,0,-3)}
 
 const DEFINITIONS={
 	"windmill":{"title":"Windmill","size":Vector2i(3,3),"blocks":true,"height":4.1,"color":"d9c8a5"},
