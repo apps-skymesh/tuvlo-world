@@ -115,6 +115,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 	root.add_child(art)
 	art.rotation.y=rotation*PI/2
 	match kind:
+		"orchard": orchard(art,style)
 		"greenhouse": greenhouse(art)
 		"workshop": workshop(art)
 		"cottage": cottage(art)
@@ -127,7 +128,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 		"nook": reading_nook(art,style)
 		"treehouse": treehouse(art,style)
 		"path": path_tile(art)
-	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop","greenhouse"]:
+	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop","greenhouse","orchard"]:
 		var size: Vector2i=HomesteadItems.DEFINITIONS[kind].size
 		HomesteadMesh.contact_shadow(art,Vector2(size)*1.2)
 	return root
@@ -227,6 +228,44 @@ func greenhouse(root: Node3D):
 	HomesteadMesh.cylinder(root,Vector3(0.91,0.34,0.46),0.16,0.31,"8eaaa4")
 	HomesteadMesh.rod(root,Vector3(1.02,0.40,0.46),Vector3(1.25,0.58,0.46),0.04,"8eaaa4")
 	HomesteadMesh.torus(root,Vector3(0.76,0.38,0.46),0.14,0.025,"c7b783").rotation.x=PI/2
+
+# Two trained fruit trees, low stone edging and a woven harvest basket.
+# Three enduring looks are cosmetic; fruit play never changes the ledger.
+func orchard(root: Node3D,style=0):
+	var leaf_color=["83a477","9aaf7b","9b9b85"][clampi(style,0,2)]
+	var fruit_color=["c98270","d5b36b","9c8bb2"][clampi(style,0,2)]
+	HomesteadMesh.box(root,Vector3(0,0.06,0),Vector3(1.84,0.12,1.78),"acb18b",0.10)
+	for x in [-0.88,0.88]:
+		for z in [-0.65,0,0.65]:
+			HomesteadMesh.box(root,Vector3(x,0.14,z),Vector3(0.14,0.19,0.58),"c8bda0",0.05)
+	for z in [-0.82,0.82]:
+		HomesteadMesh.box(root,Vector3(0,0.14,z),Vector3(1.72,0.19,0.14),"c8bda0",0.05)
+	for i in 2:
+		var base=Vector3(-0.44+i*0.88,0,-0.16+(i%2)*0.3)
+		HomesteadMesh.cylinder(root,base+Vector3(0,0.16,0),0.36,0.10,"8b8064")
+		HomesteadMesh.rod(root,base+Vector3(0,0.12,0),base+Vector3(0.03,1.99,0),0.065,"a28a65")
+		for side in [-1,1]:
+			HomesteadMesh.rod(root,base+Vector3(0,1.10,0),base+Vector3(side*0.35,1.70,0.04),0.035,"a28a65")
+		for j in 4:
+			var crown=base+Vector3(sin(j*2.2)*0.21,1.78+j*0.13,cos(j*2.2)*0.18)
+			HomesteadMesh.ellipsoid(root,crown,Vector3(0.39,0.44,0.34),leaf_color)
+		for j in 6:
+			var point=base+Vector3(-0.25+(j%3)*0.25,1.62+(j%3)*0.25,0.57 if j<3 else -0.57)
+			HomesteadMesh.ellipsoid(root,point,Vector3(0.13,0.16 if style==1 else 0.13,0.13),fruit_color)
+			HomesteadMesh.rod(root,point,point+Vector3(0.01,0.14,0),0.012,"8c7757")
+		HomesteadMesh.ellipsoid(root,base+Vector3(-0.24,0.25,0.2),Vector3(0.18,0.08,0.14),"889c76")
+	# Raised, interlaced basket bands and brass-edged label make the scale readable.
+	for i in 5:
+		HomesteadMesh.torus(root,Vector3(0,0.22+i*0.035,0.62),0.19,0.018,"c6a477")
+	for i in 8:
+		var a=i*TAU/8
+		HomesteadMesh.rod(root,Vector3(sin(a)*0.17,0.20,0.62+cos(a)*0.17),Vector3(sin(a)*0.20,0.37,0.62+cos(a)*0.20),0.012,"e0c297")
+	var handle=HomesteadMesh.torus(root,Vector3(0,0.42,0.62),0.19,0.02,"c6a477")
+	handle.rotation.x=PI/2
+	for i in 3:
+		HomesteadMesh.ellipsoid(root,Vector3(-0.10+i*0.10,0.37,0.62),Vector3(0.07,0.07,0.07),fruit_color)
+	HomesteadMesh.box(root,Vector3(0.64,0.22,0.77),Vector3(0.24,0.19,0.04),"e5d8b6",0.02)
+	HomesteadMesh.ellipsoid(root,Vector3(0.64,0.23,0.80),Vector3(0.045,0.045,0.015),fruit_color)
 
 func meadow_border(root: Node3D):
 	# Peripheral planting never occupies or conceals usable expansion cells.
