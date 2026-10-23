@@ -5,6 +5,7 @@ var prop_root: Node3D
 var land_root: Node3D
 var foliage: Array[Node3D]=[]
 var waters: Array[ShaderMaterial]=[]
+var sails: Array[Node3D]=[]
 var clock=0.0
 var reduced_motion=false
 var nodes: Dictionary={}
@@ -35,6 +36,7 @@ func rebuild():
 	nodes.clear()
 	foliage.clear()
 	waters.clear()
+	sails.clear()
 	build_island()
 	for item in data.items:
 		var root=make_item(item.kind,item.rotation,false,int(item.get("style",0)))
@@ -46,7 +48,7 @@ func rebuild():
 		if item.kind=="cottage" and data.approvals>=34:
 			for x in [-1.4,1.4]:
 				HomesteadMesh.box(root,Vector3(x,1.5,1.35),Vector3(0.18,0.28,0.18),"edc577",0.03)
-		HomesteadStaticBatcher.consolidate(root,foliage)
+		HomesteadStaticBatcher.consolidate(root,foliage+sails)
 		nodes[item.id]=root
 		var size=HomesteadItems.footprint(item.kind,item.rotation)
 		var body=StaticBody3D.new()
@@ -116,6 +118,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 	root.add_child(art)
 	art.rotation.y=rotation*PI/2
 	match kind:
+		"windmill": windmill(art,ghost,style)
 		"orchard": orchard(art,style)
 		"greenhouse": greenhouse(art)
 		"workshop": workshop(art)
@@ -129,7 +132,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 		"nook": reading_nook(art,style)
 		"treehouse": treehouse(art,style)
 		"path": path_tile(art)
-	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop","greenhouse","orchard"]:
+	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop","greenhouse","orchard","windmill"]:
 		var size: Vector2i=HomesteadItems.DEFINITIONS[kind].size
 		HomesteadMesh.contact_shadow(art,Vector2(size)*1.2)
 	return root
@@ -183,6 +186,51 @@ func workshop(root: Node3D):
 		HomesteadMesh.rod(root,Vector3(x,1.34,-0.88),Vector3(x,1.68,-0.88),0.025,"dec49b")
 		HomesteadMesh.box(root,Vector3(x,1.68,-0.88),Vector3(0.18,0.07,0.08),"bea06b",0.02)
 	HomesteadMesh.cylinder(root,Vector3(-0.95,0.48,1.06),0.24,0.49,"dfc79e",0.29)
+
+# Original plaster-and-joinery mill, including two free material/sail looks.
+# The animated pivot survives static batching; quiet/offscreen mills do no work.
+func windmill(root: Node3D,ghost=false,style=0):
+	var roof_color="78988b" if style==0 else "ad806d"
+	HomesteadMesh.cylinder(root,Vector3(0,0.10,0),1.31,0.20,"c9bc9c")
+	HomesteadMesh.cylinder(root,Vector3(0,1.25,0),0.91,2.3,"eadfc5",0.65)
+	for angle in 8:
+		var a=angle*TAU/8
+		HomesteadMesh.rod(root,Vector3(sin(a)*0.90,0.24,cos(a)*0.90),Vector3(sin(a)*0.67,2.35,cos(a)*0.67),0.045,"b7a07c")
+	HomesteadMesh.torus(root,Vector3(0,0.38,0),0.86,0.045,"bea47c")
+	HomesteadMesh.torus(root,Vector3(0,2.28,0),0.67,0.045,"bea47c")
+	HomesteadMesh.cylinder(root,Vector3(0,2.65,0),0.98,0.72,roof_color,0.06)
+	HomesteadMesh.ellipsoid(root,Vector3(0,3.04,0),Vector3(0.10,0.11,0.10),"c3a56c")
+	# Arched timber doorway and a stone doorstep, facing the visit approach.
+	HomesteadMesh.box(root,Vector3(0,0.64,0.86),Vector3(0.57,0.98,0.12),"947c5b",0.16)
+	for x in [-0.17,0,0.17]:
+		HomesteadMesh.box(root,Vector3(x,0.61,0.94),Vector3(0.025,0.77,0.025),"c6ad83",0.008)
+	HomesteadMesh.ellipsoid(root,Vector3(0.17,0.61,0.98),Vector3(0.035,0.035,0.025),"d7be86")
+	HomesteadMesh.box(root,Vector3(0,0.15,1.03),Vector3(0.83,0.16,0.39),"d9cbaa",0.06)
+	for side in [-1,1]:
+		var window=HomesteadMesh.box(root,Vector3(side*0.61,1.59,0.50),Vector3(0.24,0.39,0.08),"7e9b96",0.10)
+		window.rotation.y=side*0.55
+		HomesteadMesh.rod(root,Vector3(side*0.61,1.40,0.56),Vector3(side*0.61,1.78,0.56),0.018,"e4d3ac")
+	var pivot=Node3D.new()
+	root.add_child(pivot)
+	pivot.position=Vector3(0,2.27,1.02)
+	pivot.rotation.z=0.22
+	for arm in 4:
+		var blade=Node3D.new()
+		pivot.add_child(blade)
+		blade.rotation.z=arm*PI/2
+		HomesteadMesh.rod(blade,Vector3(0,0,0),Vector3(0,1.62,0),0.035,"a68a61")
+		var sail=HomesteadMesh.box(blade,Vector3(0.13,1.03,0),Vector3(0.33,1.08,0.045),"e9d9b5" if style==0 else "90aa9a",0.025)
+		sail.rotation.y=0.20
+		for rung in 4:
+			HomesteadMesh.box(blade,Vector3(0.13,0.63+rung*0.26,0.04),Vector3(0.36,0.025,0.035),"baa07b",0.008)
+	HomesteadMesh.ellipsoid(pivot,Vector3(0,0,0.06),Vector3(0.14,0.14,0.11),"b28e59")
+	if not ghost: sails.append(pivot)
+	# Harvest sacks and a scoop give the recipe a visible home in the scene.
+	for i in 2:
+		HomesteadMesh.ellipsoid(root,Vector3(-0.89+i*0.28,0.37,0.69),Vector3(0.24,0.29,0.21),"d5c29b")
+		HomesteadMesh.torus(root,Vector3(-0.89+i*0.28,0.61,0.69),0.11,0.02,"a58c63")
+	HomesteadMesh.box(root,Vector3(0.86,0.37,0.61),Vector3(0.40,0.08,0.35),roof_color,0.025)
+	HomesteadMesh.rod(root,Vector3(0.86,0.41,0.60),Vector3(1.05,0.63,0.60),0.025,"b49b73")
 
 # Sage joinery, translucent glazing and warm terracotta: an airy garden room.
 func greenhouse(root: Node3D):
@@ -480,6 +528,11 @@ func _process(delta):
 	for i in foliage.size():
 		var plant=foliage[i]
 		if is_instance_valid(plant): plant.rotation.z=sin(clock*0.8+i*1.7)*0.017 if not reduced_motion else 0
+	for pivot in sails:
+		if is_instance_valid(pivot) and not reduced_motion:
+			var camera=get_viewport().get_camera_3d()
+			if camera and not camera.is_position_behind(pivot.global_position) and camera.unproject_position(pivot.global_position).x>=0 and get_viewport().get_visible_rect().has_point(camera.unproject_position(pivot.global_position)):
+				pivot.rotation.z+=delta*0.12
 	for water in waters:
 		water.set_shader_parameter("clock",clock)
 		water.set_shader_parameter("motion",0.0 if reduced_motion else 1.0)

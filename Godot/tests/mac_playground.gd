@@ -18,6 +18,7 @@ var initial_camera="overview"
 var equipped=false
 var cottage_slice=false
 var meadow_slice=false
+var windmill_slice=false
 var greenhouse_slice=false
 var orchard_slice=false
 var waterside_slice=false
@@ -30,6 +31,7 @@ func run():
  var args=OS.get_cmdline_user_args()
  for index in args.size():
   if args[index]=="--equipped": equipped=true
+  if args[index]=="--windmill": windmill_slice=true
   if args[index]=="--cottage": cottage_slice=true
   if args[index]=="--waterside": meadow_slice=true; waterside_slice=true
   if args[index]=="--meadow": meadow_slice=true
@@ -73,6 +75,8 @@ func reset(equipped: bool):
  if meadow_slice:
   payload.land=["west"]
   payload.items.append({"id":"workshop","kind":"workshop","cell":{"x":1,"z":11},"rotation":0})
+ if windmill_slice:
+  payload.items.append({"id":"windmill","kind":"windmill","cell":{"x":10,"z":10},"rotation":0})
  if waterside_slice:
   payload.land.append("east")
  if greenhouse_slice:
