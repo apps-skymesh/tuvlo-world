@@ -23,7 +23,7 @@ func apply_snapshot(raw: Dictionary) -> bool:
    return false
   ids[object.id] = true
   if not object.get("cell") is Dictionary:
-   unplaced[object.id] = {"id":object.id,"kind":object.kind,"cell":Vector2i(8,8),"rotation":int(object.get("rotation",0)),"style":int(object.get("style",0))}
+   unplaced[object.id] = {"id":object.id,"kind":object.kind,"cell":Vector2i(-3,7) if object.kind=="greenhouse" else Vector2i(8,8),"rotation":int(object.get("rotation",0)),"style":int(object.get("style",0))}
    continue
   var x = object.cell.get("x")
   var z = object.cell.get("z")
@@ -65,6 +65,7 @@ func placement_error(kind: String, cell: Vector2i, rotation: int, excluding = ""
  for z in HomesteadItems.footprint(kind,rotation).y:
   for x in HomesteadItems.footprint(kind,rotation).x:
    var square = cell + Vector2i(x,z)
+   if kind=="greenhouse" and not (square.x>=-4 and square.x<0 and square.y>=6 and square.y<10): return "outside-land"
    if not buildable(square): return "outside-land"
    if not item_at(square,excluding).is_empty(): return "occupied"
  return ""

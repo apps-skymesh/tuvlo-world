@@ -115,6 +115,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 	root.add_child(art)
 	art.rotation.y=rotation*PI/2
 	match kind:
+		"greenhouse": greenhouse(art)
 		"workshop": workshop(art)
 		"cottage": cottage(art)
 		"garden": garden(art)
@@ -126,7 +127,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 		"nook": reading_nook(art,style)
 		"treehouse": treehouse(art,style)
 		"path": path_tile(art)
-	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop"]:
+	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop","greenhouse"]:
 		var size: Vector2i=HomesteadItems.DEFINITIONS[kind].size
 		HomesteadMesh.contact_shadow(art,Vector2(size)*1.2)
 	return root
@@ -180,6 +181,52 @@ func workshop(root: Node3D):
 		HomesteadMesh.rod(root,Vector3(x,1.34,-0.88),Vector3(x,1.68,-0.88),0.025,"dec49b")
 		HomesteadMesh.box(root,Vector3(x,1.68,-0.88),Vector3(0.18,0.07,0.08),"bea06b",0.02)
 	HomesteadMesh.cylinder(root,Vector3(-0.95,0.48,1.06),0.24,0.49,"dfc79e",0.29)
+
+# Sage joinery, translucent glazing and warm terracotta: an airy garden room.
+func greenhouse(root: Node3D):
+	HomesteadMesh.box(root,Vector3(0,0.09,0),Vector3(2.82,0.18,1.84),"cbbb9d",0.08)
+	var glass=HomesteadMesh.transparent(Color(0.65,0.84,0.80,0.20))
+	for x in [-1.28,1.28]:
+		for z in [-0.79,0.79]:
+			HomesteadMesh.box(root,Vector3(x,1.05,z),Vector3(0.10,1.86,0.10),"6c9183",0.025)
+		for z in [-0.38,0.34]:
+			var pane=HomesteadMesh.box(root,Vector3(x,1.15,z),Vector3(0.025,1.53,0.68),"cde4d5",0.003)
+			pane.material_override=glass
+	for z in [-0.81,0.81]:
+		HomesteadMesh.box(root,Vector3(0,1.97,z),Vector3(2.67,0.10,0.10),"6c9183",0.02)
+		for x in [-0.87,0,0.87]:
+			HomesteadMesh.rod(root,Vector3(x,1.99,z),Vector3(0,2.58,z),0.035,"89aa98")
+	for side in [-1,1]:
+		var roof=HomesteadMesh.box(root,Vector3(side*0.66,2.28,0),Vector3(1.47,0.025,1.81),"cde4d5",0.005)
+		roof.rotation.z=-side*0.43
+		roof.material_override=glass
+		for z in [-0.86,0,0.86]:
+			HomesteadMesh.rod(root,Vector3(side*1.33,1.98,z),Vector3(0,2.59,z),0.038,"7a9b8c")
+	HomesteadMesh.rod(root,Vector3(0,2.6,-0.9),Vector3(0,2.6,0.9),0.045,"c3aa75")
+	# Open central doorway keeps the pots and planting bench readable.
+	for x in [-0.47,0.47]:
+		HomesteadMesh.box(root,Vector3(x,1.06,0.82),Vector3(0.06,1.76,0.07),"89aa98",0.015)
+	HomesteadMesh.box(root,Vector3(0,1.98,0.83),Vector3(0.96,0.12,0.08),"e4d8b9",0.02)
+	HomesteadMesh.cylinder(root,Vector3(0,1.99,0.89),0.09,0.03,"c3aa75").rotation.x=PI/2
+	HomesteadMesh.box(root,Vector3(0,0.78,-0.48),Vector3(2.34,0.10,0.47),"bea582",0.025)
+	for x in [-0.93,0.93]:
+		HomesteadMesh.box(root,Vector3(x,0.43,-0.48),Vector3(0.08,0.66,0.08),"8b9980",0.02)
+	for i in 3:
+		var base=Vector3(-0.78+i*0.78,0.95,-0.47)
+		HomesteadMesh.cylinder(root,base,0.18,0.24,"c9987c",0.23)
+		HomesteadMesh.torus(root,base+Vector3(0,0.12,0),0.22,0.025,"deb497")
+		HomesteadMesh.rod(root,base,base+Vector3(0,0.52,0),0.02,"729176")
+		for side in [-1,1]:
+			HomesteadMesh.ellipsoid(root,base+Vector3(side*0.10,0.29,0),Vector3(0.14,0.06,0.07),"809e78")
+		HomesteadMesh.ellipsoid(root,base+Vector3(0,0.52,0),Vector3(0.12,0.10,0.10),"e4cb8f" if i==0 else "a99dbb" if i==2 else "709873")
+	for x in [-0.87,0.87]:
+		HomesteadMesh.rod(root,Vector3(x,2.16,-0.18),Vector3(x,1.74,-0.18),0.012,"c8b384")
+		HomesteadMesh.cylinder(root,Vector3(x,1.68,-0.18),0.15,0.18,"cfac8a",0.19)
+		for leaf in 4:
+			HomesteadMesh.ellipsoid(root,Vector3(x+sin(leaf*1.8)*0.14,1.56-leaf*0.07,-0.12),Vector3(0.12,0.09,0.07),"779780")
+	HomesteadMesh.cylinder(root,Vector3(0.91,0.34,0.46),0.16,0.31,"8eaaa4")
+	HomesteadMesh.rod(root,Vector3(1.02,0.40,0.46),Vector3(1.25,0.58,0.46),0.04,"8eaaa4")
+	HomesteadMesh.torus(root,Vector3(0.76,0.38,0.46),0.14,0.025,"c7b783").rotation.x=PI/2
 
 func meadow_border(root: Node3D):
 	# Peripheral planting never occupies or conceals usable expansion cells.
