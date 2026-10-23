@@ -10,11 +10,16 @@ var clock=0.0
 var reduced_motion=false
 var nodes: Dictionary={}
 var preview_node: Node3D
+var highlight_size=Vector2i.ZERO
+var highlight_fill: StandardMaterial3D
+var highlight_border: StandardMaterial3D
 var preview_item: Node3D
 var preview_item_id=""
 var grid_root: Node3D
 var grid_visible=false
 var visual_revision=0
+var land_signature=""
+var land_waters: Array[ShaderMaterial]=[]
 
 func setup(world_data: HomesteadWorldData):
 	data=world_data
@@ -27,18 +32,44 @@ func setup(world_data: HomesteadWorldData):
 	rebuild()
 
 func rebuild():
-	for child in prop_root.get_children():
-		prop_root.remove_child(child)
-		child.queue_free()
-	for child in land_root.get_children():
-		land_root.remove_child(child)
-		child.queue_free()
-	nodes.clear()
+	# Layout commits move existing roots. Rebuild artwork only when its style,
+	# rotation or earned growth changed; UI work must not recreate the island.
+	var next_land=JSON.stringify(data.land_sides)
+	if next_land!=land_signature:
+		for child in land_root.get_children():
+			land_root.remove_child(child)
+			child.queue_free()
+		waters.clear()
+		build_island()
+		land_waters=waters.duplicate()
+		land_signature=next_land
 	foliage.clear()
-	waters.clear()
 	sails.clear()
-	build_island()
+	waters=land_waters.duplicate()
+	var present={}
+	for item in data.items: present[item.id]=true
+	for id in nodes.keys():
+		if not present.has(id):
+			var removed: Node3D=nodes[id]
+			prop_root.remove_child(removed)
+			removed.queue_free()
+			nodes.erase(id)
 	for item in data.items:
+		var growth=(0 if data.approvals<3 else 1 if data.approvals<13 else 2) if item.kind=="tree" and item.id==data.growth_tree_id else -1
+		var signature=JSON.stringify([item.kind,item.rotation,item.get("style",0),growth,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false])
+		if nodes.has(item.id):
+			var existing: Node3D=nodes[item.id]
+			if existing.get_meta("art_signature","")==signature:
+				existing.position=HomesteadItems.item_center(item)
+				foliage.append_array(existing.get_meta("foliage",[]))
+				waters.append_array(existing.get_meta("waters",[]))
+				sails.append_array(existing.get_meta("sails",[]))
+				continue
+			prop_root.remove_child(existing)
+			existing.queue_free()
+		var foliage_start=foliage.size()
+		var waters_start=waters.size()
+		var sails_start=sails.size()
 		var root=make_item(item.kind,item.rotation,false,int(item.get("style",0)))
 		prop_root.add_child(root)
 		root.position=HomesteadItems.item_center(item)
@@ -64,6 +95,10 @@ func rebuild():
 		shape.size=Vector3(size.x,height,size.y)
 		collider.shape=shape
 		collider.position.y=shape.size.y/2
+		root.set_meta("art_signature",signature)
+		root.set_meta("foliage",foliage.slice(foliage_start))
+		root.set_meta("waters",waters.slice(waters_start))
+		root.set_meta("sails",sails.slice(sails_start))
 	visual_revision+=1
 	refresh_grid()
 
@@ -474,32 +509,38 @@ func refresh_grid():
 	node.mesh=lines
 	grid_root.add_child(node)
 func highlight(cell: Vector2i,size: Vector2i,valid: bool,selected=false):
-	if is_instance_valid(preview_node):
-		remove_child(preview_node)
-		preview_node.queue_free()
-	preview_node=Node3D.new()
-	add_child(preview_node)
+	# Reuse the same GPU resources for pointer motion and host verdicts.
+	if not is_instance_valid(preview_node) or highlight_size!=size:
+		if is_instance_valid(preview_node):
+			remove_child(preview_node)
+			preview_node.queue_free()
+		highlight_size=size
+		preview_node=Node3D.new()
+		add_child(preview_node)
+		var plane=PlaneMesh.new()
+		plane.size=Vector2(size.x-0.06,size.y-0.06)
+		var tile=MeshInstance3D.new()
+		tile.mesh=plane
+		highlight_fill=HomesteadMesh.transparent(Color.WHITE)
+		tile.material_override=highlight_fill
+		preview_node.add_child(tile)
+		var border=ImmediateMesh.new()
+		highlight_border=HomesteadMesh.transparent(Color.WHITE)
+		border.surface_begin(Mesh.PRIMITIVE_LINES,highlight_border)
+		var hw=size.x/2.0
+		var hd=size.y/2.0
+		var points=[Vector3(-hw,0.02,-hd),Vector3(hw,0.02,-hd),Vector3(hw,0.02,hd),Vector3(-hw,0.02,hd)]
+		for i in 4:
+			border.surface_add_vertex(points[i])
+			border.surface_add_vertex(points[(i+1)%4])
+		border.surface_end()
+		var outline=MeshInstance3D.new()
+		outline.mesh=border
+		preview_node.add_child(outline)
 	preview_node.position=HomesteadItems.center(cell,size)+Vector3(0,0.07,0)
-	var color=Color("e7ca81") if selected else (Color("b2dcc1") if valid else Color("dc947d"))
-	var plane=PlaneMesh.new()
-	plane.size=Vector2(size.x-0.06,size.y-0.06)
-	var tile=MeshInstance3D.new()
-	tile.mesh=plane
-	color.a=0.55
-	tile.material_override=HomesteadMesh.transparent(color)
-	preview_node.add_child(tile)
-	var border=ImmediateMesh.new()
-	border.surface_begin(Mesh.PRIMITIVE_LINES,HomesteadMesh.transparent(Color(color.r*0.55,color.g*0.55,color.b*0.55,1)))
-	var hw=size.x/2.0
-	var hd=size.y/2.0
-	var points=[Vector3(-hw,0.02,-hd),Vector3(hw,0.02,-hd),Vector3(hw,0.02,hd),Vector3(-hw,0.02,hd)]
-	for i in 4:
-		border.surface_add_vertex(points[i])
-		border.surface_add_vertex(points[(i+1)%4])
-	border.surface_end()
-	var outline=MeshInstance3D.new()
-	outline.mesh=border
-	preview_node.add_child(outline)
+	var color=Color("e7ca81") if selected else (Color("72d990") if valid else Color("ef766c"))
+	highlight_fill.albedo_color=Color(color,0.58)
+	highlight_border.albedo_color=Color(color.r*0.55,color.g*0.55,color.b*0.55,1)
 # Keep the authoritative world untouched while the actual piece follows the
 # child's pointer. Only the native host can commit this draft.
 func preview_object(item: Dictionary,cell: Vector2i,rotation: int):
@@ -511,7 +552,7 @@ func preview_object(item: Dictionary,cell: Vector2i,rotation: int):
 		if item.kind=="tree" and item.id==data.growth_tree_id:
 			preview_item.get_child(0).scale=Vector3.ONE*(0.35 if data.approvals<3 else 0.65 if data.approvals<13 else 1.0)
 	if nodes.has(item.id): nodes[item.id].visible=false
-	preview_item.position=HomesteadItems.center(cell,HomesteadItems.footprint(item.kind,rotation))+Vector3(0,0.12,0)
+	preview_item.position=HomesteadItems.center(cell,HomesteadItems.footprint(item.kind,rotation))+Vector3(0,0.32,0)
 	preview_item.get_child(0).rotation.y=rotation*PI/2
 func clear_preview_object():
 	if nodes.has(preview_item_id): nodes[preview_item_id].visible=true

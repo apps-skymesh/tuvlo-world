@@ -3,6 +3,7 @@ extends RefCounted
 var grid=AStarGrid2D.new()
 var data: HomesteadWorldData
 var revision=0
+var view_direction=Vector3(sin(0.25),0,cos(0.25))
 func rebuild(world_data: HomesteadWorldData):
 	data=world_data
 	grid.region=HomesteadItems.WORLD_BOUNDS
@@ -75,9 +76,30 @@ func path(from: Vector3,to: Vector3) -> PackedVector3Array:
 	result.append(corners[corners.size()-1])
 	return result
 
-func approach(item: Dictionary) -> Vector3:
+func approach(item: Dictionary,from: Vector3=Vector3.INF) -> Vector3:
 	var size=HomesteadItems.footprint(item.kind,item.rotation)
 	var center=HomesteadItems.item_center(item)
 	var forward=Vector3(sin(item.rotation*PI/2),0,cos(item.rotation*PI/2))
 	var distance=(float(size.x) if item.rotation%2 else float(size.y))/2+0.65
+	if item.kind in ["garden","pond"]:
+		var best=Vector3.INF
+		var best_score=-INF
+		for side in [Vector3.FORWARD,Vector3.BACK,Vector3.LEFT,Vector3.RIGHT]:
+			var reach=(float(size.x) if absf(side.x)>0.5 else float(size.y))/2+0.65
+			var cell=HomesteadItems.cell_at(center+side*reach)
+			if not open(cell): continue
+			var point=HomesteadItems.cell_center(cell)
+			var travel=0.0
+			if from.is_finite():
+				var route=grid.get_id_path(closest(from),cell)
+				if route.is_empty(): continue
+				for i in range(1,route.size()): travel+=Vector2(route[i]).distance_to(Vector2(route[i-1]))
+			# Face the activity across its far edge when reachable, without a
+			# long detour solely for the camera. Doors and seats keep their fronts.
+			var facing=(center-point).normalized()
+			var score=facing.dot(view_direction)*1.2-travel*0.1
+			if score>best_score:
+				best_score=score
+				best=point
+		if best.is_finite(): return best
 	return HomesteadItems.cell_center(closest(center+forward*distance))

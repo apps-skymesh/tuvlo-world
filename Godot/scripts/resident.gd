@@ -26,6 +26,7 @@ var seat_start=Vector3.ZERO
 var seat_target=Vector3.ZERO
 var current_target=Vector3.ZERO
 var target_anchor=Vector3.ZERO
+var target_rotation=0
 var activity_scale=1.0
 var reduced_motion=false
 var steps=0
@@ -48,7 +49,7 @@ func choose_destination():
 		var habitat=HomesteadHabitat.best(data)
 		if not habitat.pond.is_empty():
 			target_id=habitat.pond.id
-			start_route(navigation.approach(habitat.pond),"Going to greet a new friend")
+			start_route(navigation.approach(habitat.pond,position),"Going to greet a new friend")
 			return
 	# Visit only places actually present, instead of repeatedly walking home for
 	# missing demo destinations in a starter or partially furnished world.
@@ -62,7 +63,7 @@ func choose_destination():
 		if candidates.is_empty(): continue
 		var target: Dictionary=candidates[cycles%candidates.size()]
 		target_id=target.id
-		start_route(navigation.approach(target),{"garden":"Off to tend the garden","bench":"Finding a sunny seat","pond":"Visiting the pond","cottage":"Heading home"}[destination_kind])
+		start_route(navigation.approach(target,position),{"garden":"Off to tend the garden","bench":"Finding a sunny seat","pond":"Visiting the pond","cottage":"Heading home"}[destination_kind])
 		return
 	target_id=""
 	state="pause"
@@ -77,11 +78,12 @@ func visit(id: String):
 	target_id=id
 	destination_kind=target.kind
 	model.set_motion("idle")
-	start_route(navigation.approach(target),"Visiting a favorite place")
+	start_route(navigation.approach(target,position),"Visiting a favorite place")
 func start_route(destination: Vector3,text: String):
 	current_target=destination
 	var target=data.find(target_id)
 	target_anchor=HomesteadItems.item_center(target) if not target.is_empty() else destination
+	target_rotation=int(target.get("rotation",0))
 	route=navigation.path(position,destination)
 	if route.is_empty():
 		recoveries+=1
@@ -98,7 +100,7 @@ func start_route(destination: Vector3,text: String):
 func world_changed():
 	if model==null: return
 	var target=data.find(target_id)
-	var target_changed=not target.is_empty() and (HomesteadItems.item_center(target).distance_to(target_anchor)>0.01 or navigation.approach(target).distance_to(current_target)>0.01)
+	var target_changed=not target.is_empty() and (HomesteadItems.item_center(target).distance_to(target_anchor)>0.01 or int(target.rotation)!=target_rotation or not navigation.open(HomesteadItems.cell_at(current_target)))
 	var seated_safely=state in ["seating","rest","unseating"] and not target.is_empty() and target.kind=="bench" and not target_changed
 	var relocated=false
 	if not navigation.open(HomesteadItems.cell_at(position)) and not seated_safely:
@@ -117,7 +119,7 @@ func world_changed():
 		# Unrelated decorating leaves a seated or gardening resident undisturbed.
 		var active=state in ["walking","align","seating","unseating","rest","water","look","wave"]
 		if active and (state=="walking" or target_changed or relocated):
-			start_route(navigation.approach(target),"Taking the new path")
+			start_route(navigation.approach(target,position),"Taking the new path")
 			recoveries+=1
 	elif state=="walking":
 		start_route(HomesteadItems.cell_center(navigation.closest(current_target)),"Taking a clear path")
@@ -166,7 +168,7 @@ func finish_activity():
 		var target=data.find(target_id)
 		if not target.is_empty():
 			seat_start=position
-			seat_target=navigation.approach(target)
+			seat_target=navigation.approach(target,position)
 			state="unseating"
 			timer=0
 			model.set_motion("idle")

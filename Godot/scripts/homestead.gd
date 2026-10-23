@@ -223,7 +223,7 @@ func receive_host_json(json: String):
     set_paused(paused,panel_preview)
   "nudge":
    preview_cell+=Vector2i(clampi(int(payload.get("x",0)),-1,1),clampi(int(payload.get("z",0)),-1,1))
-   preview_cell=preview_cell.clamp(Vector2i(-4,-4),Vector2i(21,15))
+   preview_cell=preview_cell.clamp(HomesteadItems.WORLD_BOUNDS.position,HomesteadItems.WORLD_BOUNDS.end-Vector2i.ONE)
    update_preview()
   "previewVerdict":
    var item=selected_item()
@@ -425,7 +425,7 @@ func point_at(point: Vector2):
  if selected_id=="": return
  var cell=ground_cell(point)
  if cell==null: return
- cell-=grab_offset
+ cell=(cell-grab_offset).clamp(HomesteadItems.WORLD_BOUNDS.position,HomesteadItems.WORLD_BOUNDS.end-Vector2i.ONE)
  if preview_cell!=cell:
   preview_cell=cell
   update_preview()
@@ -494,6 +494,7 @@ func _process(delta):
  if diagnostics and metrics_clock>=5:
   metrics_clock=0
   emit_message("metrics",{"fps":Engine.get_frames_per_second(),"processSeconds":Performance.get_monitor(Performance.TIME_PROCESS),"staticBytes":Performance.get_monitor(Performance.MEMORY_STATIC),"drawCalls":Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),"residentSteps":resident.steps})
+ navigation.view_direction=Vector3(sin(orbit_yaw),0,cos(orbit_yaw))
  presentation.reduced_motion=reduced_motion
  resident.reduced_motion=reduced_motion
  if is_instance_valid(creature): creature.reduced_motion=reduced_motion

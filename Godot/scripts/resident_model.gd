@@ -23,6 +23,7 @@ var eye_whites: Array[MeshInstance3D]=[]
 var pupils: Array[MeshInstance3D]=[]
 var mode="idle"
 var appearance=HomesteadAppearance.DEFAULT.duplicate()
+var appearance_applied=false
 var hair_root: Node3D
 var outfit_details: Node3D
 var skirt: MeshInstance3D
@@ -459,8 +460,11 @@ func build_hair(style: int):
 	remember_colors(hair_root)
 	hair_style=style
 func apply_appearance(raw: Dictionary):
-	appearance=HomesteadAppearance.normalize(raw)
+	var normalized=HomesteadAppearance.normalize(raw)
 	if head==null: return
+	if appearance_applied and normalized==appearance: return
+	appearance=normalized
+	appearance_applied=true
 	if hair_style!=appearance.hair: build_hair(appearance.hair)
 	var skin=HomesteadAppearance.SKINS[appearance.skin]
 	var hair=HomesteadAppearance.HAIR_COLORS[appearance.hair_color]

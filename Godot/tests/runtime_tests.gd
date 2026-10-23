@@ -19,6 +19,46 @@ func run():
  var packet={"version":1,"session":"test-child-session","type":"snapshot","payload":payload}
  scene.receive_host_json(JSON.stringify(packet))
  check(scene.data.items.size()==4,"Host snapshot must replace empty scene")
+ var original_cottage=scene.presentation.nodes.cottage
+ var original_island=scene.presentation.land_root.get_child(0)
+ scene.data.items[1].cell.x+=1
+ scene.presentation.rebuild()
+ check(scene.presentation.nodes.cottage==original_cottage,"Moving a garden must reuse unchanged cottage artwork")
+ check(scene.presentation.land_root.get_child(0)==original_island,"Moving objects must not rebuild the island")
+ scene.data.items[1].cell.x-=1
+ scene.presentation.rebuild()
+ var first_highlight=null
+ for n in 12:
+  scene.presentation.highlight(Vector2i(2+n%2,10),Vector2i(3,3),n%2==0)
+  if n==0: first_highlight=scene.presentation.preview_node
+  check(scene.presentation.preview_node==first_highlight,"Dragging and host verdicts reuse the same highlight resources")
+ scene.presentation.highlight(Vector2i(3,10),Vector2i(3,3),false)
+ check(scene.presentation.highlight_fill.albedo_color.r>scene.presentation.highlight_fill.albedo_color.g,"Intersections use a red ground verdict")
+ scene.presentation.highlight(Vector2i(3,10),Vector2i(3,3),true)
+ check(scene.presentation.highlight_fill.albedo_color.g>scene.presentation.highlight_fill.albedo_color.r,"Valid placement uses a green ground verdict")
+ scene.presentation.clear_preview()
+ var garden=scene.data.find("garden")
+ scene.navigation.view_direction=Vector3.BACK
+ var garden_spot=scene.navigation.approach(garden,HomesteadItems.cell_center(Vector2i(4,8)))
+ var garden_facing=(HomesteadItems.item_center(garden)-garden_spot).normalized()
+ check(garden_facing.dot(Vector3.BACK)>0.4,"Reachable gardening approaches show the child's face while facing the plants")
+ check(scene.navigation.open(HomesteadItems.cell_at(garden_spot)),"Activity approaches stay on walkable owned land")
+ var bench_spot=scene.navigation.approach(scene.data.find("bench"))
+ scene.navigation.view_direction=Vector3.FORWARD
+ check(scene.navigation.approach(scene.data.find("bench"))==bench_spot,"Camera preference must not reverse a bench's authored seating approach")
+ scene.navigation.view_direction=Vector3(sin(0.25),0,cos(0.25))
+
+ scene.data.land_sides.append("east")
+ scene.data.inventory["edge-flower"]={"id":"edge-flower","kind":"flowers","cell":Vector2i(28,14),"rotation":0,"style":0}
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"edge-flower"}}))
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"nudge","payload":{"x":1}}))
+ check(scene.preview_cell==Vector2i(29,14) and scene.data.placement_error("flowers",scene.preview_cell,0)=="","Nudging reaches the last usable square of the expanded waterside")
+ scene._process(1.0/60)
+ scene.point_at(scene.camera.unproject_position(HomesteadItems.cell_center(Vector2i(40,14))))
+ check(scene.preview_cell==Vector2i(29,14),"Dragging beyond the map keeps the preview within the host's accepted coordinate range")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"cancel","payload":{}}))
+ scene.data.inventory.erase("edge-flower")
+ scene.data.land_sides.erase("east")
  check(HomesteadItems.BASE_BOUNDS.size==Vector2i(20,20),"The starter has 4x4 five-square plots")
  for side in HomesteadItems.LAND_BOUNDS:
   var bounds: Rect2i=HomesteadItems.LAND_BOUNDS[side]
@@ -280,7 +320,7 @@ func run():
  check(not scene.presentation.nodes.cottage.visible,"Only one visible cottage during placement")
  scene.preview_cell=Vector2i(6,2)
  scene.update_preview()
- check(scene.presentation.preview_item.position==HomesteadItems.center(Vector2i(6,2),HomesteadItems.footprint("cottage",0))+Vector3(0,0.12,0),"Piece follows draft location")
+ check(scene.presentation.preview_item.position==HomesteadItems.center(Vector2i(6,2),HomesteadItems.footprint("cottage",0))+Vector3(0,0.32,0),"Piece floats above its draft location")
  check(scene.data.find("cottage").cell==home_before,"Dragging never changes committed data")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"cancel","payload":{}}))
  check(scene.presentation.preview_item==null and scene.presentation.nodes.cottage.visible,"Cancel restores original artwork")
