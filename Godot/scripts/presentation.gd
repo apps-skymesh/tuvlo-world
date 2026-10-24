@@ -62,7 +62,7 @@ func rebuild():
 			nodes.erase(id)
 	for item in data.items:
 		var growth=(0 if data.approvals<3 else 1 if data.approvals<13 else 2) if item.kind=="tree" and item.id==data.growth_tree_id else -1
-		var signature=JSON.stringify([item.kind,item.rotation,item.get("style",0),growth,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false])
+		var signature=JSON.stringify([item.kind,item.rotation,item.get("style",0),growth,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat")] if item.kind=="garden" else []])
 		if nodes.has(item.id):
 			var existing: Node3D=nodes[item.id]
 			if existing.get_meta("art_signature","")==signature:
@@ -254,7 +254,7 @@ func update_harvest():
 		face.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var material=ShaderMaterial.new()
 		material.shader=BUBBLE_SHADER
-		material.set_shader_parameter("kind",["wood","stone","food"].find(data.harvest[key]))
+		material.set_shader_parameter("kind",["wood","stone","food","wheat"].find(data.harvest[key]))
 		face.material_override=material
 		bubble.add_child(face)
 		var body=StaticBody3D.new()
@@ -519,13 +519,23 @@ func garden(root: Node3D):
 		for z in [-0.48,0,0.48]:
 			for dx in [-0.24,0.24]:
 				var plant=Vector3(x+dx,0.37,z)
-				# Broad overlapping leaves read as planted vegetables at follow distance.
-				for leaf_index in 4:
-					var angle=leaf_index*TAU/4+(0.35 if x>0 else 0.0)
-					var offset=Vector3(cos(angle)*0.09,0.06,sin(angle)*0.09)
-					var leaf=HomesteadMesh.ellipsoid(root,plant+offset,Vector3(0.075,0.045,0.17),"548d57" if leaf_index%2 else "80af61")
-					leaf.rotation=Vector3(-0.25,PI/2-angle,0)
-				HomesteadMesh.ellipsoid(root,plant+Vector3(0,0.14,0),Vector3(0.075,0.10,0.075),"b3d47b")
+				if data.wheat_garden:
+					var ripe=data.harvest.values().has("wheat")
+					var height=0.56 if ripe else 0.22
+					var tint="c9a55c" if ripe else "80a965"
+					HomesteadMesh.rod(root,plant,plant+Vector3(0.025,height,0),0.018,tint)
+					for seed in 3:
+						var y=height-0.06-seed*0.065
+						for side in [-1,1]:
+							var head=HomesteadMesh.ellipsoid(root,plant+Vector3(side*0.045,y,0),Vector3(0.035,0.065,0.025),tint)
+							head.rotation.z=-side*0.45
+				else:
+					for leaf_index in 4:
+						var angle=leaf_index*TAU/4+(0.35 if x>0 else 0.0)
+						var offset=Vector3(cos(angle)*0.09,0.06,sin(angle)*0.09)
+						var leaf=HomesteadMesh.ellipsoid(root,plant+offset,Vector3(0.075,0.045,0.17),"548d57" if leaf_index%2 else "80af61")
+						leaf.rotation=Vector3(-0.25,PI/2-angle,0)
+					HomesteadMesh.ellipsoid(root,plant+Vector3(0,0.14,0),Vector3(0.075,0.10,0.075),"b3d47b")
 	HomesteadMesh.rod(root,Vector3(1.28,0,-0.68),Vector3(1.28,0.88,-0.68),0.035,"a47c58")
 	HomesteadMesh.box(root,Vector3(1.28,0.75,-0.68),Vector3(0.35,0.28,0.045),"dac7a0",0.035)
 

@@ -39,6 +39,14 @@ void fragment() {
   float small = length((q - vec2(0.30, -0.16)) * vec2(1.0, 1.4)) - 0.26;
   tint = icon < 0.0 ? vec3(0.66, 0.69, 0.66) : vec3(0.78, 0.80, 0.76);
   icon = min(icon, small);
+ } else if (kind == 3) {
+  icon = capsule(q, vec2(0.0,-0.48), vec2(0.0,0.48), 0.045);
+  for (int i = 0; i < 3; i++) {
+   float y = -0.12 + float(i) * 0.20;
+   icon = min(icon, capsule(q, vec2(-0.22,y+0.14), vec2(0.0,y), 0.08));
+   icon = min(icon, capsule(q, vec2(0.22,y+0.14), vec2(0.0,y), 0.08));
+  }
+  tint = vec3(0.79,0.61,0.29);
  } else {
   icon = length((q - vec2(0.0, -0.06)) * vec2(1.0, 1.08)) - 0.42;
   float leaf = length((q - vec2(0.17, 0.44)) * vec2(1.0, 2.0)) - 0.16;

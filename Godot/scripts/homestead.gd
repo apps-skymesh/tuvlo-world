@@ -5,6 +5,8 @@ var data=HomesteadWorldData.new()
 var navigation=HomesteadNavigation.new()
 var presentation=HomesteadPresentation.new()
 var resident=HomesteadResident.new()
+var guest: HomesteadResident
+var guest_role=""
 var creature: HomesteadCreature
 var camera=Camera3D.new()
 var session=""
@@ -151,7 +153,7 @@ func receive_host_json(json: String):
   session=packet.session
   var wins=int(payload.get("approvedWins",0))
   var growth=0 if wins<3 else (1 if wins<13 else 2)
-  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges])
+  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat")])
   data.items=next_data.items
   data.inventory=next_data.inventory
   data.land_sides=next_data.land_sides
@@ -160,6 +162,8 @@ func receive_host_json(json: String):
   data.discovered=next_data.discovered
   data.harvest=next_data.harvest
   data.edges=next_data.edges
+  data.visitor=next_data.visitor
+  data.wheat_garden=next_data.wheat_garden
   reduced_motion=payload.get("reducedMotion",false)==true
   diagnostics=payload.get("diagnostics",false)==true
   if signature!=layout_signature:
@@ -167,7 +171,9 @@ func receive_host_json(json: String):
    presentation.rebuild()
    navigation.rebuild(data)
    resident.world_changed()
+   if is_instance_valid(guest): guest.world_changed()
    if is_instance_valid(creature): creature.world_changed()
+  update_guest()
   presentation.update_harvest()
   if changing_child:
    resident.route.clear()
@@ -277,6 +283,10 @@ func set_paused(value: bool, previewing: bool=false):
  if is_instance_valid(creature): creature.process_mode=Node.PROCESS_MODE_DISABLED if paused or selected_id!="" else Node.PROCESS_MODE_INHERIT
  resident.set_physics_process(not paused and session!="" and selected_id=="")
  resident.model.set_process(not paused and selected_id=="")
+ if is_instance_valid(guest):
+  guest.process_mode=Node.PROCESS_MODE_DISABLED if paused or selected_id!="" else Node.PROCESS_MODE_INHERIT
+  guest.set_physics_process(not paused and session!="" and selected_id=="")
+  guest.model.set_process(not paused and selected_id=="")
  presentation.set_process(not paused)
  if is_instance_valid(creature): creature.set_physics_process(not paused and selected_id=="")
  if was_paused and not paused and selected_id!="": update_preview()
@@ -296,6 +306,9 @@ func clear_host_session():
  data.approvals=0
  data.growth_tree_id=""
  data.discovered=false
+ data.visitor=""
+ data.wheat_garden=false
+ update_guest()
  presentation.clear_preview()
  presentation.rebuild()
  navigation.rebuild(data)
@@ -577,6 +590,7 @@ func _process(delta):
  navigation.view_direction=Vector3(sin(orbit_yaw),0,cos(orbit_yaw))
  presentation.reduced_motion=reduced_motion
  resident.reduced_motion=reduced_motion
+ if is_instance_valid(guest): guest.reduced_motion=reduced_motion
  if is_instance_valid(creature): creature.reduced_motion=reduced_motion
  # Menus may redraw appearance/highlights without changing the held map view.
  if paused and hold_menu_camera and camera_initialized: return
@@ -692,3 +706,31 @@ func new_command_id() -> String:
  bytes[8]=(bytes[8]&63)|128
  var hex=bytes.hex_encode()
  return hex.substr(0,8)+"-"+hex.substr(8,4)+"-"+hex.substr(12,4)+"-"+hex.substr(16,4)+"-"+hex.substr(20,12)
+
+# Guests use the same reachable routes and grounded actor as the child. They
+# are presentation only: arriving never grants goods or changes saved progress.
+func update_guest():
+ if data.visitor!=guest_role:
+  if is_instance_valid(guest):
+   remove_child(guest)
+   guest.queue_free()
+   guest=null
+  guest_role=data.visitor
+  if guest_role!="":
+   guest=HomesteadResident.new()
+   add_child(guest)
+   guest.setup(data,navigation)
+   guest.position=HomesteadItems.cell_center(navigation.closest(Vector3(7.5,0,7.5)))
+   guest.timer=2.3
+   guest.activity_scale=2.0
+   guest.schedule=["cottage","garden"]
+   guest.model.apply_appearance({"skin":2,"hair":3 if guest_role=="storyteller" else 1,"top":3 if guest_role=="storyteller" else 0,"hat":0,"glasses":guest_role=="storyteller"})
+   if guest_role=="storyteller":
+    for item in data.items:
+     if item.kind=="nook":
+      guest.visit(item.id)
+      break
+ if is_instance_valid(guest):
+  guest.reduced_motion=reduced_motion
+  guest.set_physics_process(not paused and session!="" and selected_id=="")
+  guest.model.set_process(not paused and selected_id=="")

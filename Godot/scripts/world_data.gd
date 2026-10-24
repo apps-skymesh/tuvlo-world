@@ -12,7 +12,9 @@ var growth_tree_id=""
 # Ready materials by scene key (piece ID or edge producer). Display only.
 var harvest: Dictionary = {}
 var edges := false
-const HARVEST_MATERIALS=["wood","stone","food"]
+var visitor := ""
+var wheat_garden := false
+const HARVEST_MATERIALS=["wood","stone","food","wheat"]
 const EDGE_PRODUCERS=["woods","quarry","waterside"]
 
 func apply_snapshot(raw: Dictionary) -> bool:
@@ -47,6 +49,10 @@ func apply_snapshot(raw: Dictionary) -> bool:
  for key in raw_harvest:
   if not key is String or key.length() > 64 or not raw_harvest[key] in HARVEST_MATERIALS: return false
   if key in EDGE_PRODUCERS or ids.has(key): ready[key] = raw_harvest[key]
+ var next_visitor=raw.get("visitor", "")
+ if next_visitor not in ["", "baker", "storyteller"]: return false
+ visitor=next_visitor
+ wheat_garden=raw.get("wheatGarden",false)==true
  items = next
  harvest = ready
  edges = raw.get("edges", false) == true
