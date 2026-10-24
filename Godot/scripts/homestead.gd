@@ -14,12 +14,13 @@ var focus_item_id=""
 var panel_framing=0.0
 var camera_preview_frames=0
 var panel_preview=false
-var yaw=0.25
+const FIXED_YAW=0.25
+const MIN_CAMERA_SIZE=3.4
+var yaw=FIXED_YAW
 const OVERVIEW_PITCH=PI/6 # 30 degrees: roofs and faces read without flattening the land.
 var zoom=1.0
 var pan_focus=Vector3.ZERO
 var pan_size=12.0
-var pan_pitch=OVERVIEW_PITCH
 var camera_initialized=false
 var orbit_yaw=0.25
 var orbit_focus=Vector3.ZERO
@@ -52,6 +53,9 @@ var hold_candidate=""
 var hold_emitted=false
 var pending_visit=null
 var grab_offset=Vector2i.ZERO
+var touches={}
+var pinch_distance=0.0
+var multitouch=false
 var clock=0.0
 var metrics_clock=0.0
 var diagnostics=false
@@ -201,10 +205,11 @@ func receive_host_json(json: String):
     if camera_mode!=payload.mode: zoom=1.0
     camera_mode=payload.mode
    if payload.has("id"): focus_item_id=str(payload.id)
-   if payload.has("framing"): panel_framing=clampf(float(payload.framing),0,0.3)
+   if payload.has("framing"): panel_framing=clampf(float(payload.framing),0,0.65)
    if payload.get("resetZoom",false)==true: zoom=1.0
-   zoom=clampf(zoom*clampf(float(payload.get("zoom",1)),0.75,1.3),1.0 if camera_mode=="overview" else 0.65,1.5)
-   yaw+=clampf(float(payload.get("rotation",0)),-PI,PI)
+   if payload.has("zoom"): zoom_camera(float(payload.zoom))
+   # Camera rotation is deliberately fixed, including legacy host commands.
+   yaw=FIXED_YAW
   "select":
    selected_id=payload.get("id","")
    var item=selected_item()
@@ -252,6 +257,9 @@ func set_paused(value: bool, previewing: bool=false):
  panel_preview=value and previewing
  camera_preview_frames=(1 if reduced_motion else 90) if panel_preview else 0
  if value:
+  touches.clear()
+  multitouch=false
+  pinch_distance=0.0
   reset_press()
   dragging=false
  # A native window freezes simulation but may briefly render a new camera or
@@ -298,7 +306,7 @@ func clear_host_session():
  camera_mode="overview"
  focus_item_id=""
  panel_framing=0.0
- yaw=0.25
+ yaw=FIXED_YAW
  zoom=1.0
  camera_initialized=false
  set_paused(true)
@@ -348,7 +356,7 @@ func begin_press(point: Vector2,index: int):
   var item=selected_item()
   if cell!=null and not item.is_empty() and Rect2i(preview_cell,HomesteadItems.footprint(item.kind,preview_rotation)).has_point(cell):
    grab_offset=cell-preview_cell
-  point_at(point)
+  # Wait for a drag or release: the first finger of a pinch is not a move.
 
 func move_press(point: Vector2):
  if not pointer_down: return
@@ -377,7 +385,6 @@ func pan_camera(from: Vector2,to: Vector2):
  if camera_mode!="pan":
   pan_focus=orbit_focus
   pan_size=camera.size
-  pan_pitch=orbit_pitch
   zoom=1.0
   camera_mode="pan"
   emit_message("cameraPanned",{})
@@ -390,6 +397,7 @@ func pan_camera(from: Vector2,to: Vector2):
 
 func end_press(point: Vector2,cancelled=false):
  if not pointer_down: return
+ if not cancelled and selected_id!="": point_at(point)
  if not cancelled and selected_id=="" and not press_cancelled and not hold_emitted and press_origin.distance_to(point)<=HOLD_SLOP:
   pending_visit=press_origin
  pointer_down=false
@@ -398,25 +406,81 @@ func end_press(point: Vector2,cancelled=false):
  pending_pick=null
  if selected_id=="": presentation.clear_preview()
 
+# Absolute bounds work for the full expanded map as well as a close Follow view.
+# Zooming Overview starts a free view; Overview itself always fits every plot.
+func camera_base_size() -> float:
+ match camera_mode:
+  "pan": return pan_size
+  "follow": return 7.0
+  "detail": return 3.8
+  "home", "place": return 9.0
+ var viewport=get_viewport().get_visible_rect().size
+ return overview_fit(viewport.x/maxf(1,viewport.y),FIXED_YAW).size
+
+func zoom_camera(factor: float):
+ if not is_finite(factor) or factor<=0 or is_equal_approx(factor,1.0): return
+ if camera_mode=="overview":
+  pan_focus=orbit_focus
+  pan_size=camera.size*(1.0-panel_framing)
+  zoom=1.0
+  camera_mode="pan"
+  emit_message("cameraPanned",{})
+ var viewport=get_viewport().get_visible_rect().size
+ var maximum=overview_fit(viewport.x/maxf(1,viewport.y),FIXED_YAW).size*2.0
+ var base=maxf(0.1,camera_base_size())
+ zoom=clampf(zoom*factor,MIN_CAMERA_SIZE/base,maximum/base)
+
 func _input(event):
  if paused or session=="": return
  if event is InputEventScreenTouch:
   if not event.pressed:
-   if pointer_index==event.index: end_press(event.position,event.canceled)
+   touches.erase(event.index)
+   if multitouch:
+    pinch_distance=0.0
+    if touches.size()==2:
+     var points=touches.values()
+     pinch_distance=points[0].distance_to(points[1])
+    if touches.is_empty():
+     multitouch=false
+     pinch_distance=0.0
+     reset_press()
+   elif pointer_index==event.index: end_press(event.position,event.canceled)
    return
-  if pointer_down:
+  if not get_viewport().get_visible_rect().has_point(event.position): return
+  touches[event.index]=event.position
+  if touches.size()>1:
    reset_press()
+   multitouch=true
+   var points=touches.values()
+   pinch_distance=points[0].distance_to(points[1]) if touches.size()==2 else 0.0
    return
-  if get_viewport().get_visible_rect().has_point(event.position): begin_press(event.position,event.index)
+  if not multitouch: begin_press(event.position,event.index)
  elif event is InputEventScreenDrag:
+  if not touches.has(event.index): return
+  touches[event.index]=event.position
+  if multitouch:
+   if touches.size()==2:
+    var points=touches.values()
+    var distance=points[0].distance_to(points[1])
+    if pinch_distance>8 and distance>8: zoom_camera(pinch_distance/distance)
+    pinch_distance=distance
+   return
   if pointer_index!=event.index: return
   if not get_viewport().get_visible_rect().has_point(event.position):
    reset_press()
    return
   move_press(event.position)
- elif event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT:
-  if not event.pressed: end_press(event.position)
-  elif get_viewport().get_visible_rect().has_point(event.position): begin_press(event.position,-2)
+ elif event is InputEventMagnifyGesture:
+  reset_press()
+  zoom_camera(1.0/maxf(0.01,event.factor))
+ elif event is InputEventMouseButton:
+  if event.button_index in [MOUSE_BUTTON_WHEEL_UP,MOUSE_BUTTON_WHEEL_DOWN]:
+   if event.pressed:
+    reset_press()
+    zoom_camera(0.88 if event.button_index==MOUSE_BUTTON_WHEEL_UP else 1.0/0.88)
+  elif event.button_index==MOUSE_BUTTON_LEFT:
+   if not event.pressed: end_press(event.position)
+   elif touches.is_empty() and get_viewport().get_visible_rect().has_point(event.position): begin_press(event.position,-2)
  elif event is InputEventMouseMotion and pointer_index==-2:
   if not get_viewport().get_visible_rect().has_point(event.position): reset_press()
   else: move_press(event.position)
@@ -501,8 +565,9 @@ func _process(delta):
  var viewport=get_viewport().get_visible_rect().size
  var aspect=viewport.x/maxf(1,viewport.y)
  var immediate=reduced_motion or not camera_initialized
- var blend=1-exp(-delta*5.5)
- orbit_yaw=yaw if immediate else lerp_angle(orbit_yaw,yaw,blend)
+ var blend=1-exp(-delta*12.0)
+ yaw=FIXED_YAW
+ orbit_yaw=FIXED_YAW
  var overview=overview_fit(aspect,orbit_yaw)
  var focus=overview.focus
  var size=overview.size*zoom
@@ -510,11 +575,11 @@ func _process(delta):
  if camera_mode=="pan":
   focus=pan_focus
   size=pan_size*zoom
-  pitch=pan_pitch
+  pitch=OVERVIEW_PITCH
  elif camera_mode in ["follow","detail"]:
   focus=resident.position+Vector3(0,1.0,0)
   size=(7.0 if camera_mode=="follow" else 3.8)*zoom
-  pitch=deg_to_rad(28)
+  pitch=OVERVIEW_PITCH
  elif camera_mode=="place":
   var item=data.find(focus_item_id)
   if not item.is_empty():
@@ -526,8 +591,8 @@ func _process(delta):
     focus=HomesteadItems.item_center(item)+Vector3(0,1.1,1.4)
     size=9.0*zoom
     break
- # The fitted center already changes smoothly with orbit_yaw. A second lag
- # here can crop a plot while Overview rotates or returns from a closer view.
+ # Overview and terrain drags use their exact center so plots remain fitted
+ # and the map stays under the finger. Follow eases toward the resident.
  orbit_focus=focus if immediate or camera_mode in ["overview","pan"] else orbit_focus.lerp(focus,blend)
  orbit_pitch=pitch if immediate else lerpf(orbit_pitch,pitch,blend)
  if envelope_revision!=presentation.visual_revision:
@@ -536,13 +601,16 @@ func _process(delta):
   scenery_radius+=2.0 # authored roof/eave margin, independent of placement collision boxes
   envelope_revision=presentation.visual_revision
  # Orthographic magnification is camera.size. The lens stays beyond the entire
- # scenery envelope at every angle, even while focus/mode changes. Interpolate
- # angles, never the camera's Cartesian position (a chord can cross a building).
+ # scenery envelope while focus/mode changes, including distant expansions.
+ # Rebuild its position from the safe radius instead of cutting through roofs.
  var radius=maxf(32.0,scenery_radius+Vector2(orbit_focus.x,orbit_focus.z).length()+8.0)
  camera.position=orbit_focus+Vector3(sin(orbit_yaw)*radius,radius*tan(orbit_pitch),cos(orbit_yaw)*radius)
+ # Reserve the bottom menu area, keeping the subject in the exposed map.
+ size/=1.0-panel_framing
  camera.size=size if immediate else lerpf(camera.size,size,blend)
  if camera_mode=="overview": camera.size=maxf(size,camera.size)
- camera.h_offset=camera.size*panel_framing
+ camera.h_offset=0.0
+ camera.v_offset=-camera.size*panel_framing*0.5
  camera.look_at(orbit_focus)
  camera_initialized=true
  presentation.update_character_visibility(camera,resident.position,camera_mode in ["follow","detail"])

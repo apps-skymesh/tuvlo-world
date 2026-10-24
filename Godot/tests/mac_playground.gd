@@ -100,7 +100,7 @@ func build_controls():
  var options=MenuButton.new()
  options.text="Camera options"
  toolbar.add_child(options)
- for title in ["Close up","Rotate left","Rotate right","Zoom in","Zoom out"]: options.get_popup().add_item(title)
+ for title in ["Close up","Zoom in","Zoom out"]: options.get_popup().add_item(title)
  options.get_popup().id_pressed.connect(camera_option)
  button(toolbar,"Cottage",func():
   cottage_slice=true
@@ -131,12 +131,9 @@ func build_controls():
 func camera_option(id: int):
  match id:
   0: camera("detail")
-  1: send("camera",{"rotation":-PI/4})
-  2: send("camera",{"rotation":PI/4})
-  3:
-   if world.camera_mode=="overview": camera("follow")
-   send("camera",{"zoom":0.85})
-  4: send("camera",{"zoom":1.18})
+  1: send("camera",{"zoom":0.85})
+  2: send("camera",{"zoom":1.18})
+
 func on_message(raw: String):
  var message=JSON.parse_string(raw)
  if message.type=="activity":

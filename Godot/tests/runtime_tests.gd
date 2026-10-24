@@ -172,9 +172,36 @@ func run():
     check(absf(up.dot(offset))<fit.size/2,"All terrain must fit vertically with margin at every camera rotation")
  scene.yaw=0.25
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"mode":"overview","zoom":0.01}}))
- check(scene.zoom==1.0,"Overview zoom cannot crop the full map")
+ check(scene.camera_mode=="pan" and is_equal_approx(scene.camera_base_size()*scene.zoom,scene.MIN_CAMERA_SIZE),"Zooming Overview enters a free view with a safe absolute close limit")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"mode":"follow","zoom":0.01}}))
- check(scene.zoom>=0.65,"Detailed zoom has a safe lower bound")
+ check(is_equal_approx(scene.camera_base_size()*scene.zoom,scene.MIN_CAMERA_SIZE),"Follow shares the same close zoom limit")
+ scene.zoom_camera(1000)
+ check(scene.camera_mode=="follow" and scene.camera_base_size()*scene.zoom>scene.overview_size(2.5),"Follow can zoom out far enough to see every expansion")
+ # At the furthest zoom, even following a resident at an expansion's edge must
+ # leave enough field of view for the other plots, across landscape aspects.
+ for aspect in [1.3,1.8,2.5,3.0]:
+  var fit=scene.overview_fit(aspect,scene.FIXED_YAW)
+  var right=Vector3(cos(scene.FIXED_YAW),0,-sin(scene.FIXED_YAW))
+  var up=Vector3(-sin(scene.FIXED_YAW)*sin(scene.OVERVIEW_PITCH),cos(scene.OVERVIEW_PITCH),-cos(scene.FIXED_YAW)*sin(scene.OVERVIEW_PITCH))
+  for bounds in [HomesteadItems.BASE_BOUNDS,HomesteadItems.LAND_BOUNDS.west,HomesteadItems.LAND_BOUNDS.east]:
+   for cell in [bounds.position,bounds.end-Vector2i.ONE,Vector2i(bounds.position.x,bounds.end.y-1),Vector2i(bounds.end.x-1,bounds.position.y)]:
+    var focus=HomesteadItems.cell_center(cell)+Vector3(0,1,0)
+    for point in scene.overview_points():
+     check(absf(right.dot(point-focus))<fit.size*aspect,"Maximum Follow zoom fits the full map from an owned plot edge horizontally")
+     check(absf(up.dot(point-focus))<fit.size,"Maximum Follow zoom fits the full map from an owned plot edge vertically")
+ var finite_zoom=scene.zoom
+ scene.zoom_camera(NAN)
+ scene.zoom_camera(-1)
+ check(scene.zoom==finite_zoom,"Invalid zoom input cannot corrupt the camera")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"rotation":PI}}))
+ scene._process(1.0)
+ check(scene.yaw==scene.FIXED_YAW and scene.orbit_yaw==scene.FIXED_YAW,"Legacy rotation commands cannot rotate the world")
+ var following_from=scene.orbit_focus
+ scene.resident.position+=Vector3(1,0,1)
+ scene._process(1.0/60.0)
+ check(scene.orbit_focus.distance_to(following_from)>0.1,"Follow responds in the first frame of resident movement")
+ scene._process(1.0)
+ check(scene.orbit_focus.distance_to(scene.resident.position+Vector3(0,1,0))<0.001,"Follow settles on the moving resident")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"mode":"overview","resetZoom":true}}))
  var rig=scene.resident.model.rig
  scene.resident.set_physics_process(false)
@@ -324,7 +351,45 @@ func run():
  scene._input(second_touch)
  scene._physics_process(0.6)
  check(not scene.pointer_down and not messages.any(func(message): return message.type=="selected"),"A second finger cancels object pickup")
+ var pinch_start_zoom=scene.camera_base_size()*scene.zoom
+ var pinch_drag=InputEventScreenDrag.new()
+ pinch_drag.index=1
+ pinch_drag.position=second_touch.position+Vector2(90,0)
+ scene._input(pinch_drag)
+ check(scene.camera_base_size()*scene.zoom<pinch_start_zoom,"Spreading two fingers zooms in")
+ scene._process(1.0/60.0)
+ check(scene.yaw==camera_yaw,"Pinch never rotates the world")
+ var third_touch=InputEventScreenTouch.new()
+ third_touch.index=2
+ third_touch.position=cottage_point+Vector2(0,100)
+ third_touch.pressed=true
+ scene._input(third_touch)
+ var three_finger_zoom=scene.zoom
+ scene._input(pinch_drag)
+ check(scene.zoom==three_finger_zoom,"A third finger suspends the pinch")
+ third_touch.pressed=false
+ scene._input(third_touch)
+ scene._input(pinch_drag)
+ check(scene.zoom==three_finger_zoom,"Returning to two fingers resets the pinch baseline without jumping")
+ second_touch.pressed=false
+ scene._input(second_touch)
+ scene._input(motion)
+ touch.pressed=false
+ scene._input(touch)
+ scene._physics_process(0.016)
+ check(not messages.any(func(message): return message.type in ["selected","visited","placementIntent"]),"The remaining pinch finger cannot visit, pick up or place")
  scene.receive_host_json(JSON.stringify(command))
+ var draft_before_pinch=scene.preview_cell
+ touch.pressed=true
+ scene._input(touch)
+ second_touch.pressed=true
+ scene._input(second_touch)
+ scene._input(pinch_drag)
+ second_touch.pressed=false
+ scene._input(second_touch)
+ touch.pressed=false
+ scene._input(touch)
+ check(scene.preview_cell==draft_before_pinch,"Pinching with a selected piece never moves its draft")
  var home_before=scene.data.find("cottage").cell
  check(is_instance_valid(scene.presentation.preview_item),"Selection shows the actual moving piece")
  check(not scene.presentation.nodes.cottage.visible,"Only one visible cottage during placement")
@@ -359,13 +424,16 @@ func run():
  check(scene.data.items.size()==old_count,"Malformed snapshots must leave committed state intact")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"lifecycle","payload":{"paused":true}}))
  check(scene.paused and not scene.resident.is_physics_processing(),"Background must pause simulation")
+ check(scene.touches.is_empty() and not scene.multitouch and not scene.pointer_down,"Pausing releases every gesture so reopening cannot resume a stale drag")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"lifecycle","payload":{"paused":true,"previewing":true}}))
  var preview_position=scene.resident.position
  var preview_rig=scene.resident.model.rig
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"mode":"detail","framing":0.22}}))
  check(scene.process_mode==Node.PROCESS_MODE_INHERIT and RenderingServer.render_loop_enabled,"An on-map editor must render its preview while simulation stays paused")
  scene._process(1.0/60.0)
- check(scene.camera.size<4.0 and scene.camera.h_offset>0.0,"Editor focuses the real character beside the panel")
+ check(is_equal_approx(scene.camera.size,3.8/0.78) and scene.camera.h_offset==0.0 and scene.camera.v_offset<0.0,"Editor reserves bottom space and keeps the character above the horizontal panel")
+ var visible_character=scene.camera.unproject_position(scene.resident.position+Vector3(0,1,0))
+ check(visible_character.y<scene.get_viewport().get_visible_rect().size.y*0.5,"Character stays in the exposed upper map")
  check(scene.resident.position==preview_position and not scene.resident.is_physics_processing() and scene.resident.model.rig==preview_rig,"Preview must not move residents or replace the rig")
  check(scene.resident.process_mode==Node.PROCESS_MODE_DISABLED and scene.presentation.process_mode==Node.PROCESS_MODE_DISABLED,"Preview must freeze descendant animations as well as simulation")
  scene.camera_preview_frames=0
