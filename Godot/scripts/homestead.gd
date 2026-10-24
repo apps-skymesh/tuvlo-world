@@ -151,13 +151,15 @@ func receive_host_json(json: String):
   session=packet.session
   var wins=int(payload.get("approvedWins",0))
   var growth=0 if wins<3 else (1 if wins<13 else 2)
-  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55])
+  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges])
   data.items=next_data.items
   data.inventory=next_data.inventory
   data.land_sides=next_data.land_sides
   data.approvals=next_data.approvals
   data.growth_tree_id=next_data.growth_tree_id
   data.discovered=next_data.discovered
+  data.harvest=next_data.harvest
+  data.edges=next_data.edges
   reduced_motion=payload.get("reducedMotion",false)==true
   diagnostics=payload.get("diagnostics",false)==true
   if signature!=layout_signature:
@@ -166,6 +168,7 @@ func receive_host_json(json: String):
    navigation.rebuild(data)
    resident.world_changed()
    if is_instance_valid(creature): creature.world_changed()
+  presentation.update_harvest()
   if changing_child:
    resident.route.clear()
    resident.state="pause"
@@ -508,6 +511,14 @@ func object_at_screen(point: Vector2) -> Dictionary:
  var cell=ground_cell(point)
  return {} if cell==null else data.item_at(cell)
 
+# Edge woods/quarry and their bubbles carry a producer name, never an item.
+func producer_at_screen(point: Vector2) -> String:
+ var from=camera.project_ray_origin(point)
+ var query=PhysicsRayQueryParameters3D.create(from,from+camera.project_ray_normal(point)*100,1)
+ var result=get_world_3d().direct_space_state.intersect_ray(query)
+ if result.is_empty(): return ""
+ return str(result.collider.get_meta("producer_id",""))
+
 func advance_hold(delta: float):
  if not pointer_down or press_cancelled or hold_emitted or selected_id!="": return
  press_elapsed+=delta
@@ -532,8 +543,10 @@ func _physics_process(delta):
  if pending_visit!=null:
   var point: Vector2=pending_visit
   pending_visit=null
-  var item=object_at_screen(point)
-  if not item.is_empty(): emit_message("visited",{"id":item.id})
+  var producer=producer_at_screen(point)
+  var item={} if producer!="" else object_at_screen(point)
+  if producer!="": emit_message("gather",{"producer":producer})
+  elif not item.is_empty(): emit_message("visited",{"id":item.id})
   else:
    var cell=ground_cell(point)
    if cell!=null:
@@ -590,6 +603,9 @@ func _process(delta):
   if not item.is_empty():
    focus=HomesteadItems.item_center(item)+Vector3(0,0.7,0)
    size=9.0*zoom
+  elif focus_item_id.begins_with("edge:") and HomesteadItems.EDGE_CENTERS.has(focus_item_id.substr(5)):
+   focus=HomesteadItems.EDGE_CENTERS[focus_item_id.substr(5)]+Vector3(0,0.7,0)
+   size=10.0*zoom
  elif camera_mode=="home":
   for item in data.items:
    if item.kind=="cottage":
@@ -627,6 +643,8 @@ func overview_points() -> Array[Vector3]:
  var regions=[{"center":HomesteadItems.BASE_LAND_CENTER,"size":HomesteadItems.BASE_LAND_SIZE}]
  for center in HomesteadItems.LAND_CENTERS.values(): regions.append({"center":center,"size":HomesteadItems.PLOT_SIZE})
  if "east" in data.land_sides: regions.append({"center":HomesteadItems.LAND_CENTERS.east+Vector3(0,0,-5.48),"size":Vector2(10.35,1.02)})
+ if data.edges:
+  for center in HomesteadItems.EDGE_CENTERS.values(): regions.append({"center":center,"size":HomesteadItems.EDGE_SIZE})
  for region in regions:
   var half_size=region.size*0.5
   for x in [-half_size.x,half_size.x]:

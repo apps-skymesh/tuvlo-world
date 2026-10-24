@@ -12,6 +12,9 @@ const BASE_LAND_SIZE=Vector2(20.7,20.7)
 const BASE_LAND_CENTER=Vector3(1,0,2)
 const PLOT_SIZE=Vector2(10.5,10.5)
 const LAND_CENTERS={"north":Vector3(-4,0,-13),"east":Vector3(16,0,-3),"west":Vector3(-14,0,-3)}
+# Fixed producer scenery beside the clearing: never buildable or walkable.
+const EDGE_CENTERS={"woods":Vector3(-14.2,0,6.4),"quarry":Vector3(16.2,0,6.4)}
+const EDGE_SIZE=Vector2(8,7)
 
 const DEFINITIONS={
 	"windmill":{"title":"Windmill","size":Vector2i(3,3),"blocks":true,"height":4.1,"color":"d9c8a5"},

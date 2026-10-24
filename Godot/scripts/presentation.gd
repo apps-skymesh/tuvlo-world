@@ -20,6 +20,9 @@ var grid_visible=false
 var visual_revision=0
 var land_signature=""
 var land_waters: Array[ShaderMaterial]=[]
+var harvest_root: Node3D
+var bubbles: Array[Node3D]=[]
+const BUBBLE_SHADER=preload("res://scripts/harvest_bubble.gdshader")
 
 func setup(world_data: HomesteadWorldData):
 	data=world_data
@@ -29,12 +32,15 @@ func setup(world_data: HomesteadWorldData):
 	add_child(prop_root)
 	grid_root=Node3D.new()
 	add_child(grid_root)
+	harvest_root=Node3D.new()
+	harvest_root.name="Harvest"
+	add_child(harvest_root)
 	rebuild()
 
 func rebuild():
 	# Layout commits move existing roots. Rebuild artwork only when its style,
 	# rotation or earned growth changed; UI work must not recreate the island.
-	var next_land=JSON.stringify(data.land_sides)
+	var next_land=JSON.stringify([data.land_sides,data.edges])
 	if next_land!=land_signature:
 		for child in land_root.get_children():
 			land_root.remove_child(child)
@@ -157,6 +163,112 @@ func build_island():
 			for point in [Vector2(-3.1,-2.3),Vector2(2.7,-1.8),Vector2(-1.8,3.2)]:
 				HomesteadMesh.ellipsoid(patch,Vector3(point.x,0.12,point.y),Vector3(0.5,0.22,0.4),"7e8b6e")
 		HomesteadStaticBatcher.consolidate(patch,[])
+	if data.edges:
+		woods_edge()
+		quarry_edge()
+
+func edge_patch(producer: String) -> Node3D:
+	var patch=Node3D.new()
+	patch.name="Edge_"+producer
+	land_root.add_child(patch)
+	patch.position=HomesteadItems.EDGE_CENTERS[producer]
+	terrain_surface(patch,HomesteadMesh.rounded_outline(HomesteadItems.EDGE_SIZE.x,HomesteadItems.EDGE_SIZE.y,1.6))
+	var body=StaticBody3D.new()
+	patch.add_child(body)
+	body.set_meta("producer_id",producer)
+	body.collision_layer=1
+	body.collision_mask=0
+	var collider=CollisionShape3D.new()
+	body.add_child(collider)
+	var shape=BoxShape3D.new()
+	shape.size=Vector3(HomesteadItems.EDGE_SIZE.x,2.6,HomesteadItems.EDGE_SIZE.y)
+	collider.shape=shape
+	collider.position.y=1.3
+	return patch
+
+func woods_edge():
+	# A small stand of trees and a log pile: the woods make wood.
+	var patch=edge_patch("woods")
+	var spots=[Vector3(-2.6,0,-1.8),Vector3(-0.9,0,-2.3),Vector3(1.0,0,-1.9),Vector3(2.7,0,-1.2),Vector3(-2.9,0,0.6),Vector3(2.9,0,1.3),Vector3(-1.6,0,2.0)]
+	for i in spots.size():
+		var holder=Node3D.new()
+		patch.add_child(holder)
+		holder.position=spots[i]
+		holder.scale=Vector3.ONE*(0.85+0.12*(i%3))
+		holder.rotation.y=i*1.3
+		tree(holder,false)
+	var pile=Node3D.new()
+	patch.add_child(pile)
+	pile.position=Vector3(0.3,0,0.9)
+	for row in 2:
+		for i in (3-row):
+			var log_node=HomesteadMesh.cylinder(pile,Vector3(-0.32+i*0.32+row*0.16,0.16+row*0.27,0),0.15,1.3,"9b7254")
+			log_node.rotation.z=PI/2
+			HomesteadMesh.cylinder(pile,Vector3(-0.32+i*0.32+row*0.16,0.16+row*0.27,0.655),0.13,0.012,"e2c48f").rotation.x=PI/2
+	HomesteadMesh.box(pile,Vector3(1.1,0.22,0.25),Vector3(0.5,0.44,0.5),"8b6a4e",0.05)
+	HomesteadMesh.rod(pile,Vector3(1.05,0.44,0.25),Vector3(1.25,0.95,0.15),0.03,"a47c58")
+	HomesteadMesh.box(pile,Vector3(1.28,0.98,0.14),Vector3(0.24,0.12,0.05),"9aa3a0",0.02)
+	HomesteadStaticBatcher.consolidate(patch,[])
+
+func quarry_edge():
+	# A low cliff of pale rock with cut blocks: the quarry makes stone.
+	var patch=edge_patch("quarry")
+	var boulders=[[Vector3(-2.2,0.55,-1.9),Vector3(1.3,0.9,1.0),"a7afa2"],[Vector3(-0.4,0.75,-2.2),Vector3(1.4,1.15,1.0),"b5bcae"],[Vector3(1.6,0.6,-2.0),Vector3(1.2,0.85,0.95),"9ea69a"],[Vector3(2.9,0.4,-0.9),Vector3(0.8,0.6,0.8),"b0b7a9"],[Vector3(-3.0,0.35,0.4),Vector3(0.7,0.45,0.6),"a3ab9e"]]
+	for spec in boulders:
+		var rock=HomesteadMesh.ellipsoid(patch,spec[0],spec[1],spec[2])
+		rock.rotation.y=spec[0].x*0.7
+	for i in 4:
+		HomesteadMesh.box(patch,Vector3(-0.8+i*0.55,0.2,0.6+(i%2)*0.3),Vector3(0.48,0.4,0.4),"c9ccc0" if i%2 else "bfc3b6",0.04)
+	HomesteadMesh.box(patch,Vector3(-0.53,0.6,0.75),Vector3(0.48,0.4,0.4),"d1d3c8",0.04)
+	HomesteadMesh.rod(patch,Vector3(1.6,0.0,1.4),Vector3(1.9,0.9,1.2),0.035,"a47c58")
+	HomesteadMesh.ellipsoid(patch,Vector3(1.95,0.95,1.2),Vector3(0.16,0.1,0.08),"8b9391")
+	HomesteadStaticBatcher.consolidate(patch,[])
+
+func harvest_anchor(key: String) -> Variant:
+	if HomesteadItems.EDGE_CENTERS.has(key): return HomesteadItems.EDGE_CENTERS[key]+Vector3(0,3.9 if key=="woods" else 3.0,0)
+	if key=="waterside": return HomesteadItems.LAND_CENTERS.east+Vector3(0,1.6,-3.6)
+	if nodes.has(key):
+		var item=data.find(key)
+		if item.is_empty(): return null
+		var height: float=HomesteadItems.DEFINITIONS[item.kind].height
+		return HomesteadItems.item_center(item)+Vector3(0,height+1.0,0)
+	return null
+
+# Bubbles mirror the host's ready materials; tapping one routes like its place.
+func update_harvest():
+	for bubble in bubbles:
+		harvest_root.remove_child(bubble)
+		bubble.queue_free()
+	bubbles.clear()
+	for key in data.harvest:
+		var anchor=harvest_anchor(key)
+		if anchor==null: continue
+		var bubble=Node3D.new()
+		harvest_root.add_child(bubble)
+		bubble.position=anchor
+		bubble.set_meta("anchor",anchor)
+		var quad=QuadMesh.new()
+		quad.size=Vector2(1.7,1.7)
+		var face=MeshInstance3D.new()
+		face.mesh=quad
+		face.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var material=ShaderMaterial.new()
+		material.shader=BUBBLE_SHADER
+		material.set_shader_parameter("kind",["wood","stone","food"].find(data.harvest[key]))
+		face.material_override=material
+		bubble.add_child(face)
+		var body=StaticBody3D.new()
+		bubble.add_child(body)
+		if nodes.has(key): body.set_meta("item_id",key)
+		else: body.set_meta("producer_id",key)
+		body.collision_layer=1
+		body.collision_mask=0
+		var collider=CollisionShape3D.new()
+		var sphere=SphereShape3D.new()
+		sphere.radius=0.9
+		collider.shape=sphere
+		body.add_child(collider)
+		bubbles.append(bubble)
 
 func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 	var root=Node3D.new()
@@ -585,6 +697,10 @@ func _process(delta):
 			var camera=get_viewport().get_camera_3d()
 			if camera and not camera.is_position_behind(pivot.global_position) and camera.unproject_position(pivot.global_position).x>=0 and get_viewport().get_visible_rect().has_point(camera.unproject_position(pivot.global_position)):
 				pivot.rotation.z+=delta*0.12
+	for i in bubbles.size():
+		var bubble=bubbles[i]
+		if is_instance_valid(bubble):
+			bubble.position=bubble.get_meta("anchor")+Vector3(0,0.0 if reduced_motion else sin(clock*2.2+i*1.3)*0.12,0)
 	for water in waters:
 		water.set_shader_parameter("clock",clock)
 		water.set_shader_parameter("motion",0.0 if reduced_motion else 1.0)

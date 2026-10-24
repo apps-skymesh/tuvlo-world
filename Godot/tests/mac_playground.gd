@@ -61,7 +61,8 @@ func reset(equipped: bool):
   {"id":"cottage","kind":"cottage","cell":{"x":3,"z":2},"rotation":0},
   {"id":"garden","kind":"garden","cell":{"x":3,"z":7},"rotation":0},
   {"id":"tree","kind":"tree","cell":{"x":11,"z":3},"rotation":0}],
-  "land":[],"appearance":{"hair":3,"outfit":0},"approvedWins":21,"growthTreeID":"tree"}
+  "land":[],"appearance":{"hair":3,"outfit":0},"approvedWins":21,"growthTreeID":"tree",
+  "edges":true,"harvest":{"woods":"wood","quarry":"stone","garden":"food"}}
  for z in range(5,10): payload.items.append({"id":"path-%d"%z,"kind":"path","cell":{"x":7,"z":z},"rotation":0})
  if cottage_slice:
   payload.items=[
@@ -140,6 +141,13 @@ func on_message(raw: String):
   events.append({"seconds":snapped(elapsed,0.01),"state":world.resident.state,"destination":world.resident.destination_kind})
  if message.type=="selected": send("select",{"id":message.payload.id,"fromHold":message.payload.get("gesture","")=="hold"})
  if message.type=="visited": send("visit",{"id":message.payload.id})
+ # Disposable collect: the bubble leaves; nothing is saved.
+ for key in ["visited","gather"]:
+  if message.type==key:
+   var id=message.payload.get("id",message.payload.get("producer",""))
+   if payload.harvest.has(id):
+    payload.harvest.erase(id)
+    snapshot()
  if message.type=="placementIntent":
   for item in payload.items:
    if item.id==message.payload.id:

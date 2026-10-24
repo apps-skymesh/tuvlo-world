@@ -9,6 +9,11 @@ var land_sides: Array[String] = []
 var discovered := false
 var approvals := 0
 var growth_tree_id=""
+# Ready materials by scene key (piece ID or edge producer). Display only.
+var harvest: Dictionary = {}
+var edges := false
+const HARVEST_MATERIALS=["wood","stone","food"]
+const EDGE_PRODUCERS=["woods","quarry","waterside"]
 
 func apply_snapshot(raw: Dictionary) -> bool:
  var next: Array[Dictionary] = []
@@ -36,7 +41,15 @@ func apply_snapshot(raw: Dictionary) -> bool:
  for side in raw.get("land", []):
   if side not in ["east", "west", "north"]: return false
   if side not in lands: lands.append(side)
+ var ready := {}
+ var raw_harvest = raw.get("harvest", {})
+ if not raw_harvest is Dictionary or raw_harvest.size() > 32: return false
+ for key in raw_harvest:
+  if not key is String or key.length() > 64 or not raw_harvest[key] in HARVEST_MATERIALS: return false
+  if key in EDGE_PRODUCERS or ids.has(key): ready[key] = raw_harvest[key]
  items = next
+ harvest = ready
+ edges = raw.get("edges", false) == true
  inventory = unplaced
  land_sides = lands
  discovered = raw.get("discovered", false) == true
