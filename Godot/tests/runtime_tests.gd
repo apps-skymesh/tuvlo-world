@@ -422,12 +422,21 @@ func run():
  payload.items=[{"id":"invalid","kind":"currency-grant","cell":{"x":0,"z":0}}]
  scene.receive_host_json(JSON.stringify(packet))
  check(scene.data.items.size()==old_count,"Malformed snapshots must leave committed state intact")
+ scene.reduced_motion=false
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"mode":"follow","resetZoom":true}}))
+ scene._process(1.0/60.0)
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"lifecycle","payload":{"paused":true}}))
  check(scene.paused and not scene.resident.is_physics_processing(),"Background must pause simulation")
  check(scene.touches.is_empty() and not scene.multitouch and not scene.pointer_down,"Pausing releases every gesture so reopening cannot resume a stale drag")
+ var held_transform=scene.camera.transform
+ var held_size=scene.camera.size
+ var held_focus=scene.orbit_focus
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"lifecycle","payload":{"paused":true,"previewing":true}}))
+ for frame in 30: scene._process(1.0/60.0)
+ check(scene.camera.transform==held_transform and scene.camera.size==held_size and scene.orbit_focus==held_focus,"Opening a menu holds even an in-progress Follow transition without changing map position, zoom or focus")
  var preview_position=scene.resident.position
  var preview_rig=scene.resident.model.rig
+ scene.reduced_motion=true
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"mode":"detail","framing":0.22}}))
  check(scene.process_mode==Node.PROCESS_MODE_INHERIT and RenderingServer.render_loop_enabled,"An on-map editor must render its preview while simulation stays paused")
  scene._process(1.0/60.0)

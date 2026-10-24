@@ -14,6 +14,7 @@ var focus_item_id=""
 var panel_framing=0.0
 var camera_preview_frames=0
 var panel_preview=false
+var hold_menu_camera=true
 const FIXED_YAW=0.25
 const MIN_CAMERA_SIZE=3.4
 var yaw=FIXED_YAW
@@ -197,6 +198,7 @@ func receive_host_json(json: String):
    land_preview=show
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "camera":
+   hold_menu_camera=false # Only an explicit camera action may move a paused view.
    camera_preview_frames=1 if reduced_motion else 90
    if paused and panel_preview:
     process_mode=Node.PROCESS_MODE_INHERIT
@@ -255,7 +257,8 @@ func set_paused(value: bool, previewing: bool=false):
  var was_paused=paused
  paused=value
  panel_preview=value and previewing
- camera_preview_frames=(1 if reduced_motion else 90) if panel_preview else 0
+ if value and not was_paused: hold_menu_camera=true
+ camera_preview_frames=(1 if reduced_motion or hold_menu_camera else 90) if panel_preview else 0
  if value:
   touches.clear()
   multitouch=false
@@ -562,6 +565,8 @@ func _process(delta):
  presentation.reduced_motion=reduced_motion
  resident.reduced_motion=reduced_motion
  if is_instance_valid(creature): creature.reduced_motion=reduced_motion
+ # Menus may redraw appearance/highlights without changing the held map view.
+ if paused and hold_menu_camera and camera_initialized: return
  var viewport=get_viewport().get_visible_rect().size
  var aspect=viewport.x/maxf(1,viewport.y)
  var immediate=reduced_motion or not camera_initialized
