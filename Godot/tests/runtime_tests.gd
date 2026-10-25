@@ -19,6 +19,53 @@ func run():
  var packet={"version":1,"session":"test-child-session","type":"snapshot","payload":payload}
  scene.receive_host_json(JSON.stringify(packet))
  check(scene.data.items.size()==4,"Host snapshot must replace empty scene")
+ # Display-only production validation, cached markers and lifecycle contract.
+ var production_payload=payload.duplicate(true)
+ production_payload.items.append({"id":"mill","kind":"windmill","cell":{"x":13,"z":13},"rotation":0})
+ production_payload.production=[{"placeID":"mill","station":"mill","good":"flour","state":1,"remaining":45,"progress":0.0}]
+ var production_data=HomesteadWorldData.new()
+ check(production_data.apply_snapshot(production_payload),"Placed mill accepts display-only flour status")
+ check(HomesteadWorldData.new().apply_snapshot(JSON.parse_string(JSON.stringify(production_payload))),"Production accepts host JSON numeric types")
+ var invalid_production=production_payload.duplicate(true)
+ invalid_production.production[0].placeID="garden"
+ check(not production_data.apply_snapshot(invalid_production),"A production marker cannot impersonate another kind of place")
+ invalid_production=production_payload.duplicate(true)
+ invalid_production.production[0].good="meal"
+ check(not production_data.apply_snapshot(invalid_production),"Mill output must be flour")
+ invalid_production=production_payload.duplicate(true)
+ invalid_production.production[0].progress=2.0
+ check(not production_data.apply_snapshot(invalid_production),"Invalid progress is rejected")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":production_payload}))
+ var mill_badge=scene.presentation.production_nodes.mill
+ var mill_art=scene.presentation.nodes.mill
+ var sail=scene.presentation.sails[0]
+ scene.camera.global_position=scene.presentation.nodes.mill.global_position+Vector3(0,10,15)
+ scene.camera.look_at(sail.global_position)
+ var sail_angle=sail.rotation.z
+ scene.presentation._process(1.0)
+ check(sail.rotation.z>sail_angle,"An active mill visibly works")
+ production_payload.production[0].remaining=22
+ production_payload.production[0].progress=0.5
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":production_payload}))
+ check(scene.presentation.production_nodes.mill==mill_badge and scene.presentation.nodes.mill==mill_art,"Timer ticks reuse badge and building resources")
+ scene.set_paused(true,true)
+ check(scene.production_preview_active() and scene.presentation.is_processing() and not scene.resident.is_physics_processing(),"Menu keeps production moving while residents stay paused")
+ scene.reduced_motion=true
+ scene.set_paused(true,true)
+ check(not scene.production_preview_active() and not scene.presentation.is_processing(),"Reduce Motion uses static production states")
+ scene.reduced_motion=false
+ production_payload.production[0].state=2
+ production_payload.production[0].remaining=0
+ production_payload.production[0].progress=1.0
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":production_payload}))
+ sail_angle=sail.rotation.z
+ scene.presentation._process(1.0)
+ check(sail.rotation.z==sail_angle,"A ready mill stops turning until another batch starts")
+ scene.set_paused(true,false)
+ check(not RenderingServer.render_loop_enabled,"Background always stops production rendering")
+ scene.receive_host_json(JSON.stringify(packet))
+ scene.set_paused(false)
+ check(scene.presentation.production_nodes.is_empty(),"Family snapshots remove disposable production markers")
  var original_cottage=scene.presentation.nodes.cottage
  var original_island=scene.presentation.land_root.get_child(0)
  scene.data.items[1].cell.x+=1

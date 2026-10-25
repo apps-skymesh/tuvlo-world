@@ -14,6 +14,11 @@ var harvest: Dictionary = {}
 var edges := false
 var visitor := ""
 var wheat_garden := false
+var farm_stages: Array = []
+var farm_fruit_stage := -1
+var production: Array[Dictionary] = []
+const STATION_KINDS={"field":"garden","mill":"windmill","oven":"cottage","pantry":"cottage","orchard":"orchard"}
+const STATION_GOODS={"field":["wheat"],"mill":["flour"],"oven":["bread","tart"],"pantry":["meal"],"orchard":["fruit"]}
 const HARVEST_MATERIALS=["wood","stone","food","wheat"]
 const EDGE_PRODUCERS=["woods","quarry","waterside"]
 
@@ -52,6 +57,43 @@ func apply_snapshot(raw: Dictionary) -> bool:
  var next_visitor=raw.get("visitor", "")
  if next_visitor not in ["", "baker", "storyteller"]: return false
  visitor=next_visitor
+ var stages=raw.get("farmStages",[])
+ if stages == null: stages=[]
+ if not stages is Array or stages.size() not in [0,2]: return false
+ for stage in stages:
+  if not (stage is int or stage is float) or int(stage) < 0 or int(stage) > 4: return false
+ farm_stages=stages
+ var fruit_stage=raw.get("farmFruitStage",-1)
+ if fruit_stage == null: fruit_stage=-1
+ if not (fruit_stage is int or fruit_stage is float) or int(fruit_stage) < -1 or int(fruit_stage) > 2: return false
+ farm_fruit_stage=int(fruit_stage)
+ var next_production: Array[Dictionary]=[]
+ var raw_production=raw.get("production",[])
+ if not raw_production is Array or raw_production.size()>5: return false
+ var stations={}
+ for status in raw_production:
+  if not status is Dictionary: return false
+  var station=status.get("station","")
+  if not station is String or not STATION_KINDS.has(station) or stations.has(station): return false
+  if status.get("good","") not in STATION_GOODS[station]: return false
+  var place_id=status.get("placeID","")
+  if not place_id is String: return false
+  var placed=false
+  for item in next:
+   if item.id==place_id and item.kind==STATION_KINDS[station]: placed=true
+  if not placed: return false
+  for key in ["state","remaining","progress"]:
+   if not (status.get(key) is int or status.get(key) is float) or not is_finite(float(status[key])): return false
+  # JSON numbers arrive as floats; normalize integral enum/count fields before use.
+  var state=int(status.state)
+  var remaining=int(status.remaining)
+  if state!=status.state or state not in [0,1,2] or remaining!=status.remaining or remaining<0 or remaining>86400 or status.progress<0 or status.progress>1: return false
+  stations[station]=true
+  var normalized=status.duplicate()
+  normalized.state=state
+  normalized.remaining=remaining
+  next_production.append(normalized)
+ production=next_production
  wheat_garden=raw.get("wheatGarden",false)==true
  items = next
  harvest = ready

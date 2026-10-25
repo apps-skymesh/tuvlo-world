@@ -153,7 +153,7 @@ func receive_host_json(json: String):
   session=packet.session
   var wins=int(payload.get("approvedWins",0))
   var growth=0 if wins<3 else (1 if wins<13 else 2)
-  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat")])
+  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage])
   data.items=next_data.items
   data.inventory=next_data.inventory
   data.land_sides=next_data.land_sides
@@ -164,7 +164,11 @@ func receive_host_json(json: String):
   data.edges=next_data.edges
   data.visitor=next_data.visitor
   data.wheat_garden=next_data.wheat_garden
+  data.production=next_data.production
+  data.farm_stages=next_data.farm_stages
+  data.farm_fruit_stage=next_data.farm_fruit_stage
   reduced_motion=payload.get("reducedMotion",false)==true
+  presentation.reduced_motion=reduced_motion
   diagnostics=payload.get("diagnostics",false)==true
   if signature!=layout_signature:
    layout_signature=signature
@@ -279,7 +283,7 @@ func set_paused(value: bool, previewing: bool=false):
  process_mode=Node.PROCESS_MODE_INHERIT if not value or panel_preview else Node.PROCESS_MODE_DISABLED
  RenderingServer.render_loop_enabled=not value or panel_preview
  resident.process_mode=Node.PROCESS_MODE_DISABLED if paused or selected_id!="" else Node.PROCESS_MODE_INHERIT
- presentation.process_mode=Node.PROCESS_MODE_DISABLED if paused else Node.PROCESS_MODE_INHERIT
+ presentation.process_mode=Node.PROCESS_MODE_DISABLED if paused and not production_preview_active() else Node.PROCESS_MODE_INHERIT
  if is_instance_valid(creature): creature.process_mode=Node.PROCESS_MODE_DISABLED if paused or selected_id!="" else Node.PROCESS_MODE_INHERIT
  resident.set_physics_process(not paused and session!="" and selected_id=="")
  resident.model.set_process(not paused and selected_id=="")
@@ -287,7 +291,7 @@ func set_paused(value: bool, previewing: bool=false):
   guest.process_mode=Node.PROCESS_MODE_DISABLED if paused or selected_id!="" else Node.PROCESS_MODE_INHERIT
   guest.set_physics_process(not paused and session!="" and selected_id=="")
   guest.model.set_process(not paused and selected_id=="")
- presentation.set_process(not paused)
+ presentation.set_process(not paused or production_preview_active())
  if is_instance_valid(creature): creature.set_physics_process(not paused and selected_id=="")
  if was_paused and not paused and selected_id!="": update_preview()
 
@@ -308,9 +312,15 @@ func clear_host_session():
  data.discovered=false
  data.visitor=""
  data.wheat_garden=false
+ data.production.clear()
+ data.harvest={}
+ data.edges=false
+ data.farm_stages=[]
+ data.farm_fruit_stage=-1
  update_guest()
  presentation.clear_preview()
  presentation.rebuild()
+ presentation.update_harvest()
  navigation.rebuild(data)
  resident.route.clear()
  resident.target_id=""
@@ -532,6 +542,22 @@ func producer_at_screen(point: Vector2) -> String:
  if result.is_empty(): return ""
  return str(result.collider.get_meta("producer_id",""))
 
+func production_at_screen(point: Vector2) -> Dictionary:
+ var from=camera.project_ray_origin(point)
+ var query=PhysicsRayQueryParameters3D.create(from,from+camera.project_ray_normal(point)*100,1)
+ var result=get_world_3d().direct_space_state.intersect_ray(query)
+ if result.is_empty(): return {}
+ var station=str(result.collider.get_meta("production_station",""))
+ for status in data.production:
+  if status.station==station: return status
+ return {}
+
+func production_preview_active() -> bool:
+ if not panel_preview or reduced_motion: return false
+ for status in data.production:
+  if status.state==1: return true
+ return false
+
 func advance_hold(delta: float):
  if not pointer_down or press_cancelled or hold_emitted or selected_id!="": return
  press_elapsed+=delta
@@ -552,13 +578,15 @@ func _physics_process(delta):
   var point: Vector2=pending_pick
   pending_pick=null
   var item=object_at_screen(point)
-  if pointer_down and not press_cancelled: hold_candidate=str(item.get("id",""))
+  if pointer_down and not press_cancelled: hold_candidate=str(item.get("id","")) if production_at_screen(point).is_empty() else ""
  if pending_visit!=null:
   var point: Vector2=pending_visit
   pending_visit=null
+  var production_status=production_at_screen(point)
   var producer=producer_at_screen(point)
   var item={} if producer!="" else object_at_screen(point)
-  if producer!="": emit_message("gather",{"producer":producer})
+  if not production_status.is_empty(): emit_message("productionRequested",{"station":production_status.station,"id":production_status.placeID})
+  elif producer!="": emit_message("gather",{"producer":producer})
   elif not item.is_empty(): emit_message("visited",{"id":item.id})
   else:
    var cell=ground_cell(point)
@@ -575,11 +603,11 @@ func unowned_land_at(cell: Vector2i) -> String:
 func _process(delta):
  if session=="": return
  if paused:
-  if not panel_preview or camera_preview_frames<=0:
+  if not panel_preview or (camera_preview_frames<=0 and not production_preview_active()):
    process_mode=Node.PROCESS_MODE_DISABLED
    RenderingServer.render_loop_enabled=false
    return
-  camera_preview_frames-=1
+  camera_preview_frames=maxi(0,camera_preview_frames-1)
  # Native overlay windows pause residents, not the camera/appearance preview.
  if not paused:
   clock+=delta

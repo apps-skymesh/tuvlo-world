@@ -22,6 +22,10 @@ var land_signature=""
 var land_waters: Array[ShaderMaterial]=[]
 var harvest_root: Node3D
 var bubbles: Array[Node3D]=[]
+var production_root: Node3D
+var production_nodes: Dictionary={}
+var production_effects: Dictionary={}
+var harvest_signature=""
 const BUBBLE_SHADER=preload("res://scripts/harvest_bubble.gdshader")
 
 func setup(world_data: HomesteadWorldData):
@@ -33,6 +37,9 @@ func setup(world_data: HomesteadWorldData):
 	grid_root=Node3D.new()
 	add_child(grid_root)
 	harvest_root=Node3D.new()
+	production_root=Node3D.new()
+	production_root.name="Production"
+	add_child(production_root)
 	harvest_root.name="Harvest"
 	add_child(harvest_root)
 	rebuild()
@@ -62,7 +69,7 @@ func rebuild():
 			nodes.erase(id)
 	for item in data.items:
 		var growth=(0 if data.approvals<3 else 1 if data.approvals<13 else 2) if item.kind=="tree" and item.id==data.growth_tree_id else -1
-		var signature=JSON.stringify([item.kind,item.rotation,item.get("style",0),growth,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat")] if item.kind=="garden" else []])
+		var signature=JSON.stringify([item.kind,item.rotation,item.get("style",0),growth,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat"),data.farm_stages] if item.kind=="garden" else data.farm_fruit_stage if item.kind=="orchard" else []])
 		if nodes.has(item.id):
 			var existing: Node3D=nodes[item.id]
 			if existing.get_meta("art_signature","")==signature:
@@ -85,6 +92,7 @@ func rebuild():
 		if item.kind=="cottage" and data.approvals>=34:
 			for x in [-1.4,1.4]:
 				HomesteadMesh.box(root,Vector3(x,1.5,1.35),Vector3(0.18,0.28,0.18),"edc577",0.03)
+		for pivot in sails.slice(sails_start): pivot.set_meta("item_id",item.id)
 		HomesteadStaticBatcher.consolidate(root,foliage+sails)
 		nodes[item.id]=root
 		var size=HomesteadItems.footprint(item.kind,item.rotation)
@@ -236,6 +244,12 @@ func harvest_anchor(key: String) -> Variant:
 
 # Bubbles mirror the host's ready materials; tapping one routes like its place.
 func update_harvest():
+	update_production()
+	var anchors={}
+	for key in data.harvest: anchors[key]=harvest_anchor(key)
+	var signature=JSON.stringify([data.harvest,anchors])
+	if signature==harvest_signature: return
+	harvest_signature=signature
 	for bubble in bubbles:
 		harvest_root.remove_child(bubble)
 		bubble.queue_free()
@@ -269,6 +283,111 @@ func update_harvest():
 		collider.shape=sphere
 		body.add_child(collider)
 		bubbles.append(bubble)
+
+# Cached badges change uniforms, not island geometry, on the host's one-second tick.
+func update_production():
+	var present={}
+	for status in data.production:
+		var anchor=harvest_anchor(status.placeID)
+		if anchor==null: continue
+		present[status.station]=true
+		var bubble: Node3D=production_nodes.get(status.station)
+		if not is_instance_valid(bubble):
+			bubble=Node3D.new()
+			production_root.add_child(bubble)
+			production_nodes[status.station]=bubble
+			var face=MeshInstance3D.new()
+			var quad=QuadMesh.new()
+			quad.size=Vector2(1.6,1.6)
+			face.mesh=quad
+			face.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var material=ShaderMaterial.new()
+			material.shader=BUBBLE_SHADER
+			face.material_override=material
+			bubble.add_child(face)
+			bubble.set_meta("material",material)
+			var body=StaticBody3D.new()
+			body.set_meta("production_station",status.station)
+			body.collision_layer=1
+			body.collision_mask=0
+			var collider=CollisionShape3D.new()
+			var sphere=SphereShape3D.new()
+			sphere.radius=0.76
+			collider.shape=sphere
+			body.add_child(collider)
+			bubble.add_child(body)
+			var label=Label3D.new()
+			label.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+			label.font_size=40
+			label.pixel_size=0.009
+			label.modulate=Color("263e32")
+			label.outline_modulate=Color("fff3d9")
+			label.outline_size=6
+			label.position.y=-0.93
+			bubble.add_child(label)
+			bubble.set_meta("label",label)
+		var offset=0.0
+		if status.station in ["oven","pantry"]: offset=-1.0 if status.station=="oven" else 1.0
+		var camera=get_viewport().get_camera_3d()
+		bubble.position=anchor+(camera.global_basis.x if camera else Vector3.RIGHT)*offset
+		var material: ShaderMaterial=bubble.get_meta("material")
+		material.set_shader_parameter("kind",["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good))
+		material.set_shader_parameter("production_state",status.state)
+		material.set_shader_parameter("progress",status.progress)
+		var title={"wheat":"Wheat","flour":"Flour","bread":"Bread","meal":"Meals","fruit":"Fruit","tart":"Tart"}[status.good]
+		bubble.get_meta("label").text=title+(" "+str(int(status.remaining))+"s" if status.state==1 else "")
+		# Baking has a quiet physical cue at the authored chimney; packing at the porch.
+		if status.station in ["oven","pantry"]:
+			var effect: Node3D=production_effects.get(status.station)
+			if not is_instance_valid(effect):
+				effect=Node3D.new()
+				production_root.add_child(effect)
+				production_effects[status.station]=effect
+				if status.station=="oven":
+					for i in 3:
+						var puff=HomesteadMesh.ellipsoid(effect,Vector3.ZERO,Vector3.ONE*0.11,"f5ead3")
+						puff.material_override=HomesteadMesh.transparent(Color(0.97,0.93,0.84,0.36))
+						puff.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				else:
+					HomesteadMesh.box(effect,Vector3.ZERO,Vector3(0.44,0.22,0.32),"d5b77c",0.035)
+					var lid=Node3D.new()
+					lid.name="Lid"
+					lid.position=Vector3(0,0.11,-0.16)
+					effect.add_child(lid)
+					HomesteadMesh.box(lid,Vector3(0,0,0.16),Vector3(0.46,0.04,0.34),"f2dfad",0.02)
+					HomesteadMesh.box(lid,Vector3(0,0.025,0.16),Vector3(0.055,0.015,0.34),"63856a",0.005)
+			var item=data.find(status.placeID)
+			var local=Vector3(0.96,4.13,-0.56) if status.station=="oven" else Vector3(-0.65,0.55,1.45)
+			effect.position=HomesteadItems.item_center(item)+local.rotated(Vector3.UP,int(item.rotation)*PI/2)
+			effect.set_meta("working",status.state==1)
+	for station in production_nodes.keys():
+		if not present.has(station):
+			production_root.remove_child(production_nodes[station])
+			production_nodes[station].queue_free()
+			production_nodes.erase(station)
+			if production_effects.has(station):
+				production_root.remove_child(production_effects[station])
+				production_effects[station].queue_free()
+				production_effects.erase(station)
+	update_production_effects()
+
+func station_working(station: String) -> bool:
+	for status in data.production:
+		if status.station==station: return status.state==1
+	return false
+
+func update_production_effects():
+	for station in production_effects:
+		var effect: Node3D=production_effects[station]
+		effect.visible=effect.get_meta("working",false) and not reduced_motion
+		if station=="pantry":
+			effect.get_node("Lid").rotation.x=-0.28*(0.5+0.5*sin(clock*1.5))
+		else:
+			for i in effect.get_child_count():
+				var phase=fmod(clock*0.32+float(i)/3.0,1.0)
+				var puff: Node3D=effect.get_child(i)
+				puff.position=Vector3(sin(phase*PI)*0.13,phase*0.85,0)
+				puff.scale=Vector3.ONE*sin(phase*PI)*1.1
 
 func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 	var root=Node3D.new()
@@ -455,8 +574,9 @@ func orchard(root: Node3D,style=0):
 			HomesteadMesh.rod(root,base+Vector3(0,1.10,0),base+Vector3(side*0.35,1.70,0.04),0.035,"a28a65")
 		for j in 4:
 			var crown=base+Vector3(sin(j*2.2)*0.21,1.78+j*0.13,cos(j*2.2)*0.18)
-			HomesteadMesh.ellipsoid(root,crown,Vector3(0.39,0.44,0.34),leaf_color)
-		for j in 6:
+			var leaves=HomesteadMesh.ellipsoid(root,crown,Vector3(0.39,0.44,0.34),leaf_color)
+			if data.farm_fruit_stage==1: foliage.append(leaves)
+		for j in (6 if data.farm_fruit_stage in [-1,2] else 0):
 			var point=base+Vector3(-0.25+(j%3)*0.25,1.62+(j%3)*0.25,0.57 if j<3 else -0.57)
 			HomesteadMesh.ellipsoid(root,point,Vector3(0.13,0.16 if style==1 else 0.13,0.13),fruit_color)
 			HomesteadMesh.rod(root,point,point+Vector3(0.01,0.14,0),0.012,"8c7757")
@@ -519,15 +639,21 @@ func garden(root: Node3D):
 		for z in [-0.48,0,0.48]:
 			for dx in [-0.24,0.24]:
 				var plant=Vector3(x+dx,0.37,z)
-				if data.wheat_garden:
-					var ripe=data.harvest.values().has("wheat")
-					var height=0.56 if ripe else 0.22
-					var tint="c9a55c" if ripe else "80a965"
-					HomesteadMesh.rod(root,plant,plant+Vector3(0.025,height,0),0.018,tint)
+				var stage=int(data.farm_stages[0 if x<0 else 1]) if data.farm_stages.size()==2 else -1
+				if stage==0: continue
+				if data.wheat_garden or stage>=1:
+					var stalk=Node3D.new()
+					root.add_child(stalk)
+					stalk.position=plant
+					if stage in [2,3]: foliage.append(stalk)
+					var ripe=stage==4 if stage>=0 else data.harvest.values().has("wheat")
+					var height=0.62 if ripe else (0.12 if stage in [1,2] else 0.32)
+					var tint="d8ab3f" if ripe else "5f9e50"
+					HomesteadMesh.rod(stalk,Vector3.ZERO,Vector3(0.025,height,0),0.018,tint)
 					for seed in 3:
 						var y=height-0.06-seed*0.065
 						for side in [-1,1]:
-							var head=HomesteadMesh.ellipsoid(root,plant+Vector3(side*0.045,y,0),Vector3(0.035,0.065,0.025),tint)
+							var head=HomesteadMesh.ellipsoid(stalk,Vector3(side*0.045,y,0),Vector3(0.035,0.065,0.025),tint)
 							head.rotation.z=-side*0.45
 				else:
 					for leaf_index in 4:
@@ -703,14 +829,15 @@ func _process(delta):
 		var plant=foliage[i]
 		if is_instance_valid(plant): plant.rotation.z=sin(clock*0.8+i*1.7)*0.017 if not reduced_motion else 0
 	for pivot in sails:
-		if is_instance_valid(pivot) and not reduced_motion:
+		if is_instance_valid(pivot) and not reduced_motion and (data.production.is_empty() or station_working("mill")):
 			var camera=get_viewport().get_camera_3d()
 			if camera and not camera.is_position_behind(pivot.global_position) and camera.unproject_position(pivot.global_position).x>=0 and get_viewport().get_visible_rect().has_point(camera.unproject_position(pivot.global_position)):
-				pivot.rotation.z+=delta*0.12
+				pivot.rotation.z+=delta*(0.46 if not data.production.is_empty() else 0.12)
 	for i in bubbles.size():
 		var bubble=bubbles[i]
 		if is_instance_valid(bubble):
 			bubble.position=bubble.get_meta("anchor")+Vector3(0,0.0 if reduced_motion else sin(clock*2.2+i*1.3)*0.12,0)
+	update_production_effects()
 	for water in waters:
 		water.set_shader_parameter("clock",clock)
 		water.set_shader_parameter("motion",0.0 if reduced_motion else 1.0)

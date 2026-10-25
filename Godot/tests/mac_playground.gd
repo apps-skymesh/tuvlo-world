@@ -22,6 +22,7 @@ var windmill_slice=false
 var greenhouse_slice=false
 var orchard_slice=false
 var waterside_slice=false
+var production_phase=-1
 func _initialize(): call_deferred("run")
 func run():
  started_ms=Time.get_ticks_msec()
@@ -111,6 +112,7 @@ func build_controls():
   cottage_slice=false
   reset(false))
  button(toolbar,"Equipped",func(): reset(true))
+ button(toolbar,"Production",cycle_production)
  button(toolbar,"Look",func():
   appearance_index+=1
   payload.appearance={"hair":appearance_index%13,"outfit":appearance_index%6}
@@ -129,6 +131,26 @@ func build_controls():
  hint.add_theme_color_override("font_color",Color("304c49"))
  hint.text="Mac visual lab • disposable layout • no family data\nTap to visit · hold to pick up · drag to move · R rotate · Enter place · Esc cancel"
  footer.add_child(hint)
+# Manual visual states, not a replacement for the native farm/inventory host.
+func cycle_production():
+ production_phase=(production_phase+1)%3
+ var has_mill=false
+ var has_orchard=false
+ for item in payload.items:
+  has_mill=has_mill or item.id=="windmill"
+  has_orchard=has_orchard or item.id=="orchard"
+ if not has_mill: payload.items.append({"id":"windmill","kind":"windmill","cell":{"x":10,"z":10},"rotation":0})
+ if not has_orchard: payload.items.append({"id":"orchard","kind":"orchard","cell":{"x":-4,"z":6},"rotation":0})
+ if "west" not in payload.land: payload.land.append("west")
+ payload.harvest={"woods":"wood","quarry":"stone"}
+ payload.farmStages=[0,0] if production_phase==0 else [2,3] if production_phase==1 else [4,4]
+ payload.farmFruitStage=production_phase
+ payload.production=[]
+ for spec in [["garden","field","wheat"],["windmill","mill","flour"],["cottage","oven","bread"],["cottage","pantry","meal"],["orchard","orchard","fruit"]]:
+  payload.production.append({"placeID":spec[0],"station":spec[1],"good":spec[2],"state":production_phase,"remaining":30 if production_phase==1 else 0,"progress":0.5 if production_phase==1 else float(production_phase)/2.0})
+ snapshot()
+ activity_label.text="Production: "+["Idle","Working","Ready"][production_phase]
+
 func camera_option(id: int):
  match id:
   0: camera("detail")
@@ -140,6 +162,7 @@ func on_message(raw: String):
  if message.type=="activity":
   events.append({"seconds":snapped(elapsed,0.01),"state":world.resident.state,"destination":world.resident.destination_kind})
  if message.type=="selected": send("select",{"id":message.payload.id,"fromHold":message.payload.get("gesture","")=="hold"})
+ if message.type=="productionRequested": activity_label.text="Open "+message.payload.station+" menu (native host action)"
  if message.type=="visited": send("visit",{"id":message.payload.id})
  # Disposable collect: the bubble leaves; nothing is saved.
  for key in ["visited","gather"]:
@@ -158,6 +181,8 @@ func on_message(raw: String):
 func _unhandled_key_input(event):
  if not event.is_pressed() or event.is_echo(): return
  match event.keycode:
+  KEY_PLUS, KEY_EQUAL, KEY_KP_ADD: send("camera",{"zoom":1.0/1.2})
+  KEY_MINUS, KEY_KP_SUBTRACT: send("camera",{"zoom":1.2})
   KEY_LEFT: send("nudge",{"x":-1})
   KEY_RIGHT: send("nudge",{"x":1})
   KEY_UP: send("nudge",{"z":-1})
