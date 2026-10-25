@@ -153,7 +153,7 @@ func receive_host_json(json: String):
   session=packet.session
   var wins=int(payload.get("approvedWins",0))
   var growth=0 if wins<3 else (1 if wins<13 else 2)
-  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage])
+  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage,next_data.construction.map(func(build): return [build.placeID,0 if build.progress<0.33 else 1 if build.progress<0.72 else 2])])
   data.items=next_data.items
   data.inventory=next_data.inventory
   data.land_sides=next_data.land_sides
@@ -165,6 +165,7 @@ func receive_host_json(json: String):
   data.visitor=next_data.visitor
   data.wheat_garden=next_data.wheat_garden
   data.production=next_data.production
+  data.construction=next_data.construction
   data.farm_stages=next_data.farm_stages
   data.farm_fruit_stage=next_data.farm_fruit_stage
   reduced_motion=payload.get("reducedMotion",false)==true
@@ -313,6 +314,7 @@ func clear_host_session():
  data.visitor=""
  data.wheat_garden=false
  data.production.clear()
+ data.construction.clear()
  data.harvest={}
  data.edges=false
  data.farm_stages=[]
@@ -547,6 +549,8 @@ func production_at_screen(point: Vector2) -> Dictionary:
  var query=PhysicsRayQueryParameters3D.create(from,from+camera.project_ray_normal(point)*100,1)
  var result=get_world_3d().direct_space_state.intersect_ray(query)
  if result.is_empty(): return {}
+ var building_id=str(result.collider.get_meta("construction_id",""))
+ if not building_id.is_empty() and not data.building(building_id).is_empty(): return {"station":"construction","placeID":building_id}
  var station=str(result.collider.get_meta("production_station",""))
  for status in data.production:
   if status.station==station: return status
@@ -554,6 +558,7 @@ func production_at_screen(point: Vector2) -> Dictionary:
 
 func production_preview_active() -> bool:
  if not panel_preview or reduced_motion: return false
+ if not data.construction.is_empty(): return true
  for status in data.production:
   if status.state==1: return true
  return false

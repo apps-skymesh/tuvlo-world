@@ -25,6 +25,7 @@ var bubbles: Array[Node3D]=[]
 var production_root: Node3D
 var production_nodes: Dictionary={}
 var production_effects: Dictionary={}
+var construction_nodes: Dictionary={}
 var harvest_signature=""
 const BUBBLE_SHADER=preload("res://scripts/harvest_bubble.gdshader")
 
@@ -69,7 +70,10 @@ func rebuild():
 			nodes.erase(id)
 	for item in data.items:
 		var growth=(0 if data.approvals<3 else 1 if data.approvals<13 else 2) if item.kind=="tree" and item.id==data.growth_tree_id else -1
-		var signature=JSON.stringify([item.kind,item.rotation,item.get("style",0),growth,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat"),data.farm_stages] if item.kind=="garden" else data.farm_fruit_stage if item.kind=="orchard" else []])
+		var build=data.building(item.id)
+		var building_phase=-1 if build.is_empty() else 0 if build.progress<0.33 else 1 if build.progress<0.72 else 2
+		var completed=nodes.has(item.id) and nodes[item.id].get_meta("building",false) and build.is_empty()
+		var signature=JSON.stringify([building_phase,item.kind,item.rotation,item.get("style",0),growth,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat"),data.farm_stages] if item.kind=="garden" else data.farm_fruit_stage if item.kind=="orchard" else []])
 		if nodes.has(item.id):
 			var existing: Node3D=nodes[item.id]
 			if existing.get_meta("art_signature","")==signature:
@@ -83,7 +87,9 @@ func rebuild():
 		var foliage_start=foliage.size()
 		var waters_start=waters.size()
 		var sails_start=sails.size()
-		var root=make_item(item.kind,item.rotation,false,int(item.get("style",0)))
+		var root=make_item(item.kind,item.rotation,false,int(item.get("style",0))) if building_phase in [-1,2] else Node3D.new()
+		if building_phase>=0: construction_site(root,item,building_phase)
+		root.set_meta("building",building_phase>=0)
 		prop_root.add_child(root)
 		root.position=HomesteadItems.item_center(item)
 		root.set_meta("item_id",item.id)
@@ -93,7 +99,11 @@ func rebuild():
 			for x in [-1.4,1.4]:
 				HomesteadMesh.box(root,Vector3(x,1.5,1.35),Vector3(0.18,0.28,0.18),"edc577",0.03)
 		for pivot in sails.slice(sails_start): pivot.set_meta("item_id",item.id)
-		HomesteadStaticBatcher.consolidate(root,foliage+sails)
+		var animated: Array[Node3D]=[]
+		animated.append_array(foliage)
+		animated.append_array(sails)
+		if root.has_meta("build_tool"): animated.append(root.get_meta("build_tool"))
+		HomesteadStaticBatcher.consolidate(root,animated)
 		nodes[item.id]=root
 		var size=HomesteadItems.footprint(item.kind,item.rotation)
 		var body=StaticBody3D.new()
@@ -113,6 +123,7 @@ func rebuild():
 		root.set_meta("foliage",foliage.slice(foliage_start))
 		root.set_meta("waters",waters.slice(waters_start))
 		root.set_meta("sails",sails.slice(sails_start))
+		if completed and not reduced_motion: reveal_finished(root,size)
 	visual_revision+=1
 	refresh_grid()
 
@@ -293,39 +304,9 @@ func update_production():
 		present[status.station]=true
 		var bubble: Node3D=production_nodes.get(status.station)
 		if not is_instance_valid(bubble):
-			bubble=Node3D.new()
-			production_root.add_child(bubble)
+			bubble=make_status_bubble()
 			production_nodes[status.station]=bubble
-			var face=MeshInstance3D.new()
-			var quad=QuadMesh.new()
-			quad.size=Vector2(1.6,1.6)
-			face.mesh=quad
-			face.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			var material=ShaderMaterial.new()
-			material.shader=BUBBLE_SHADER
-			face.material_override=material
-			bubble.add_child(face)
-			bubble.set_meta("material",material)
-			var body=StaticBody3D.new()
-			body.set_meta("production_station",status.station)
-			body.collision_layer=1
-			body.collision_mask=0
-			var collider=CollisionShape3D.new()
-			var sphere=SphereShape3D.new()
-			sphere.radius=0.76
-			collider.shape=sphere
-			body.add_child(collider)
-			bubble.add_child(body)
-			var label=Label3D.new()
-			label.billboard=BaseMaterial3D.BILLBOARD_ENABLED
-			label.font_size=40
-			label.pixel_size=0.009
-			label.modulate=Color("263e32")
-			label.outline_modulate=Color("fff3d9")
-			label.outline_size=6
-			label.position.y=-0.93
-			bubble.add_child(label)
-			bubble.set_meta("label",label)
+			bubble.get_meta("body").set_meta("production_station",status.station)
 		var offset=0.0
 		if status.station in ["oven","pantry"]: offset=-1.0 if status.station=="oven" else 1.0
 		var camera=get_viewport().get_camera_3d()
@@ -334,8 +315,8 @@ func update_production():
 		material.set_shader_parameter("kind",["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good))
 		material.set_shader_parameter("production_state",status.state)
 		material.set_shader_parameter("progress",status.progress)
-		var title={"wheat":"Wheat","flour":"Flour","bread":"Bread","meal":"Meals","fruit":"Fruit","tart":"Tart"}[status.good]
-		bubble.get_meta("label").text=title+(" "+str(int(status.remaining))+"s" if status.state==1 else "")
+		bubble.get_meta("label").text=countdown(int(status.remaining)) if status.state==1 else ""
+		bubble.scale=Vector3.ONE*(0.86 if status.state==0 else 1.0)
 		# Baking has a quiet physical cue at the authored chimney; packing at the porch.
 		if status.station in ["oven","pantry"]:
 			var effect: Node3D=production_effects.get(status.station)
@@ -369,7 +350,108 @@ func update_production():
 				production_root.remove_child(production_effects[station])
 				production_effects[station].queue_free()
 				production_effects.erase(station)
+	update_construction()
 	update_production_effects()
+
+func countdown(seconds: int) -> String:
+	return "%d:%02d" % [seconds/60,seconds%60] if seconds>=60 else str(seconds)+"s"
+
+func make_status_bubble() -> Node3D:
+	var bubble=Node3D.new()
+	production_root.add_child(bubble)
+	var face=MeshInstance3D.new()
+	var quad=QuadMesh.new()
+	quad.size=Vector2(1.4,1.4)
+	face.mesh=quad
+	face.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var material=ShaderMaterial.new()
+	material.shader=BUBBLE_SHADER
+	face.material_override=material
+	bubble.add_child(face)
+	bubble.set_meta("material",material)
+	var body=StaticBody3D.new()
+	body.collision_layer=1
+	body.collision_mask=0
+	var collider=CollisionShape3D.new()
+	var sphere=SphereShape3D.new()
+	sphere.radius=0.76
+	collider.shape=sphere
+	body.add_child(collider)
+	bubble.add_child(body)
+	bubble.set_meta("body",body)
+	var label=Label3D.new()
+	label.billboard=BaseMaterial3D.BILLBOARD_ENABLED
+	label.font_size=44
+	label.pixel_size=0.009
+	label.modulate=Color("263e32")
+	label.outline_modulate=Color("fff3d9")
+	label.outline_size=5
+	label.position.y=-0.79
+	bubble.add_child(label)
+	bubble.set_meta("label",label)
+	return bubble
+
+func update_construction():
+	var present={}
+	for build in data.construction:
+		present[build.placeID]=true
+		var bubble: Node3D=construction_nodes.get(build.placeID)
+		if not is_instance_valid(bubble):
+			bubble=make_status_bubble()
+			bubble.get_meta("body").set_meta("construction_id",build.placeID)
+			construction_nodes[build.placeID]=bubble
+		var item=data.find(build.placeID)
+		var height=2.0 if build.progress<0.33 else minf(2.6,HomesteadItems.DEFINITIONS[item.kind].height*0.75+0.5)+1.1 if build.progress<0.72 else maxf(1.7,HomesteadItems.DEFINITIONS[item.kind].height+1.1)
+		bubble.position=HomesteadItems.item_center(item)+Vector3(0,height,0)
+		var material: ShaderMaterial=bubble.get_meta("material")
+		material.set_shader_parameter("kind",8)
+		material.set_shader_parameter("production_state",1)
+		material.set_shader_parameter("progress",build.progress)
+		bubble.get_meta("label").text=countdown(build.remaining)
+	for id in construction_nodes.keys():
+		if not present.has(id):
+			production_root.remove_child(construction_nodes[id])
+			construction_nodes[id].queue_free()
+			construction_nodes.erase(id)
+
+func construction_site(root: Node3D,item: Dictionary,phase: int):
+	var size=HomesteadItems.footprint(item.kind,item.rotation)
+	var width=float(size.x)*0.47
+	var depth=float(size.y)*0.47
+	if phase<2:
+		HomesteadMesh.box(root,Vector3(0,0.07,0),Vector3(size.x,0.14,size.y),"c8baa0",0.06)
+		for i in 3:
+			HomesteadMesh.box(root,Vector3(-width+0.18+i*0.28,0.18,depth-0.24),Vector3(0.2,0.12,0.65),"a7865c",0.02)
+	var height=0.45 if phase==0 else minf(2.6,HomesteadItems.DEFINITIONS[item.kind].height*0.75+0.5)
+	for x in [-width,width]:
+		for z in [-depth,depth]:
+			HomesteadMesh.box(root,Vector3(x,height/2,z),Vector3(0.09,height,0.09),"9b7a53",0.015)
+	for z in [-depth,depth]:
+		HomesteadMesh.box(root,Vector3(0,height,z),Vector3(width*2+0.12,0.10,0.12),"c8a674",0.02)
+		if phase>0:
+			HomesteadMesh.rod(root,Vector3(-width,0.2,z),Vector3(width,height,z),0.035,"c8a674")
+	if phase>0:
+		for x in [-width,width]:
+			HomesteadMesh.box(root,Vector3(x,height*0.65,0),Vector3(0.34,0.07,depth*2+0.24),"d3b783",0.02)
+	var tool=Node3D.new()
+	root.add_child(tool)
+	tool.position=Vector3(width-0.2,0.75,depth+0.12)
+	HomesteadMesh.box(tool,Vector3(0,0.18,0),Vector3(0.06,0.4,0.06),"9b7047",0.01)
+	HomesteadMesh.box(tool,Vector3(0,0.4,0),Vector3(0.3,0.1,0.12),"718077",0.02)
+	root.set_meta("build_tool",tool)
+
+func reveal_finished(root: Node3D,size: Vector2i):
+	if root.get_child_count()>0:
+		var art=root.get_child(0)
+		art.scale=Vector3.ONE*0.96
+		create_tween().tween_property(art,"scale",Vector3.ONE,0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	var halo=HomesteadMesh.cylinder(root,Vector3(0,0.025,0),maxf(size.x,size.y)*0.62,0.01,"e7c984")
+	halo.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	halo.material_override=HomesteadMesh.transparent(Color(0.91,0.78,0.49,0.25))
+	var tween=create_tween().set_parallel(true)
+	tween.tween_property(halo,"scale",Vector3(1.18,1,1.18),0.65)
+	tween.tween_property(halo.material_override,"albedo_color:a",0.0,0.65)
+	tween.chain().tween_callback(halo.queue_free)
 
 func station_working(station: String) -> bool:
 	for status in data.production:
@@ -825,11 +907,15 @@ func clear_preview():
 	preview_node=null
 func _process(delta):
 	if not reduced_motion: clock+=delta
+	for build in data.construction:
+		if nodes.has(build.placeID):
+			var tool=nodes[build.placeID].get_meta("build_tool",null)
+			if is_instance_valid(tool): tool.rotation.z=0.0 if reduced_motion else sin(clock*2.4)*0.16
 	for i in foliage.size():
 		var plant=foliage[i]
 		if is_instance_valid(plant): plant.rotation.z=sin(clock*0.8+i*1.7)*0.017 if not reduced_motion else 0
 	for pivot in sails:
-		if is_instance_valid(pivot) and not reduced_motion and (data.production.is_empty() or station_working("mill")):
+		if is_instance_valid(pivot) and not reduced_motion and data.building(str(pivot.get_meta("item_id",""))).is_empty() and (data.production.is_empty() or station_working("mill")):
 			var camera=get_viewport().get_camera_3d()
 			if camera and not camera.is_position_behind(pivot.global_position) and camera.unproject_position(pivot.global_position).x>=0 and get_viewport().get_visible_rect().has_point(camera.unproject_position(pivot.global_position)):
 				pivot.rotation.z+=delta*(0.46 if not data.production.is_empty() else 0.12)

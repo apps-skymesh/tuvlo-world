@@ -38,6 +38,7 @@ func run():
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":production_payload}))
  var mill_badge=scene.presentation.production_nodes.mill
  var mill_art=scene.presentation.nodes.mill
+ check(mill_badge.get_meta("label").text=="45s","Production countdown omits repeated product names")
  var sail=scene.presentation.sails[0]
  scene.camera.global_position=scene.presentation.nodes.mill.global_position+Vector3(0,10,15)
  scene.camera.look_at(sail.global_position)
@@ -66,6 +67,30 @@ func run():
  scene.receive_host_json(JSON.stringify(packet))
  scene.set_paused(false)
  check(scene.presentation.production_nodes.is_empty(),"Family snapshots remove disposable production markers")
+ # A construction site is presentation-only; the host owns its receipt clock.
+ var building_payload=production_payload.duplicate(true)
+ building_payload.production=[]
+ building_payload.construction=[{"placeID":"mill","remaining":40,"progress":0.1}]
+ check(HomesteadWorldData.new().apply_snapshot(JSON.parse_string(JSON.stringify(building_payload))),"Construction validates JSON timestamps/progress")
+ var invalid_building=building_payload.duplicate(true)
+ invalid_building.construction[0].placeID="missing"
+ check(not HomesteadWorldData.new().apply_snapshot(invalid_building),"Construction requires a real placed object")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":building_payload}))
+ var foundation=scene.presentation.nodes.mill
+ var build_badge=scene.presentation.construction_nodes.mill
+ check(foundation.get_meta("building",false),"New construction renders a foundation, not an idle finished mill")
+ check(build_badge.get_meta("label").text=="40s","Construction clock has no repeated title")
+ building_payload.construction[0].remaining=39
+ building_payload.construction[0].progress=0.12
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":building_payload}))
+ check(scene.presentation.nodes.mill==foundation and scene.presentation.construction_nodes.mill==build_badge,"Clock ticks reuse construction artwork and badges")
+ building_payload.construction[0].progress=0.5
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":building_payload}))
+ check(scene.presentation.nodes.mill!=foundation,"Construction advances to its timber frame")
+ building_payload.construction=[]
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":building_payload}))
+ check(not scene.presentation.nodes.mill.get_meta("building",false) and scene.presentation.construction_nodes.is_empty(),"Completion reveals the structure and removes the work marker")
+ scene.receive_host_json(JSON.stringify(packet))
  var original_cottage=scene.presentation.nodes.cottage
  var original_island=scene.presentation.land_root.get_child(0)
  scene.data.items[1].cell.x+=1

@@ -17,6 +17,7 @@ var wheat_garden := false
 var farm_stages: Array = []
 var farm_fruit_stage := -1
 var production: Array[Dictionary] = []
+var construction: Array[Dictionary] = []
 const STATION_KINDS={"field":"garden","mill":"windmill","oven":"cottage","pantry":"cottage","orchard":"orchard"}
 const STATION_GOODS={"field":["wheat"],"mill":["flour"],"oven":["bread","tart"],"pantry":["meal"],"orchard":["fruit"]}
 const HARVEST_MATERIALS=["wood","stone","food","wheat"]
@@ -93,6 +94,20 @@ func apply_snapshot(raw: Dictionary) -> bool:
   normalized.state=state
   normalized.remaining=remaining
   next_production.append(normalized)
+ var next_construction: Array[Dictionary]=[]
+ var raw_construction=raw.get("construction",[])
+ if not raw_construction is Array or raw_construction.size()>32: return false
+ var building_ids={}
+ for build in raw_construction:
+  if not build is Dictionary: return false
+  var id=build.get("placeID","")
+  if not id is String or not ids.has(id) or building_ids.has(id): return false
+  if not (build.get("remaining") is int or build.get("remaining") is float) or not (build.get("progress") is int or build.get("progress") is float): return false
+  if not is_finite(float(build.remaining)) or not is_finite(float(build.progress)): return false
+  if build.remaining!=int(build.remaining) or build.remaining<1 or build.remaining>86400 or build.progress<0 or build.progress>=1: return false
+  building_ids[id]=true
+  next_construction.append({"placeID":id,"remaining":int(build.remaining),"progress":float(build.progress)})
+ construction=next_construction
  production=next_production
  wheat_garden=raw.get("wheatGarden",false)==true
  items = next
@@ -128,3 +143,8 @@ func placement_error(kind: String, cell: Vector2i, rotation: int, excluding = ""
    if not buildable(square): return "outside-land"
    if not item_at(square,excluding).is_empty(): return "occupied"
  return ""
+
+func building(id: String) -> Dictionary:
+ for status in construction:
+  if status.placeID==id: return status
+ return {}

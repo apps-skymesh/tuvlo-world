@@ -59,7 +59,7 @@ func choose_destination():
 		destination_kind=schedule[schedule_index]
 		var candidates=[]
 		for item in data.items:
-			if item.kind==destination_kind: candidates.append(item)
+			if item.kind==destination_kind and data.building(item.id).is_empty(): candidates.append(item)
 		if candidates.is_empty(): continue
 		var target: Dictionary=candidates[cycles%candidates.size()]
 		target_id=target.id
@@ -74,7 +74,7 @@ func choose_destination():
 # Tap visits are read-only play. The host still owns placement and progression.
 func visit(id: String):
 	var target=data.find(id)
-	if target.is_empty(): return
+	if target.is_empty() or not data.building(id).is_empty(): return
 	target_id=id
 	destination_kind=target.kind
 	model.set_motion("idle")

@@ -23,6 +23,8 @@ var greenhouse_slice=false
 var orchard_slice=false
 var waterside_slice=false
 var production_phase=-1
+var construction_review=false
+var construction_step=-1
 func _initialize(): call_deferred("run")
 func run():
  started_ms=Time.get_ticks_msec()
@@ -31,6 +33,7 @@ func run():
  DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
  var args=OS.get_cmdline_user_args()
  for index in args.size():
+  if args[index]=="--construction": construction_review=true; windmill_slice=true; capture_times=[1.0,4.0,8.0,13.0,17.0]
   if args[index]=="--equipped": equipped=true
   if args[index]=="--windmill": windmill_slice=true
   if args[index]=="--cottage": cottage_slice=true
@@ -193,6 +196,12 @@ func _unhandled_key_input(event):
 func _process(delta):
  if world==null: return false
  elapsed+=delta
+ if construction_review:
+  var step=mini(3,int(elapsed/5.0))
+  if step!=construction_step:
+   construction_step=step
+   payload.construction=[] if step==3 else [{"placeID":"windmill","remaining":[40,22,6][step],"progress":[0.1,0.5,0.86][step]}]
+   snapshot()
  activity_label.text=world.resident.activity
  if elapsed>=next_sample:
   next_sample+=0.5
