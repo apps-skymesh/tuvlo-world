@@ -12,10 +12,19 @@ func rebuild(world_data: HomesteadWorldData):
 	grid.default_compute_heuristic=AStarGrid2D.HEURISTIC_OCTILE
 	grid.default_estimate_heuristic=AStarGrid2D.HEURISTIC_OCTILE
 	grid.update()
+	# Rasterize once instead of scanning every placed object for every cell.
+	# Preserve item_at's first-object behavior for older overlapping layouts.
+	var occupied_cells={}
+	for item in data.items:
+		var footprint=HomesteadItems.footprint(item.kind,item.rotation)
+		for z in footprint.y:
+			for x in footprint.x:
+				var cell=item.cell+Vector2i(x,z)
+				if grid.is_in_boundsv(cell) and not occupied_cells.has(cell): occupied_cells[cell]=item
 	for z in range(HomesteadItems.WORLD_BOUNDS.position.y,HomesteadItems.WORLD_BOUNDS.end.y):
 		for x in range(HomesteadItems.WORLD_BOUNDS.position.x,HomesteadItems.WORLD_BOUNDS.end.x):
 			var cell=Vector2i(x,z)
-			var occupied=data.item_at(cell)
+			var occupied=occupied_cells.get(cell,{})
 			var blocked=not data.buildable(cell) or (not occupied.is_empty() and HomesteadItems.DEFINITIONS[occupied.kind].blocks)
 			grid.set_point_solid(cell,blocked)
 			grid.set_point_weight_scale(cell,0.8 if not occupied.is_empty() and occupied.kind=="path" else 1.0)

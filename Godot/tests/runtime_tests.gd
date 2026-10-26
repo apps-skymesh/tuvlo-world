@@ -86,6 +86,7 @@ func run():
  check(not production_data.apply_snapshot(invalid_production),"Invalid progress is rejected")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":production_payload}))
  var mill_badge=scene.presentation.production_nodes.mill
+ var timer_navigation_revision=scene.navigation.revision
  var mill_art=scene.presentation.nodes.mill
  check(mill_badge.get_meta("label").text=="45s","Production countdown omits repeated product names")
  var sail=scene.presentation.sails[0]
@@ -98,6 +99,20 @@ func run():
  production_payload.production[0].progress=0.5
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":production_payload}))
  check(scene.presentation.production_nodes.mill==mill_badge and scene.presentation.nodes.mill==mill_art,"Timer ticks reuse badge and building resources")
+ check(scene.navigation.revision==timer_navigation_revision,"Timer ticks retain the walking grid")
+ production_payload.farmStages=[3,3]
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":production_payload}))
+ var crop_recoveries=scene.resident.recoveries
+ production_payload.farmStages=[4,4]
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":production_payload}))
+ check(scene.navigation.revision==timer_navigation_revision and scene.resident.recoveries==crop_recoveries,"Crop growth does not rebuild routes or interrupt a resident")
+ # The rasterized grid retains the canonical overlap, path and locked-land rules.
+ for z in range(HomesteadItems.WORLD_BOUNDS.position.y,HomesteadItems.WORLD_BOUNDS.end.y):
+  for x in range(HomesteadItems.WORLD_BOUNDS.position.x,HomesteadItems.WORLD_BOUNDS.end.x):
+   var cell=Vector2i(x,z)
+   var occupied=scene.data.item_at(cell)
+   var blocked=not scene.data.buildable(cell) or (not occupied.is_empty() and HomesteadItems.DEFINITIONS[occupied.kind].blocks)
+   check(scene.navigation.open(cell)==not blocked,"Optimized grid retains canonical walking boundaries")
  scene.set_paused(true,true)
  check(scene.production_preview_active() and scene.presentation.is_processing() and not scene.resident.is_physics_processing(),"Menu keeps production moving while residents stay paused")
  scene.reduced_motion=true

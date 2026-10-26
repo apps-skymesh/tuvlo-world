@@ -11,6 +11,7 @@ var creature: HomesteadCreature
 var camera=Camera3D.new()
 var session=""
 var layout_signature=""
+var navigation_signature=""
 var camera_mode="overview"
 var focus_item_id=""
 var panel_framing=0.0
@@ -153,6 +154,8 @@ func receive_host_json(json: String):
   session=packet.session
   var wins=int(payload.get("approvedWins",0))
   var growth=0 if wins<3 else (1 if wins<13 else 2)
+  # Crop art and building phases do not change walkable footprints.
+  var next_navigation=JSON.stringify([next_data.items,next_data.land_sides])
   var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage,next_data.construction.map(func(build): return [build.placeID,0 if build.progress<0.33 else 1 if build.progress<0.72 else 2])])
   data.items=next_data.items
   data.inventory=next_data.inventory
@@ -174,6 +177,8 @@ func receive_host_json(json: String):
   if signature!=layout_signature:
    layout_signature=signature
    presentation.rebuild()
+  if next_navigation!=navigation_signature:
+   navigation_signature=next_navigation
    navigation.rebuild(data)
    resident.world_changed()
    if is_instance_valid(guest): guest.world_changed()
@@ -304,6 +309,7 @@ func clear_host_session():
  pending_intent=""
  pending_pick=null
  layout_signature=""
+ navigation_signature=""
  diagnostics=false
  data.items.clear()
  data.inventory.clear()
