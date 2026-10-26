@@ -13,6 +13,7 @@ var growth_tree_id=""
 var harvest: Dictionary = {}
 var edges := false
 var visitor := ""
+var visitors: Array[String] = []
 var wheat_garden := false
 var farm_stages: Array = []
 var farm_fruit_stage := -1
@@ -56,8 +57,14 @@ func apply_snapshot(raw: Dictionary) -> bool:
   if not key is String or key.length() > 64 or not raw_harvest[key] in HARVEST_MATERIALS: return false
   if key in EDGE_PRODUCERS or ids.has(key): ready[key] = raw_harvest[key]
  var next_visitor=raw.get("visitor", "")
+ var company=raw.get("company", "")
  if next_visitor not in ["", "baker", "storyteller"]: return false
+ if company not in ["", "baker", "storyteller"]: return false
  visitor=next_visitor
+ var roles: Array[String]=[]
+ if next_visitor!="": roles.append(next_visitor)
+ if company!="" and company!=next_visitor: roles.append(company)
+ visitors=roles
  var stages=raw.get("farmStages",[])
  if stages == null: stages=[]
  if not stages is Array or stages.size() not in [0,2]: return false
