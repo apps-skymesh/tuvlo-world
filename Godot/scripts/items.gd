@@ -1,22 +1,29 @@
 class_name HomesteadItems
 extends RefCounted
 
-# Land units contain 5x5 building squares. Saved item coordinates never move.
+# Starter plots contain 5x5 squares; extensions now contain 12x12 squares.
+# Enlargement adds outer strips; saved item coordinates never move.
 const SQUARES_PER_PLOT=5
 const STARTER_PLOTS=4
-const EXPANSION_PLOTS=2
+const EXPANSION_SIDE=12
 const BASE_BOUNDS=Rect2i(0,0,20,20)
-const WORLD_BOUNDS=Rect2i(-10,-10,40,30)
-const LAND_BOUNDS={"west":Rect2i(-10,0,10,10),"east":Rect2i(20,0,10,10),"north":Rect2i(0,-10,10,10)}
+const WORLD_BOUNDS=Rect2i(-12,-12,44,32)
+const LAND_BOUNDS={"west":Rect2i(-12,0,12,12),"east":Rect2i(20,0,12,12),"north":Rect2i(0,-12,12,12)}
 const BASE_LAND_SIZE=Vector2(20.7,20.7)
 const BASE_LAND_CENTER=Vector3(1,0,2)
-const PLOT_SIZE=Vector2(10.5,10.5)
-const LAND_CENTERS={"north":Vector3(-4,0,-13),"east":Vector3(16,0,-3),"west":Vector3(-14,0,-3)}
+const PLOT_SIZE=Vector2(12.6,12.6)
+const LAND_CENTERS={"north":Vector3(-3,0,-14),"east":Vector3(17,0,-2),"west":Vector3(-15,0,-2)}
 # Fixed producer scenery beside the clearing: never buildable or walkable.
-const EDGE_CENTERS={"woods":Vector3(-14.2,0,6.4),"quarry":Vector3(16.2,0,6.4)}
+const EDGE_CENTERS={"woods":Vector3(-14.2,0,8),"quarry":Vector3(16.2,0,8)}
 const EDGE_SIZE=Vector2(8,7)
+# Shared scenery extrema keep fitted Overview honest, including the new ridge
+# and coastline outside usable squares. These points never grant buildable cells.
+const SCENIC_POINTS=[Vector3(-5.912,4.42,-16.192),Vector3(-2.54,6.42,-17.24),Vector3(0.752,4.72,-16.168),Vector3(27.8,-0.8,-8.4),Vector3(27.8,0.4,4.4)]
 
 const DEFINITIONS={
+	"barn":{"title":"Barn","size":Vector2i(4,3),"blocks":true,"height":3.5,"color":"b46c52"},
+	"doghouse":{"title":"Dog house","size":Vector2i(2,2),"blocks":true,"height":1.4,"color":"c79a6e"},
+	"grill":{"title":"Grill","size":Vector2i(2,2),"blocks":true,"height":1.4,"color":"566b66"},
 	"windmill":{"title":"Windmill","size":Vector2i(3,3),"blocks":true,"height":4.1,"color":"d9c8a5"},
 	"orchard":{"title":"Orchard","size":Vector2i(2,2),"blocks":true,"height":2.8,"color":"8aa578"},
 	"greenhouse":{"title":"Greenhouse","size":Vector2i(3,2),"blocks":true,"height":2.65,"color":"8ca99a"},

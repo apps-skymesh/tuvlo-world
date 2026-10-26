@@ -15,6 +15,7 @@ var motion_samples=[]
 var next_sample=0.0
 var started_ms=0
 var initial_camera="overview"
+var animals_slice=false
 var equipped=false
 var cottage_slice=false
 var meadow_slice=false
@@ -34,6 +35,7 @@ func run():
  var args=OS.get_cmdline_user_args()
  for index in args.size():
   if args[index]=="--construction": construction_review=true; windmill_slice=true; capture_times=[1.0,4.0,8.0,13.0,17.0]
+  if args[index]=="--animals": animals_slice=true
   if args[index]=="--equipped": equipped=true
   if args[index]=="--windmill": windmill_slice=true
   if args[index]=="--cottage": cottage_slice=true
@@ -51,6 +53,7 @@ func run():
  build_controls()
  reset(equipped)
  camera(initial_camera)
+ if animals_slice: send("camera",{"mode":"place","id":"barn","zoom":1.1})
 func keep_landscape():
  # This host is a landscape-only visual lab; app orientation uses UIKit's lease.
  var maximum_height=maxi(540,int(root.size.x*0.625))
@@ -88,6 +91,11 @@ func reset(equipped: bool):
   payload.items.append({"id":"greenhouse","kind":"greenhouse","cell":{"x":-3,"z":8},"rotation":0})
  if orchard_slice:
   payload.items.append({"id":"orchard","kind":"orchard","cell":{"x":-4,"z":6},"rotation":0,"style":1})
+ if animals_slice:
+  payload.items.append({"id":"barn","kind":"barn","cell":{"x":10,"z":5},"rotation":0})
+  payload.items.append({"id":"doghouse","kind":"doghouse","cell":{"x":8,"z":11},"rotation":0})
+  payload.items.append({"id":"grill","kind":"grill","cell":{"x":12,"z":10},"rotation":0})
+  payload.production=[{"placeID":"barn","station":"barn","good":"meat","state":1,"remaining":45,"progress":0.5},{"placeID":"grill","station":"grill","good":"meal","state":1,"remaining":30,"progress":0.5}]
  snapshot()
 func camera(mode: String): send("camera",{"mode":mode})
 func button(parent: Node,text: String,action: Callable):

@@ -687,9 +687,10 @@ func overview_points() -> Array[Vector3]:
  # Include inactive plots as well as the active clearing; no imaginary roofs
  # at empty corners. Keep these extents shared with the terrain renderer.
  var points: Array[Vector3]=[]
+ points.append_array(HomesteadItems.SCENIC_POINTS)
  var regions=[{"center":HomesteadItems.BASE_LAND_CENTER,"size":HomesteadItems.BASE_LAND_SIZE}]
  for center in HomesteadItems.LAND_CENTERS.values(): regions.append({"center":center,"size":HomesteadItems.PLOT_SIZE})
- if "east" in data.land_sides: regions.append({"center":HomesteadItems.LAND_CENTERS.east+Vector3(0,0,-5.48),"size":Vector2(10.35,1.02)})
+ if "east" in data.land_sides: regions.append({"center":HomesteadItems.LAND_CENTERS.east+Vector3(0,0,-6.48),"size":Vector2(12.35,1.02)})
  if data.edges:
   for center in HomesteadItems.EDGE_CENTERS.values(): regions.append({"center":center,"size":HomesteadItems.EDGE_SIZE})
  for region in regions:

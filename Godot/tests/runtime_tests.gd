@@ -19,6 +19,55 @@ func run():
  var packet={"version":1,"session":"test-child-session","type":"snapshot","payload":payload}
  scene.receive_host_json(JSON.stringify(packet))
  check(scene.data.items.size()==4,"Host snapshot must replace empty scene")
+ # Animal buildings use real footprints and validated, distinct producer links.
+ var animal_payload=payload.duplicate(true)
+ animal_payload.items.append_array([
+  {"id":"barn","kind":"barn","cell":{"x":14,"z":1},"rotation":0},
+  {"id":"doghouse","kind":"doghouse","cell":{"x":15,"z":6},"rotation":0},
+  {"id":"grill","kind":"grill","cell":{"x":15,"z":10},"rotation":0}])
+ animal_payload.production=[{"placeID":"barn","station":"barn","good":"meat","state":1,"remaining":90,"progress":0.0},{"placeID":"grill","station":"grill","good":"meal","state":0,"remaining":0,"progress":0.0}]
+ var animal_data=HomesteadWorldData.new()
+ check(animal_data.apply_snapshot(animal_payload),"Barn and grill accept their own production links")
+ var wrong_animal=animal_payload.duplicate(true)
+ wrong_animal.production[0].placeID="doghouse"
+ check(not HomesteadWorldData.new().apply_snapshot(wrong_animal),"Dog house cannot impersonate meat production")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":animal_payload}))
+ check(scene.presentation.pet_parts.size()>=4,"Saved barn and dog house contain live animal parts")
+ var dog_art=scene.presentation.nodes.doghouse
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":animal_payload}))
+ check(scene.presentation.nodes.doghouse==dog_art,"Timer updates retain animal artwork and animation pivots")
+ var flock=scene.presentation.pet_parts.filter(func(part): return part.get_meta("livestock",false))
+ check(flock.size()==1,"The barn contains one renewable livestock flock")
+ if flock.size()==1:
+  var young_size=flock[0].scale.x
+  var grown=animal_payload.duplicate(true)
+  grown.production[0].state=2
+  grown.production[0].remaining=0
+  grown.production[0].progress=1.0
+  scene.reduced_motion=true
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":grown}))
+  check(flock[0].scale.x>young_size,"Ready livestock is visibly grown even without animation frames")
+  grown.production[0].state=0
+  grown.production[0].progress=0.0
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":grown}))
+  check(is_equal_approx(flock[0].scale.x,young_size),"Collecting starts the next young flock")
+  scene.reduced_motion=false
+
+ # Woods and quarry share the mainland turf, without becoming free building land.
+ var connected=payload.duplicate(true)
+ connected.edges=true
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":connected}))
+ var mainland=scene.presentation.land_root.get_node("StartingLand")
+ var connected_lawns=[]
+ for part in mainland.get_children():
+  if part.has_meta("ground_outline"): connected_lawns.append(part.get_meta("ground_outline"))
+ check(connected_lawns.size()==1,"Resource terrain must be one continuous mainland surface")
+ if connected_lawns.size()==1:
+  for point in [Vector2(-14.2,8),Vector2(16.2,8),Vector2(-9.6,8),Vector2(11.6,8)]:
+   check(Geometry2D.is_point_in_polygon(point,connected_lawns[0]),"Resource roots and their necks are joined to the mainland")
+ check(not scene.data.buildable(Vector2i(-1,16)),"A scenic resource neck does not grant extra buildable land")
+ check(scene.presentation.land_root.get_node("Land_north/FutureMountainRidge")!=null,"Locked north hints at a mountain journey")
+ check(scene.presentation.land_root.get_node("Land_east/BeachCove")!=null,"The east region includes a beach cove")
  # Display-only production validation, cached markers and lifecycle contract.
  var production_payload=payload.duplicate(true)
  production_payload.items.append({"id":"mill","kind":"windmill","cell":{"x":13,"z":13},"rotation":0})
@@ -121,21 +170,20 @@ func run():
  scene.navigation.view_direction=Vector3(sin(0.25),0,cos(0.25))
 
  scene.data.land_sides.append("east")
- scene.data.inventory["edge-flower"]={"id":"edge-flower","kind":"flowers","cell":Vector2i(28,9),"rotation":0,"style":0}
+ scene.data.inventory["edge-flower"]={"id":"edge-flower","kind":"flowers","cell":Vector2i(30,11),"rotation":0,"style":0}
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"edge-flower"}}))
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"nudge","payload":{"x":1}}))
- check(scene.preview_cell==Vector2i(29,9) and scene.data.placement_error("flowers",scene.preview_cell,0)=="","Nudging reaches the last usable square of the expanded waterside")
+ check(scene.preview_cell==Vector2i(31,11) and scene.data.placement_error("flowers",scene.preview_cell,0)=="","Nudging reaches the last usable square of the expanded waterside")
  scene._process(1.0/60)
- scene.point_at(scene.camera.unproject_position(HomesteadItems.cell_center(Vector2i(40,9))))
- check(scene.preview_cell==Vector2i(29,9),"Dragging beyond the map keeps the preview within the host's accepted coordinate range")
+ scene.point_at(scene.camera.unproject_position(HomesteadItems.cell_center(Vector2i(40,11))))
+ check(scene.preview_cell==Vector2i(31,11),"Dragging beyond the map keeps the preview within the host's accepted coordinate range")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"cancel","payload":{}}))
  scene.data.inventory.erase("edge-flower")
  scene.data.land_sides.erase("east")
  check(HomesteadItems.BASE_BOUNDS.size==Vector2i(20,20),"The starter has 4x4 five-square plots")
  for side in HomesteadItems.LAND_BOUNDS:
   var bounds: Rect2i=HomesteadItems.LAND_BOUNDS[side]
-  check(bounds.size==Vector2i(10,10),"Every expansion has 2x2 five-square plots")
-  check(bounds.position.x%10==0 and bounds.position.y%10==0,"Expansions align to a shared 2x2-plot lattice without one-plot gaps")
+  check(bounds.size==Vector2i(12,12),"Every expansion contains twelve by twelve usable squares")
   check(not scene.data.buildable(bounds.position),"Merely displaying a large extension grants no land")
  check(scene.unowned_land_at(Vector2i(8,-8))=="north","The future northern plot is inspectable on the map")
  # Rendering future terrain must never make it navigable or placeable.
@@ -162,14 +210,14 @@ func run():
  check(lawns.size()==1,"Purchased land joins the clearing as one continuous grass surface")
  if lawns.size()==1:
   var outline: PackedVector2Array=lawns[0].get_meta("ground_outline")
-  for square in [Vector2i(0,0),Vector2i(19,19),Vector2i(20,0),Vector2i(29,9)]:
+  for square in [Vector2i(0,0),Vector2i(19,19),Vector2i(20,0),Vector2i(31,11)]:
    var point=HomesteadItems.cell_center(square)
    check(Geometry2D.is_point_in_polygon(Vector2(point.x,point.z),outline),"The joined turf covers every owned corner without a grass seam or hole")
   var locked=HomesteadItems.cell_center(Vector2i(8,-2))
   check(not Geometry2D.is_point_in_polygon(Vector2(locked.x,locked.z),outline),"Unbought North remains outside the active grass surface")
  check(scene.presentation.land_root.get_node_or_null("Land_east/WatersideStream")!=null,"Owned waterside reveals its authored stream")
- for x in range(20,30):
-  for z in range(0,10):
+ for x in range(20,32):
+  for z in range(0,12):
    check(scene.navigation.open(Vector2i(x,z)),"The whole dry bank stays usable")
  check(not scene.navigation.path(HomesteadItems.cell_center(Vector2i(17,7)),HomesteadItems.cell_center(Vector2i(21,7))).is_empty(),"Residents can reach the bank from the original clearing")
  check(not scene.navigation.open(Vector2i(8,-2)),"Waterside never opens north")
@@ -342,7 +390,18 @@ func run():
  var smooth_route=scene.navigation.path(HomesteadItems.cell_center(Vector2i(7,7)),scene.navigation.approach(scene.data.find("cottage")))
  for segment in range(1,smooth_route.size()):
   check(scene.navigation.corridor_clear(smooth_route[segment-1],smooth_route[segment]),"Rounded routes must not clip obstacles or inactive land")
- check(scene.overview_size(2.5)<23,"Landscape overview should use the vertical space instead of shrinking the island")
+ scene.zoom=1.0
+ scene.camera_initialized=false
+ scene._process(1.0/60)
+ var screen_low=Vector2(INF,INF)
+ var screen_high=Vector2(-INF,-INF)
+ for point in scene.overview_points():
+  var screen=scene.camera.unproject_position(point)
+  screen_low=screen_low.min(screen)
+  screen_high=screen_high.max(screen)
+ var screen_size=scene.get_viewport().get_visible_rect().size
+ var fill=(screen_high-screen_low)/screen_size
+ check(maxf(fill.x,fill.y)>0.85 and maxf(fill.x,fill.y)<1.0,"Overview fits the expanded world tightly without cropping terrain or mountains")
  check(scene.overview_size(0.5)>scene.overview_size(2.5),"Portrait overview must still fit the full island width")
  var position=scene.resident.position
  var activity=scene.resident.state

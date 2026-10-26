@@ -18,8 +18,8 @@ var farm_stages: Array = []
 var farm_fruit_stage := -1
 var production: Array[Dictionary] = []
 var construction: Array[Dictionary] = []
-const STATION_KINDS={"field":"garden","mill":"windmill","oven":"cottage","pantry":"cottage","orchard":"orchard"}
-const STATION_GOODS={"field":["wheat"],"mill":["flour"],"oven":["bread","tart"],"pantry":["meal"],"orchard":["fruit"]}
+const STATION_KINDS={"field":"garden","mill":"windmill","oven":"cottage","pantry":"cottage","orchard":"orchard","barn":"barn","grill":"grill"}
+const STATION_GOODS={"field":["wheat"],"mill":["flour"],"oven":["bread","tart"],"pantry":["meal"],"orchard":["fruit"],"barn":["meat"],"grill":["meal"]}
 const HARVEST_MATERIALS=["wood","stone","food","wheat"]
 const EDGE_PRODUCERS=["woods","quarry","waterside"]
 
@@ -70,7 +70,7 @@ func apply_snapshot(raw: Dictionary) -> bool:
  farm_fruit_stage=int(fruit_stage)
  var next_production: Array[Dictionary]=[]
  var raw_production=raw.get("production",[])
- if not raw_production is Array or raw_production.size()>5: return false
+ if not raw_production is Array or raw_production.size()>STATION_KINDS.size(): return false
  var stations={}
  for status in raw_production:
   if not status is Dictionary: return false

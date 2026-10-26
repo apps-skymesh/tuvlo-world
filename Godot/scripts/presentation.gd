@@ -6,6 +6,7 @@ var land_root: Node3D
 var foliage: Array[Node3D]=[]
 var waters: Array[ShaderMaterial]=[]
 var sails: Array[Node3D]=[]
+var pet_parts: Array[Node3D]=[]
 var clock=0.0
 var reduced_motion=false
 var nodes: Dictionary={}
@@ -59,6 +60,7 @@ func rebuild():
 		land_signature=next_land
 	foliage.clear()
 	sails.clear()
+	pet_parts.clear()
 	waters=land_waters.duplicate()
 	var present={}
 	for item in data.items: present[item.id]=true
@@ -81,6 +83,7 @@ func rebuild():
 				foliage.append_array(existing.get_meta("foliage",[]))
 				waters.append_array(existing.get_meta("waters",[]))
 				sails.append_array(existing.get_meta("sails",[]))
+				pet_parts.append_array(existing.get_meta("pet_parts",[]))
 				continue
 			prop_root.remove_child(existing)
 			existing.queue_free()
@@ -99,9 +102,15 @@ func rebuild():
 			for x in [-1.4,1.4]:
 				HomesteadMesh.box(root,Vector3(x,1.5,1.35),Vector3(0.18,0.28,0.18),"edc577",0.03)
 		for pivot in sails.slice(sails_start): pivot.set_meta("item_id",item.id)
+		var own_pets: Array[Node3D]=[]
+		for part in root.find_children("*","Node3D",true,false):
+			if part.has_meta("pet_motion"): own_pets.append(part)
+		pet_parts.append_array(own_pets)
+		root.set_meta("pet_parts",own_pets)
 		var animated: Array[Node3D]=[]
 		animated.append_array(foliage)
 		animated.append_array(sails)
+		animated.append_array(pet_parts)
 		if root.has_meta("build_tool"): animated.append(root.get_meta("build_tool"))
 		HomesteadStaticBatcher.consolidate(root,animated)
 		nodes[item.id]=root
@@ -151,8 +160,20 @@ func build_island():
 	clearing.name="StartingLand"
 	land_root.add_child(clearing)
 	var outline=land_outline(HomesteadItems.BASE_BOUNDS)
-	for side in data.land_sides:
-		var merged=Geometry2D.merge_polygons(outline,land_outline(HomesteadItems.LAND_BOUNDS[side]))
+	var additions: Array[PackedVector2Array]=[]
+	if data.edges:
+		# Ground, necks and resource scenery share one slab: no floating islands
+		# or internal raised rims. This is scenery, not extra purchasable cells.
+		for producer in HomesteadItems.EDGE_CENTERS:
+			var center=HomesteadItems.EDGE_CENTERS[producer]
+			var neck=Rect2(-12.0 if producer=="woods" else 10.8,5.1,3.2,5.8)
+			additions.append(PackedVector2Array([neck.position,Vector2(neck.end.x,neck.position.y),neck.end,Vector2(neck.position.x,neck.end.y)]))
+			var edge_outline=HomesteadMesh.rounded_outline(HomesteadItems.EDGE_SIZE.x,HomesteadItems.EDGE_SIZE.y,1.6)
+			for i in edge_outline.size(): edge_outline[i]+=Vector2(center.x,center.z)
+			additions.append(edge_outline)
+	for side in data.land_sides: additions.append(land_outline(HomesteadItems.LAND_BOUNDS[side]))
+	for addition in additions:
+		var merged=Geometry2D.merge_polygons(outline,addition)
 		if merged.size()==1: outline=merged[0]
 	# Round only the outside shoreline, never the former purchase seams.
 	for inset in Geometry2D.offset_polygon(outline,-0.16,Geometry2D.JOIN_ROUND):
@@ -166,21 +187,25 @@ func build_island():
 		patch.set_meta("available",available)
 		land_root.add_child(patch)
 		patch.position=HomesteadItems.LAND_CENTERS[side]
+		if side=="east": beach_cove(patch,not available)
 		if available:
 			if side=="west": meadow_border(patch)
 			if side=="east": waterside_bank(patch)
 		else:
-			terrain_surface(patch,HomesteadMesh.rounded_outline(10.0,10.0,0.14),true)
+			terrain_surface(patch,HomesteadMesh.rounded_outline(12.0,12.0,0.14),true)
 			var gate=Node3D.new()
 			patch.add_child(gate)
-			gate.position=Vector3(0,0,4.85) if side=="north" else Vector3(-4.85 if side=="east" else 4.85,0,0)
+			gate.position=Vector3(0,0,5.85) if side=="north" else Vector3(-5.85 if side=="east" else 5.85,0,0)
 			gate.rotation.y=0 if side=="north" else PI/2
 			for x in [-1.0,0,1.0]:
 				HomesteadMesh.box(gate,Vector3(x,0.39,0),Vector3(0.10,0.78,0.10),"a18b6b",0.025)
 			for y in [0.29,0.60]:
 				HomesteadMesh.box(gate,Vector3(0,y,0),Vector3(2.2,0.10,0.09),"b8a482",0.025)
-			for point in [Vector2(-3.1,-2.3),Vector2(2.7,-1.8),Vector2(-1.8,3.2)]:
-				HomesteadMesh.ellipsoid(patch,Vector3(point.x,0.12,point.y),Vector3(0.5,0.22,0.4),"7e8b6e")
+			if side=="north": mountain_ridge(patch)
+			elif side=="west": future_meadow(patch)
+			else:
+				for point in [Vector2(-3.1,-2.3),Vector2(2.7,-1.8),Vector2(-1.8,3.2)]:
+					HomesteadMesh.ellipsoid(patch,Vector3(point.x,0.12,point.y),Vector3(0.5,0.22,0.4),"7e8b6e")
 		HomesteadStaticBatcher.consolidate(patch,[])
 	if data.edges:
 		woods_edge()
@@ -191,7 +216,6 @@ func edge_patch(producer: String) -> Node3D:
 	patch.name="Edge_"+producer
 	land_root.add_child(patch)
 	patch.position=HomesteadItems.EDGE_CENTERS[producer]
-	terrain_surface(patch,HomesteadMesh.rounded_outline(HomesteadItems.EDGE_SIZE.x,HomesteadItems.EDGE_SIZE.y,1.6))
 	var body=StaticBody3D.new()
 	patch.add_child(body)
 	body.set_meta("producer_id",producer)
@@ -312,23 +336,28 @@ func update_production():
 		var camera=get_viewport().get_camera_3d()
 		bubble.position=anchor+(camera.global_basis.x if camera else Vector3.RIGHT)*offset
 		var material: ShaderMaterial=bubble.get_meta("material")
-		material.set_shader_parameter("kind",["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good))
+		material.set_shader_parameter("kind",(9 if status.good=="meat" else ["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good)))
 		material.set_shader_parameter("production_state",status.state)
 		material.set_shader_parameter("progress",status.progress)
 		bubble.get_meta("label").text=countdown(int(status.remaining)) if status.state==1 else ""
 		bubble.scale=Vector3.ONE*(0.86 if status.state==0 else 1.0)
 		# Baking has a quiet physical cue at the authored chimney; packing at the porch.
-		if status.station in ["oven","pantry"]:
+		if status.station in ["oven","pantry","barn","grill"]:
 			var effect: Node3D=production_effects.get(status.station)
 			if not is_instance_valid(effect):
 				effect=Node3D.new()
 				production_root.add_child(effect)
 				production_effects[status.station]=effect
-				if status.station=="oven":
+				if status.station in ["oven","grill"]:
 					for i in 3:
 						var puff=HomesteadMesh.ellipsoid(effect,Vector3.ZERO,Vector3.ONE*0.11,"f5ead3")
 						puff.material_override=HomesteadMesh.transparent(Color(0.97,0.93,0.84,0.36))
 						puff.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				elif status.station=="barn":
+					HomesteadMesh.box(effect,Vector3.ZERO,Vector3(0.55,0.14,0.32),"98764f",0.025)
+					HomesteadMesh.box(effect,Vector3(0,0.075,0),Vector3(0.46,0.025,0.24),"d9b76c",0.02)
+					for i in 6:
+						HomesteadMesh.ellipsoid(effect,Vector3(-0.16+float(i%3)*0.14,0.105,-0.06+float(i/3)*0.12),Vector3(0.045,0.025,0.035),"f3d58c")
 				else:
 					HomesteadMesh.box(effect,Vector3.ZERO,Vector3(0.44,0.22,0.32),"d5b77c",0.035)
 					var lid=Node3D.new()
@@ -338,7 +367,7 @@ func update_production():
 					HomesteadMesh.box(lid,Vector3(0,0,0.16),Vector3(0.46,0.04,0.34),"f2dfad",0.02)
 					HomesteadMesh.box(lid,Vector3(0,0.025,0.16),Vector3(0.055,0.015,0.34),"63856a",0.005)
 			var item=data.find(status.placeID)
-			var local=Vector3(0.96,4.13,-0.56) if status.station=="oven" else Vector3(-0.65,0.55,1.45)
+			var local=Vector3(0.96,4.13,-0.56) if status.station=="oven" else Vector3(-0.25,1.2,0.15) if status.station=="grill" else Vector3(-1.25,0.3,1.1) if status.station=="barn" else Vector3(-0.65,0.55,1.45)
 			effect.position=HomesteadItems.item_center(item)+local.rotated(Vector3.UP,int(item.rotation)*PI/2)
 			effect.set_meta("working",status.state==1)
 	for station in production_nodes.keys():
@@ -351,7 +380,18 @@ func update_production():
 				production_effects[station].queue_free()
 				production_effects.erase(station)
 	update_construction()
+	update_livestock_growth()
 	update_production_effects()
+
+func update_livestock_growth():
+	# Apply saved growth on snapshots even when Reduce Motion pauses processing.
+	var growth=0.0
+	for status in data.production:
+		if status.station=="barn": growth=status.progress if status.state==1 else 1.0 if status.state==2 else 0.0
+	for part in pet_parts:
+		if is_instance_valid(part) and part.get_meta("livestock",false):
+			# Collection starts the next young flock, without a slaughter scene.
+			part.scale=Vector3.ONE*lerpf(0.60,0.90,clampf(growth,0.0,1.0))
 
 func countdown(seconds: int) -> String:
 	return "%d:%02d" % [seconds/60,seconds%60] if seconds>=60 else str(seconds)+"s"
@@ -461,7 +501,8 @@ func station_working(station: String) -> bool:
 func update_production_effects():
 	for station in production_effects:
 		var effect: Node3D=production_effects[station]
-		effect.visible=effect.get_meta("working",false) and not reduced_motion
+		effect.visible=effect.get_meta("working",false) and (station=="barn" or not reduced_motion)
+		if station=="barn": continue
 		if station=="pantry":
 			effect.get_node("Lid").rotation.x=-0.28*(0.5+0.5*sin(clock*1.5))
 		else:
@@ -469,7 +510,7 @@ func update_production_effects():
 				var phase=fmod(clock*0.32+float(i)/3.0,1.0)
 				var puff: Node3D=effect.get_child(i)
 				puff.position=Vector3(sin(phase*PI)*0.13,phase*0.85,0)
-				puff.scale=Vector3.ONE*sin(phase*PI)*1.1
+				puff.scale=Vector3.ONE*sin(phase*PI)*0.12
 
 func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 	var root=Node3D.new()
@@ -477,6 +518,9 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 	root.add_child(art)
 	art.rotation.y=rotation*PI/2
 	match kind:
+		"barn": barn(art)
+		"doghouse": doghouse(art)
+		"grill": grill(art)
 		"windmill": windmill(art,ghost,style)
 		"orchard": orchard(art,style)
 		"greenhouse": greenhouse(art)
@@ -491,7 +535,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 		"nook": reading_nook(art,style)
 		"treehouse": treehouse(art,style)
 		"path": path_tile(art)
-	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop","greenhouse","orchard","windmill"]:
+	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop","greenhouse","orchard","windmill","barn","doghouse","grill"]:
 		var size: Vector2i=HomesteadItems.DEFINITIONS[kind].size
 		HomesteadMesh.contact_shadow(art,Vector2(size)*1.2)
 	return root
@@ -678,28 +722,28 @@ func orchard(root: Node3D,style=0):
 
 func meadow_border(root: Node3D):
 	# Peripheral planting never occupies or conceals usable expansion cells.
-	for i in 10:
-		var point=Vector3(-4.5+i,0,5.1 if i%2==0 else -5.1)
+	for i in 12:
+		var point=Vector3(-5.5+i,0,6.1 if i%2==0 else -6.1)
 		HomesteadMesh.ellipsoid(root,point+Vector3(0,0.12,0),Vector3(0.19,0.13,0.14),"80966e")
 		HomesteadMesh.rod(root,point+Vector3(0,0.09,0),point+Vector3(0,0.36,0),0.018,"829774")
 		HomesteadMesh.ellipsoid(root,point+Vector3(0,0.38,0),Vector3(0.10,0.06,0.10),"e2c4a3" if i%3 else "bda7b3")
 
 func waterside_bank(root: Node3D):
-	# The stream sits outside the 2x2-plot buildable cells. Its dry bank
+	# The stream sits outside the 12x12 buildable cells. Its dry bank
 	# stays open for walking and future paid places; scenery grants no items.
 	var stream=Node3D.new()
 	stream.name="WatersideStream"
 	root.add_child(stream)
-	stream.position=Vector3(0,0,-5.48)
-	HomesteadMesh.box(stream,Vector3(0,-0.18,0),Vector3(10.35,0.43,1.02),"c1a785",0.18)
-	HomesteadMesh.box(stream,Vector3(0,0.025,0),Vector3(10.15,0.06,0.78),"b7b59a",0.12)
-	var water=HomesteadMesh.box(stream,Vector3(0,0.065,0),Vector3(9.95,0.025,0.57),"70abb0",0.10)
+	stream.position=Vector3(0,0,-6.48)
+	HomesteadMesh.box(stream,Vector3(0,-0.18,0),Vector3(12.35,0.43,1.02),"c1a785",0.18)
+	HomesteadMesh.box(stream,Vector3(0,0.025,0),Vector3(12.15,0.06,0.78),"b7b59a",0.12)
+	var water=HomesteadMesh.box(stream,Vector3(0,0.065,0),Vector3(11.95,0.025,0.57),"70abb0",0.10)
 	var material=ShaderMaterial.new()
 	material.shader=preload("res://scripts/water.gdshader")
 	water.material_override=material
 	waters.append(material)
-	for i in 26:
-		var x=-4.88+i*0.39
+	for i in 31:
+		var x=-5.88+i*0.39
 		for z in [-0.40,0.40]:
 			HomesteadMesh.ellipsoid(stream,Vector3(x,0.10,z),Vector3(0.22,0.13,0.12),"c9c7af" if i%3 else "a9b4a1")
 	for x in [-1.72,1.65]:
@@ -919,6 +963,10 @@ func _process(delta):
 			var camera=get_viewport().get_camera_3d()
 			if camera and not camera.is_position_behind(pivot.global_position) and camera.unproject_position(pivot.global_position).x>=0 and get_viewport().get_visible_rect().has_point(camera.unproject_position(pivot.global_position)):
 				pivot.rotation.z+=delta*(0.46 if not data.production.is_empty() else 0.12)
+	for part in pet_parts:
+		if not is_instance_valid(part): continue
+		var motion=str(part.get_meta("pet_motion",""))
+		part.rotation.z=0.0 if reduced_motion else sin(clock*(4.0 if motion=="tail" else 0.9)+part.get_instance_id()%7)*(0.25 if motion=="tail" else 0.04)
 	for i in bubbles.size():
 		var bubble=bubbles[i]
 		if is_instance_valid(bubble):
@@ -988,3 +1036,184 @@ func recolor_roof(node: Node,color: String):
 		material.albedo_color=Color(color)
 		node.material_override=material
 	for child in node.get_children(): recolor_roof(child,color)
+
+# Small authored homestead additions; animals belong to their saved building.
+func pitched_roof(root: Node3D,center: Vector3,width: float,depth: float,color: String):
+	for side in [-1,1]:
+		var slope=HomesteadMesh.box(root,center+Vector3(side*width*0.24,0,0),Vector3(width*0.59,0.13,depth),color,0.03)
+		slope.rotation.z=-side*0.48
+	HomesteadMesh.rod(root,center+Vector3(0,width*0.14,-depth/2),center+Vector3(0,width*0.14,depth/2),0.055,"e4c995")
+
+func barn(root: Node3D):
+	HomesteadMesh.box(root,Vector3(-0.3,0.09,-0.25),Vector3(3.3,0.18,2.2),"b9b19a",0.09)
+	HomesteadMesh.box(root,Vector3(-0.3,1.18,-0.4),Vector3(3.0,2.15,1.8),"af634e",0.05)
+	for x in range(11):
+		HomesteadMesh.box(root,Vector3(-1.68+x*0.275,1.18,0.52),Vector3(0.035,2.1,0.025),"c48264",0.008)
+	pitched_roof(root,Vector3(-0.3,2.45,-0.4),3.5,2.25,"54756a")
+	for x in [-1.8,1.2]: HomesteadMesh.box(root,Vector3(x,1.18,0.56),Vector3(0.11,2.2,0.10),"efe2bd",0.015)
+	HomesteadMesh.box(root,Vector3(-0.55,0.88,0.58),Vector3(1.25,1.6,0.09),"824d3d",0.015)
+	for x in [-1.18,0.08]: HomesteadMesh.box(root,Vector3(x,0.88,0.65),Vector3(0.07,1.63,0.07),"f1e4c1",0.01)
+	HomesteadMesh.rod(root,Vector3(-1.14,0.15,0.67),Vector3(0.05,1.65,0.67),0.035,"e8d5b0")
+	HomesteadMesh.rod(root,Vector3(0.05,0.15,0.67),Vector3(-1.14,1.65,0.67),0.035,"e8d5b0")
+	HomesteadMesh.box(root,Vector3(-0.55,2.00,0.57),Vector3(0.55,0.45,0.07),"e7d9ac",0.025)
+	HomesteadMesh.box(root,Vector3(-0.55,2.00,0.62),Vector3(0.37,0.29,0.025),"688f8a",0.01)
+	for x in [-1.55,1.65]:
+		HomesteadMesh.box(root,Vector3(x,0.42,1.12),Vector3(0.09,0.84,0.09),"b99466",0.02)
+	HomesteadMesh.box(root,Vector3(0.10,0.55,1.12),Vector3(3.2,0.08,0.07),"d4b786",0.015)
+	HomesteadMesh.box(root,Vector3(-1.4,0.29,0.75),Vector3(0.48,0.42,0.4),"d9b76c",0.07)
+	for z in [0.62,0.86]: HomesteadMesh.box(root,Vector3(-1.4,0.30,z),Vector3(0.5,0.43,0.025),"92774c",0.005)
+	var sheep=Node3D.new()
+	root.add_child(sheep)
+	sheep.position=Vector3(0.9,0.02,0.94)
+	sheep.scale=Vector3.ONE*0.60
+	sheep.set_meta("livestock",true)
+	farm_animal(sheep,false)
+
+func doghouse(root: Node3D):
+	HomesteadMesh.box(root,Vector3(-0.35,0.06,-0.23),Vector3(1.2,0.12,1.25),"b8ac8c",0.08)
+	HomesteadMesh.box(root,Vector3(-0.35,0.50,-0.3),Vector3(1.0,0.85,1.0),"c79d70",0.04)
+	pitched_roof(root,Vector3(-0.35,1.01,-0.3),1.28,1.26,"66877a")
+	HomesteadMesh.box(root,Vector3(-0.35,0.38,0.215),Vector3(0.48,0.60,0.035),"4c5145",0.09)
+	HomesteadMesh.box(root,Vector3(-0.35,0.81,0.25),Vector3(0.43,0.16,0.05),"efe2be",0.03)
+	for x in [-0.48,-0.22]: HomesteadMesh.ellipsoid(root,Vector3(x,0.82,0.29),Vector3(0.055,0.045,0.02),"a68054")
+	HomesteadMesh.cylinder(root,Vector3(0.62,0.09,-0.6),0.18,0.14,"759d96")
+	HomesteadMesh.cylinder(root,Vector3(0.62,0.165,-0.6),0.13,0.015,"bcdedb")
+	var dog=Node3D.new()
+	root.add_child(dog)
+	dog.position=Vector3(0.4,0,0.44)
+	farm_animal(dog,true)
+
+func farm_animal(root: Node3D,is_dog: bool):
+	root.set_meta("pet_motion","body")
+	var coat="c89e6a" if is_dog else "eee3cb"
+	for x in [-0.18,0.18]:
+		for z in [-0.22,0.22]:
+			HomesteadMesh.box(root,Vector3(x,0.17,z),Vector3(0.11,0.32,0.11),"a57850" if is_dog else "726452",0.04)
+	HomesteadMesh.ellipsoid(root,Vector3(0,0.43,0),Vector3(0.30,0.26,0.43),coat)
+	if not is_dog:
+		for i in 7:
+			HomesteadMesh.ellipsoid(root,Vector3(sin(i*2.4)*0.17,0.48+cos(i*1.7)*0.08,cos(i*2.4)*0.27),Vector3(0.20,0.18,0.20),"f3e9d6")
+	var head=Node3D.new()
+	root.add_child(head)
+	head.position=Vector3(0,0.62,0.30)
+	head.set_meta("pet_motion","head")
+	HomesteadMesh.ellipsoid(head,Vector3.ZERO,Vector3(0.23,0.23,0.24),coat if is_dog else "8b7a60")
+	HomesteadMesh.ellipsoid(head,Vector3(0,-0.06,0.20),Vector3(0.15,0.11,0.12),"e6c7a0" if is_dog else "b7a48a")
+	HomesteadMesh.ellipsoid(head,Vector3(0,-0.015,0.30),Vector3(0.075,0.05,0.035),"35483d")
+	for side in [-1,1]:
+		HomesteadMesh.ellipsoid(head,Vector3(side*0.20,0.02,0),Vector3(0.09,0.20 if is_dog else 0.08,0.10),"815d40" if is_dog else "b6a68c")
+		HomesteadMesh.ellipsoid(head,Vector3(side*0.10,0.05,0.20),Vector3(0.035,0.045,0.023),"2e4037")
+	if is_dog:
+		HomesteadMesh.torus(root,Vector3(0,0.50,0.20),0.20,0.035,"759c8c").rotation.x=PI/2
+		var tail=Node3D.new()
+		root.add_child(tail)
+		tail.position=Vector3(0,0.44,-0.35)
+		tail.set_meta("pet_motion","tail")
+		HomesteadMesh.rod(tail,Vector3.ZERO,Vector3(0,0.22,-0.22),0.065,coat)
+
+func grill(root: Node3D):
+	HomesteadMesh.box(root,Vector3(0,0.04,0),Vector3(1.8,0.08,1.6),"b4b39d",0.08)
+	for x in [-0.65,0.45]:
+		for z in [-0.43,0.43]: HomesteadMesh.rod(root,Vector3(x,0.10,z),Vector3(x*0.75,0.85,z*0.8),0.045,"52665d")
+	HomesteadMesh.ellipsoid(root,Vector3(-0.15,0.87,0),Vector3(0.65,0.30,0.52),"526c65")
+	HomesteadMesh.cylinder(root,Vector3(-0.15,1.02,0),0.48,0.06,"313f36")
+	for x in range(7):
+		HomesteadMesh.rod(root,Vector3(-0.58+x*0.14,1.07,-0.32),Vector3(-0.58+x*0.14,1.07,0.32),0.018,"a0aca1")
+	HomesteadMesh.box(root,Vector3(0.63,0.93,0),Vector3(0.42,0.09,0.88),"c2a278",0.03)
+	HomesteadMesh.box(root,Vector3(0.65,1.00,0.16),Vector3(0.29,0.04,0.32),"efe0b7",0.02)
+	for z in [-0.40,0.40]: HomesteadMesh.cylinder(root,Vector3(-0.66,0.14,z),0.14,0.07,"364a40").rotation.x=PI/2
+
+# Future regions hint at different journeys without granting land or inventory.
+func future_meadow(root: Node3D):
+	var grove=Node3D.new()
+	grove.name="FutureMeadowGrove"
+	root.add_child(grove)
+	for i in 4:
+		var holder=Node3D.new()
+		grove.add_child(holder)
+		holder.position=Vector3(-4.5+i*2.8,0,-4.3+sin(i*1.9)*0.5)
+		holder.scale=Vector3.ONE*(0.65+0.06*(i%2))
+		tree(holder,false)
+	# An asymmetric sweep of meadow flowers, rather than a grid of filler props.
+	for i in 22:
+		var angle=float(i)*0.24-1.5
+		var point=Vector3(sin(angle)*3.7,0.10,cos(angle)*2.2-0.3)
+		HomesteadMesh.ellipsoid(root,point,Vector3(0.25,0.12,0.17),"7e946e")
+		if i%2==0:
+			HomesteadMesh.ellipsoid(root,point+Vector3(0,0.17,0),Vector3(0.10,0.07,0.10),"dac696" if i%3 else "b9aec0")
+	for i in 8:
+		var point=Vector3(-1.7+sin(i*0.47)*2.0,0.035,3.8-i*0.72)
+		HomesteadMesh.ellipsoid(root,point,Vector3(0.22,0.045,0.15),"b8b5a1")
+
+func beach_cove(root: Node3D,dormant: bool):
+	var cove=Node3D.new()
+	cove.name="BeachCove"
+	root.add_child(cove)
+	# All twelve usable columns remain dry. The cove lies beyond their east edge.
+	var shore=PackedVector2Array([Vector2(5.8,-6),Vector2(8,-6.3),Vector2(9,-5),Vector2(8.2,-2),Vector2(9.2,1),Vector2(8.7,5.8),Vector2(6,6)])
+	HomesteadMesh.polygon_slab(cove,shore,0.02,-0.9,"d3c09a" if dormant else "e5cf9e")
+	var wet=PackedVector2Array([Vector2(7.5,-6.2),Vector2(8,-6.3),Vector2(9,-5),Vector2(8.2,-2),Vector2(9.2,1),Vector2(8.7,5.8),Vector2(8.1,5.9),Vector2(8.6,1),Vector2(7.7,-2),Vector2(8.4,-5)])
+	HomesteadMesh.polygon_slab(cove,wet,0.026,-0.07,"c5b79b" if dormant else "c7ba96")
+	var sea=PackedVector2Array([Vector2(8,-6.3),Vector2(10.5,-6.3),Vector2(10.8,-2),Vector2(10.4,2.5),Vector2(9.6,6.3),Vector2(8.7,5.8),Vector2(9.2,1),Vector2(8.2,-2),Vector2(9,-5)])
+	var water=HomesteadMesh.polygon_slab(cove,sea,0.006,-0.82,"78aaa8")
+	var material=ShaderMaterial.new()
+	material.shader=preload("res://scripts/water.gdshader")
+	material.set_shader_parameter("water_color",Color("91b3ac" if dormant else "67b7b8"))
+	water.material_override=material
+	waters.append(material)
+	for i in 15:
+		var z=-5.7+i*0.78
+		var x=8.4+sin(z*1.03)*0.44
+		HomesteadMesh.ellipsoid(cove,Vector3(x,0.035,z),Vector3(0.24,0.012,0.055),"e5e2c9")
+	for spec in [[Vector3(6.65,0.12,-4.8),0.5],[Vector3(7.0,0.1,4.9),0.4]]:
+		HomesteadMesh.ellipsoid(cove,spec[0],Vector3(spec[1],0.20,spec[1]*0.7),"b9bca9")
+	HomesteadMesh.rod(cove,Vector3(6.7,0.12,2.0),Vector3(7.3,0.14,2.8),0.08,"b9a17a")
+	for i in 7:
+		var point=Vector3(6.7+sin(i*2.4)*0.35,0.06,-0.9+i*0.47)
+		HomesteadMesh.ellipsoid(cove,point,Vector3(0.07,0.035,0.06),"f0dfbd")
+	for i in 5:
+		var base=Vector3(6.25+i*0.10,0.04,4.3)
+		HomesteadMesh.rod(cove,base,base+Vector3(-0.12,0.48+i*0.06,0.06),0.022,"8e9e75")
+
+func mountain_ridge(root: Node3D):
+	var ridge=Node3D.new()
+	ridge.name="FutureMountainRidge"
+	root.add_child(ridge)
+	mountain_peak(ridge,Vector3(-3.2,0,-2),2.4,4.4,"8d9b91")
+	mountain_peak(ridge,Vector3(0.1,0,-3),3.0,6.4,"84958c")
+	mountain_peak(ridge,Vector3(3.5,0,-2),2.1,4.7,"99a49a")
+	for i in 6:
+		var holder=Node3D.new()
+		ridge.add_child(holder)
+		holder.position=Vector3(-4.8+i*1.85,0,1.4+sin(i*1.7)*0.7)
+		holder.scale=Vector3.ONE*(0.54+0.07*(i%3))
+		tree(holder,false)
+	for i in 9:
+		HomesteadMesh.ellipsoid(ridge,Vector3(-4.9+i*1.2,0.15,3+sin(i*1.3)*0.6),Vector3(0.35,0.25,0.27),"a5ae9d")
+
+func mountain_peak(root: Node3D,origin: Vector3,radius: float,height: float,color: String):
+	var vertices=PackedVector3Array()
+	var normals=PackedVector3Array()
+	var snow_vertices=PackedVector3Array()
+	var snow_normals=PackedVector3Array()
+	var peak=origin+Vector3(radius*0.12,height,-radius*0.08)
+	for i in 7:
+		var angle=float(i)*TAU/7
+		var next_angle=float(i+1)*TAU/7
+		var a=origin+Vector3(cos(angle)*radius*(1.0+0.09*sin(i*2.3)),0,sin(angle)*radius*0.79)
+		var b=origin+Vector3(cos(next_angle)*radius*(1.0+0.09*sin((i+1)*2.3)),0,sin(next_angle)*radius*0.79)
+		var normal=(peak-a).cross(b-a).normalized()
+		vertices.append_array(PackedVector3Array([a,b,peak]))
+		normals.append_array(PackedVector3Array([normal,normal,normal]))
+		var sa=a.lerp(peak,0.75+0.035*sin(i*2.8))
+		var sb=b.lerp(peak,0.75+0.035*sin((i+1)*2.8))
+		snow_vertices.append_array(PackedVector3Array([sa+normal*0.008,sb+normal*0.008,peak+normal*0.008]))
+		snow_normals.append_array(PackedVector3Array([normal,normal,normal]))
+	for snow in [false,true]:
+		var arrays=[]
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX]=snow_vertices if snow else vertices
+		arrays[Mesh.ARRAY_NORMAL]=snow_normals if snow else normals
+		var mesh=ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+		HomesteadMesh.instance(root,mesh,"ece9d9" if snow else color,Vector3.ZERO)

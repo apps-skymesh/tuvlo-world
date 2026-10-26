@@ -30,7 +30,11 @@ void fragment() {
  vec2 q = p - vec2(0.0, 0.12);
  float icon = 1.0;
  vec3 tint = col;
- if (kind == 8) {
+ if (kind == 9) {
+  icon = length(q * vec2(0.9,1.3)) - 0.47;
+  tint = vec3(0.67,0.37,0.30);
+  if (icon < -0.025 && length(q-vec2(0.18,-0.04))<0.12) tint=vec3(0.96,0.88,0.72);
+ } else if (kind == 8) {
   icon = capsule(q, vec2(-0.22,-0.37), vec2(0.18,0.23), 0.07);
   icon = min(icon,capsule(q,vec2(-0.12,0.32),vec2(0.35,0.02),0.12));
   tint = q.y>0.02 ? vec3(0.38,0.48,0.43) : vec3(0.66,0.46,0.25);
