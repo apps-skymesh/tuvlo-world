@@ -123,6 +123,12 @@ func world_changed():
 			recoveries+=1
 	elif state=="walking":
 		start_route(HomesteadItems.cell_center(navigation.closest(current_target)),"Taking a clear path")
+func notice_sunny_day():
+	announce("A sunny day")
+	if reduced_motion or state in ["walking","seating","unseating"]: return
+	state="look"
+	timer=2.4
+	model.set_motion("idle")
 func greet_discovery():
 	pending_discovery=true
 	if state not in ["walking","seating"]:

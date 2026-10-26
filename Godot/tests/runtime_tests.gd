@@ -608,6 +608,13 @@ func run():
  scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"lifecycle","payload":{"paused":false}}))
  check(scene.session=="next-child" and not scene.paused and scene.data.items.size()==items.size(),"The same native engine can reopen for another child")
  check(scene.resident.model.rig==retained_rig,"Native reopening retains the active rig")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"sunrise","payload":{}}))
+ check(scene.sunrise_remaining==3.6 and scene.resident.activity=="A sunny day","A new approval asks the valley to notice")
+ scene._process(1.8)
+ check(scene.sun.light_energy>0.78,"The sun lifts while the sunny day plays")
+ scene.reduced_motion=true
+ scene._process(0.1)
+ check(scene.sunrise_remaining==0 and is_equal_approx(scene.sun.light_energy,0.78),"Reduce Motion returns the sun immediately")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"cottage"}}))
  check(scene.selected_id=="","Prior child callbacks cannot mutate the reopened scene")
  scene.queue_free()

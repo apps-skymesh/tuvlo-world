@@ -35,6 +35,10 @@ var fit_key=Vector3(INF,INF,INF)
 var fit_cache={}
 
 var reduced_motion=false
+var sun: DirectionalLight3D
+var sunrise_remaining=0.0
+const SUNRISE_SECONDS=3.6
+const SUN_REST_ENERGY=0.78
 var paused=false
 var ready_for_snapshot=false
 var web_callback
@@ -88,6 +92,7 @@ func _ready():
  light.directional_shadow_max_distance=100.0
  light.shadow_enabled=true
  add_child(light)
+ sun=light
  var fill=DirectionalLight3D.new()
  fill.rotation_degrees=Vector3(-28,145,0)
  fill.light_color=Color("c9e0e2")
@@ -216,6 +221,7 @@ func receive_host_json(json: String):
     presentation.clear_preview()
    land_preview=show
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
+  "sunrise": begin_sunrise()
   "camera":
    hold_menu_camera=false # Only an explicit camera action may move a paused view.
    camera_preview_frames=1 if reduced_motion else 90
@@ -623,6 +629,7 @@ func _process(delta):
  if not paused:
   clock+=delta
   metrics_clock+=delta
+  update_sunrise(delta)
  if diagnostics and metrics_clock>=5:
   metrics_clock=0
   emit_message("metrics",{"fps":Engine.get_frames_per_second(),"processSeconds":Performance.get_monitor(Performance.TIME_PROCESS),"staticBytes":Performance.get_monitor(Performance.MEMORY_STATIC),"drawCalls":Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),"residentSteps":resident.steps})
@@ -737,8 +744,19 @@ func selected_item() -> Dictionary:
  var placed=data.find(selected_id)
  return placed if not placed.is_empty() else data.inventory.get(selected_id,{})
 
+func begin_sunrise():
+ if not reduced_motion: sunrise_remaining=SUNRISE_SECONDS
+ resident.notice_sunny_day()
+ if is_instance_valid(guest): guest.notice_sunny_day()
+func update_sunrise(delta: float):
+ if reduced_motion: sunrise_remaining=0
+ elif sunrise_remaining>0: sunrise_remaining=maxf(0,sunrise_remaining-delta)
+ if sun==null: return
+ var lift=0.0 if sunrise_remaining<=0 else sin((1.0-sunrise_remaining/SUNRISE_SECONDS)*PI)
+ sun.light_energy=SUN_REST_ENERGY+0.22*lift
+ sun.rotation_degrees.x=-48.0+6.0*lift
 func send_activity():
- emit_message("activity",{"key":resident.state,"destination":resident.destination_kind})
+ emit_message("activity",{"key":resident.state,"destination":resident.destination_kind,"text":resident.activity})
 
 func new_command_id() -> String:
  var bytes=Crypto.new().generate_random_bytes(16)
