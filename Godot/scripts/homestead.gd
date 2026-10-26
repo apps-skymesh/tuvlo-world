@@ -666,7 +666,7 @@ func _process(delta):
   var item=data.find(focus_item_id)
   if not item.is_empty():
    focus=HomesteadItems.item_center(item)+Vector3(0,0.7,0)
-   size=9.0*zoom
+   size=6.4*zoom
   elif focus_item_id.begins_with("edge:") and HomesteadItems.EDGE_CENTERS.has(focus_item_id.substr(5)):
    focus=HomesteadItems.EDGE_CENTERS[focus_item_id.substr(5)]+Vector3(0,0.7,0)
    size=10.0*zoom
