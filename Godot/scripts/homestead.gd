@@ -160,7 +160,7 @@ func receive_host_json(json: String):
   var growth=0 if wins<3 else (1 if wins<13 else 2)
   # Crop art and building phases do not change walkable footprints.
   var next_navigation=JSON.stringify([next_data.items,next_data.land_sides])
-  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage,next_data.construction.map(func(build): return [build.placeID,0 if build.progress<0.33 else 1 if build.progress<0.72 else 2])])
+  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage,next_data.construction.map(func(build): return [build.placeID,int(floor(clampf(build.progress,0.0,0.999)*5.0))])])
   data.items=next_data.items
   data.inventory=next_data.inventory
   data.land_sides=next_data.land_sides

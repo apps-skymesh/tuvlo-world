@@ -151,6 +151,10 @@ func run():
  building_payload.construction[0].progress=0.5
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":building_payload}))
  check(scene.presentation.nodes.mill!=foundation,"Construction advances to its timber frame")
+ var timber=scene.presentation.nodes.mill
+ building_payload.construction[0].progress=0.9
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":building_payload}))
+ check(scene.presentation.nodes.mill!=timber and scene.presentation.nodes.mill.get_meta("building",false),"The last step shows the building before the clock ends")
  building_payload.construction=[]
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":building_payload}))
  check(not scene.presentation.nodes.mill.get_meta("building",false) and scene.presentation.construction_nodes.is_empty(),"Completion reveals the structure and removes the work marker")

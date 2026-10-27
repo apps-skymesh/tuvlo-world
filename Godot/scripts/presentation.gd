@@ -73,7 +73,7 @@ func rebuild():
 	for item in data.items:
 		var growth=(0 if data.approvals<3 else 1 if data.approvals<13 else 2) if item.kind=="tree" and item.id==data.growth_tree_id else -1
 		var build=data.building(item.id)
-		var building_phase=-1 if build.is_empty() else 0 if build.progress<0.33 else 1 if build.progress<0.72 else 2
+		var building_phase=-1 if build.is_empty() else int(floor(clampf(build.progress,0.0,0.999)*5.0))
 		var completed=nodes.has(item.id) and nodes[item.id].get_meta("building",false) and build.is_empty()
 		var signature=JSON.stringify([building_phase,item.kind,item.rotation,item.get("style",0),growth,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat"),data.farm_stages] if item.kind=="garden" else data.farm_fruit_stage if item.kind=="orchard" else []])
 		if nodes.has(item.id):
@@ -90,7 +90,7 @@ func rebuild():
 		var foliage_start=foliage.size()
 		var waters_start=waters.size()
 		var sails_start=sails.size()
-		var root=make_item(item.kind,item.rotation,false,int(item.get("style",0))) if building_phase in [-1,2] else Node3D.new()
+		var root=make_item(item.kind,item.rotation,false,int(item.get("style",0))) if building_phase in [-1,4] else Node3D.new()
 		if building_phase>=0: construction_site(root,item,building_phase)
 		root.set_meta("building",building_phase>=0)
 		prop_root.add_child(root)
@@ -441,7 +441,8 @@ func update_construction():
 			bubble.get_meta("body").set_meta("construction_id",build.placeID)
 			construction_nodes[build.placeID]=bubble
 		var item=data.find(build.placeID)
-		var height=2.0 if build.progress<0.33 else minf(2.6,HomesteadItems.DEFINITIONS[item.kind].height*0.75+0.5)+1.1 if build.progress<0.72 else maxf(1.7,HomesteadItems.DEFINITIONS[item.kind].height+1.1)
+		var phase=int(floor(clampf(build.progress,0.0,0.999)*5.0))
+		var height=1.15+float(phase)*0.38
 		bubble.position=HomesteadItems.item_center(item)+Vector3(0,height,0)
 		var material: ShaderMaterial=bubble.get_meta("material")
 		material.set_shader_parameter("kind",8)
@@ -458,24 +459,30 @@ func construction_site(root: Node3D,item: Dictionary,phase: int):
 	var size=HomesteadItems.footprint(item.kind,item.rotation)
 	var width=float(size.x)*0.47
 	var depth=float(size.y)*0.47
-	if phase<2:
-		HomesteadMesh.box(root,Vector3(0,0.07,0),Vector3(size.x,0.14,size.y),"c8baa0",0.06)
-		for i in 3:
-			HomesteadMesh.box(root,Vector3(-width+0.18+i*0.28,0.18,depth-0.24),Vector3(0.2,0.12,0.65),"a7865c",0.02)
-	var height=0.45 if phase==0 else minf(2.6,HomesteadItems.DEFINITIONS[item.kind].height*0.75+0.5)
-	for x in [-width,width]:
-		for z in [-depth,depth]:
-			HomesteadMesh.box(root,Vector3(x,height/2,z),Vector3(0.09,height,0.09),"9b7a53",0.015)
-	for z in [-depth,depth]:
-		HomesteadMesh.box(root,Vector3(0,height,z),Vector3(width*2+0.12,0.10,0.12),"c8a674",0.02)
-		if phase>0:
-			HomesteadMesh.rod(root,Vector3(-width,0.2,z),Vector3(width,height,z),0.035,"c8a674")
-	if phase>0:
+	var post_h=0.42 if phase<=0 else 0.85 if phase==1 else minf(2.15,HomesteadItems.DEFINITIONS[item.kind].height*0.55+0.45)
+	if phase<4:
+		HomesteadMesh.box(root,Vector3(0,0.06,0),Vector3(size.x,0.12,size.y),"c8baa0",0.06)
+	if phase==0:
+		for i in 4:
+			HomesteadMesh.box(root,Vector3(-width*0.7+i*width*0.46,0.22,depth-0.22),Vector3(0.08,0.32,0.08),"9b7a53",0.01)
+	if phase>=1 and phase<4:
 		for x in [-width,width]:
-			HomesteadMesh.box(root,Vector3(x,height*0.65,0),Vector3(0.34,0.07,depth*2+0.24),"d3b783",0.02)
+			for z in [-depth,depth]:
+				HomesteadMesh.box(root,Vector3(x,post_h/2.0,z),Vector3(0.09,post_h,0.09),"9b7a53",0.015)
+	if phase>=2 and phase<4:
+		for z in [-depth,depth]:
+			HomesteadMesh.box(root,Vector3(0,post_h,z),Vector3(width*2.0+0.12,0.1,0.12),"c8a674",0.02)
+			HomesteadMesh.rod(root,Vector3(-width,0.25,z),Vector3(width,post_h,z),0.035,"c8a674")
+		for x in [-width,width]:
+			HomesteadMesh.box(root,Vector3(x,post_h*0.62,0),Vector3(0.1,0.1,depth*2.0),"d3b783",0.02)
+	if phase==3:
+		HomesteadMesh.box(root,Vector3(0,0.48,0),Vector3(maxf(0.4,width*1.5),0.72,maxf(0.4,depth*1.5)),"e4d2b0",0.04)
+	if phase>=4:
+		for x in [-width,width]:
+			HomesteadMesh.box(root,Vector3(x,0.9,depth+0.16),Vector3(0.08,1.7,0.08),"9b7a53",0.01)
 	var tool=Node3D.new()
 	root.add_child(tool)
-	tool.position=Vector3(width-0.2,0.75,depth+0.12)
+	tool.position=Vector3(width-0.2,0.55+float(mini(phase,3))*0.15,depth+0.12)
 	HomesteadMesh.box(tool,Vector3(0,0.18,0),Vector3(0.06,0.4,0.06),"9b7047",0.01)
 	HomesteadMesh.box(tool,Vector3(0,0.4,0),Vector3(0.3,0.1,0.12),"718077",0.02)
 	root.set_meta("build_tool",tool)
