@@ -307,6 +307,7 @@ func update_harvest():
 		material.set_shader_parameter("kind",["wood","stone","food","wheat"].find(data.harvest[key]))
 		face.material_override=material
 		bubble.add_child(face)
+		add_token_shadow(bubble, 1.15)
 		var body=StaticBody3D.new()
 		bubble.add_child(body)
 		if nodes.has(key): body.set_meta("item_id",key)
@@ -394,6 +395,9 @@ func update_livestock_growth():
 			# Collection starts the next young flock, without a slaughter scene.
 			part.scale=Vector3.ONE*lerpf(0.60,0.90,clampf(growth,0.0,1.0))
 
+func add_token_shadow(parent: Node3D, breadth: float):
+	var shade=HomesteadMesh.contact_shadow(parent, Vector2(breadth, breadth*0.72))
+	shade.position=Vector3(0.03, -0.22, 0.04)
 func countdown(seconds: int) -> String:
 	return "%d:%02d" % [seconds/60,seconds%60] if seconds>=60 else str(seconds)+"s"
 
@@ -409,6 +413,7 @@ func make_status_bubble() -> Node3D:
 	material.shader=BUBBLE_SHADER
 	face.material_override=material
 	bubble.add_child(face)
+	add_token_shadow(bubble, 0.95)
 	bubble.set_meta("material",material)
 	var body=StaticBody3D.new()
 	body.collision_layer=1
