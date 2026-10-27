@@ -227,6 +227,9 @@ func receive_host_json(json: String):
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "sunrise": begin_sunrise()
   "waterTree": begin_tree_watering(maxi(0,int(payload.get("count",0))))
+  "treeLeaves":
+   presentation.yellow_leaves=payload.get("yellow",false)==true
+   presentation.rebuild()
   "camera":
    hold_menu_camera=false # Only an explicit camera action may move a paused view.
    camera_preview_frames=1 if reduced_motion else 90
@@ -772,6 +775,7 @@ func begin_tree_watering(count: int):
 func _on_tree_watered():
  if presentation.pending_tree_growth<=0: return
  presentation.pending_tree_growth-=1
+ presentation.yellow_leaves=false
  presentation.rebuild()
 func begin_sunrise():
  if not reduced_motion: sunrise_remaining=SUNRISE_SECONDS

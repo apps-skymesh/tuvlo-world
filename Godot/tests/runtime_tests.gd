@@ -653,6 +653,13 @@ func run():
  check(scene.presentation.pending_tree_growth==1 and scene.resident.watering_remaining==1 and scene.resident.state=="water","One watering grows the tree by one mission")
  scene.resident.finish_activity()
  check(scene.presentation.pending_tree_growth==0 and scene.resident.watering_remaining==0 and scene.presentation.nodes.tree.get_child(0).get_meta("growth_stage",-1)==2,"The child stops once every new mission is watered")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"treeLeaves","payload":{"yellow":true}}))
+ var thirsty=scene.presentation.nodes.tree.get_child(0)
+ check(thirsty.get_meta("yellow_leaves",false) and thirsty.get_meta("growth_stage",-1)==2 and thirsty.get_meta("canopy_radius",9.0)<=2.0,"A missed day yellows a few leaves without shrinking the earned tree")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"waterTree","payload":{"count":1}}))
+ scene.resident.state="water"
+ scene.resident.finish_activity()
+ check(not scene.presentation.nodes.tree.get_child(0).get_meta("yellow_leaves",true) and scene.presentation.nodes.tree.get_child(0).get_meta("growth_stage",-1)==2,"Watering clears the yellow leaves and keeps the earned tree")
  scene.queue_free()
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)
