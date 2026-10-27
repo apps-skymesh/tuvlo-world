@@ -557,8 +557,11 @@ func prepare_cottage_materials(node: Node):
 	if node is MeshInstance3D and node.mesh.get_surface_count()==1:
 		var material=node.get_active_material(0)
 		if material is StandardMaterial3D:
-			node.material_override=material
-			node.set_meta("cottage_roof",material.resource_name.begins_with("roof"))
+			var copy=material.duplicate()
+			if str(copy.resource_name).begins_with("roof"):
+				copy.albedo_color=copy.albedo_color.lerp(Color("e4532a"),0.45)
+			node.material_override=copy
+			node.set_meta("cottage_roof",str(copy.resource_name).begins_with("roof"))
 	for child in node.get_children(): prepare_cottage_materials(child)
 
 # Original miniature joinery, open front and paper details stay readable from
@@ -600,7 +603,7 @@ func workshop(root: Node3D):
 # Original plaster-and-joinery mill, including two free material/sail looks.
 # The animated pivot survives static batching; quiet/offscreen mills do no work.
 func windmill(root: Node3D,ghost=false,style=0):
-	var roof_color="78988b" if style==0 else "ad806d"
+	var roof_color="2f9a62" if style==0 else "d15a3c"
 	HomesteadMesh.cylinder(root,Vector3(0,0.10,0),1.31,0.20,"c9bc9c")
 	HomesteadMesh.cylinder(root,Vector3(0,1.25,0),0.91,2.3,"eadfc5",0.65)
 	for angle in 8:
@@ -691,8 +694,8 @@ func greenhouse(root: Node3D):
 # Two trained fruit trees, low stone edging and a woven harvest basket.
 # Three enduring looks are cosmetic; fruit play never changes the ledger.
 func orchard(root: Node3D,style=0):
-	var leaf_color=["83a477","9aaf7b","9b9b85"][clampi(style,0,2)]
-	var fruit_color=["c98270","d5b36b","9c8bb2"][clampi(style,0,2)]
+	var leaf_color=["3f9a44","62c452","7aaa4e"][clampi(style,0,2)]
+	var fruit_color=["e4543c","f0c22a","9a62d6"][clampi(style,0,2)]
 	HomesteadMesh.box(root,Vector3(0,0.06,0),Vector3(1.84,0.12,1.78),"acb18b",0.10)
 	for x in [-0.88,0.88]:
 		for z in [-0.65,0,0.65]:
@@ -781,7 +784,7 @@ func garden(root: Node3D):
 					if stage in [2,3]: foliage.append(stalk)
 					var ripe=stage==4 if stage>=0 else data.harvest.values().has("wheat")
 					var height=0.62 if ripe else (0.12 if stage in [1,2] else 0.32)
-					var tint="d8ab3f" if ripe else "5f9e50"
+					var tint="f0c429" if ripe else "3dae3a"
 					HomesteadMesh.rod(stalk,Vector3.ZERO,Vector3(0.025,height,0),0.018,tint)
 					for seed in 3:
 						var y=height-0.06-seed*0.065
@@ -792,9 +795,9 @@ func garden(root: Node3D):
 					for leaf_index in 4:
 						var angle=leaf_index*TAU/4+(0.35 if x>0 else 0.0)
 						var offset=Vector3(cos(angle)*0.09,0.06,sin(angle)*0.09)
-						var leaf=HomesteadMesh.ellipsoid(root,plant+offset,Vector3(0.075,0.045,0.17),"548d57" if leaf_index%2 else "80af61")
+						var leaf=HomesteadMesh.ellipsoid(root,plant+offset,Vector3(0.075,0.045,0.17),"2f9a3a" if leaf_index%2 else "62d24e")
 						leaf.rotation=Vector3(-0.25,PI/2-angle,0)
-					HomesteadMesh.ellipsoid(root,plant+Vector3(0,0.14,0),Vector3(0.075,0.10,0.075),"b3d47b")
+					HomesteadMesh.ellipsoid(root,plant+Vector3(0,0.14,0),Vector3(0.075,0.10,0.075),"d6ee58")
 	HomesteadMesh.rod(root,Vector3(1.28,0,-0.68),Vector3(1.28,0.88,-0.68),0.035,"a47c58")
 	HomesteadMesh.box(root,Vector3(1.28,0.75,-0.68),Vector3(0.35,0.28,0.045),"dac7a0",0.035)
 
@@ -834,9 +837,9 @@ func tree(root: Node3D,ghost: bool):
 	var crown=Node3D.new()
 	root.add_child(crown)
 	crown.position.y=1.45
-	HomesteadMesh.ellipsoid(crown,Vector3(-0.39,0.69,0.06),Vector3(0.72,0.85,0.73),"83a273")
-	HomesteadMesh.ellipsoid(crown,Vector3(0.34,0.88,-0.03),Vector3(0.76,1.02,0.76),"94ad7b")
-	HomesteadMesh.ellipsoid(crown,Vector3(0.04,1.46,0.04),Vector3(0.62,0.81,0.62),"a1b685")
+	HomesteadMesh.ellipsoid(crown,Vector3(-0.39,0.69,0.06),Vector3(0.72,0.85,0.73),"3f9a45")
+	HomesteadMesh.ellipsoid(crown,Vector3(0.34,0.88,-0.03),Vector3(0.76,1.02,0.76),"58b84e")
+	HomesteadMesh.ellipsoid(crown,Vector3(0.04,1.46,0.04),Vector3(0.62,0.81,0.62),"7ed45c")
 	if not ghost: foliage.append(crown)
 	for p in [Vector3(0.25,0.05,0.28),Vector3(-0.3,0.04,0.1)]:
 		HomesteadMesh.ellipsoid(root,p,Vector3(0.21,0.07,0.15),"92a677")
@@ -852,8 +855,8 @@ func flowers(root: Node3D,ghost: bool):
 		HomesteadMesh.ellipsoid(patch,Vector3(p.x+0.08,p.y*0.5,p.z),Vector3(0.12,0.045,0.06),"8da36e")
 		for petal in 5:
 			var angle=petal*TAU/5
-			HomesteadMesh.ellipsoid(patch,p+Vector3(cos(angle)*0.075,0,sin(angle)*0.075),Vector3(0.075,0.05,0.075),"e0a295" if i%2 else "f0dec1")
-		HomesteadMesh.ellipsoid(patch,p+Vector3(0,0.035,0),Vector3.ONE*0.05,"d9b565")
+			HomesteadMesh.ellipsoid(patch,p+Vector3(cos(angle)*0.075,0,sin(angle)*0.075),Vector3(0.075,0.05,0.075),"f25b6a" if i%2 else "ffe14a")
+		HomesteadMesh.ellipsoid(patch,p+Vector3(0,0.035,0),Vector3.ONE*0.05,"f2a31a")
 	if not ghost: foliage.append(patch)
 
 func rocks(root: Node3D):
@@ -1031,7 +1034,7 @@ func treehouse(root: Node3D,style=0):
 	house.position.y=2.15
 	house.scale=Vector3(0.55,0.55,0.55)
 	cottage(house)
-	recolor_roof(house,"dfbf77" if style==0 else "b484b2")
+	recolor_roof(house,"f0c04a" if style==0 else "d45aa8")
 	for i in 7:
 		HomesteadMesh.box(root,Vector3(0,0.3+i*0.28,1.45),Vector3(0.7,0.07,0.12),"d0c7ad",0.02)
 	for x in [-0.4,0.4]:
@@ -1056,7 +1059,7 @@ func barn(root: Node3D):
 	HomesteadMesh.box(root,Vector3(-0.3,1.18,-0.4),Vector3(3.0,2.15,1.8),"af634e",0.05)
 	for x in range(11):
 		HomesteadMesh.box(root,Vector3(-1.68+x*0.275,1.18,0.52),Vector3(0.035,2.1,0.025),"c48264",0.008)
-	pitched_roof(root,Vector3(-0.3,2.45,-0.4),3.5,2.25,"54756a")
+	pitched_roof(root,Vector3(-0.3,2.45,-0.4),3.5,2.25,"d24b38")
 	for x in [-1.8,1.2]: HomesteadMesh.box(root,Vector3(x,1.18,0.56),Vector3(0.11,2.2,0.10),"efe2bd",0.015)
 	HomesteadMesh.box(root,Vector3(-0.55,0.88,0.58),Vector3(1.25,1.6,0.09),"824d3d",0.015)
 	for x in [-1.18,0.08]: HomesteadMesh.box(root,Vector3(x,0.88,0.65),Vector3(0.07,1.63,0.07),"f1e4c1",0.01)
@@ -1079,7 +1082,7 @@ func barn(root: Node3D):
 func doghouse(root: Node3D):
 	HomesteadMesh.box(root,Vector3(-0.35,0.06,-0.23),Vector3(1.2,0.12,1.25),"b8ac8c",0.08)
 	HomesteadMesh.box(root,Vector3(-0.35,0.50,-0.3),Vector3(1.0,0.85,1.0),"c79d70",0.04)
-	pitched_roof(root,Vector3(-0.35,1.01,-0.3),1.28,1.26,"66877a")
+	pitched_roof(root,Vector3(-0.35,1.01,-0.3),1.28,1.26,"3f9a62")
 	HomesteadMesh.box(root,Vector3(-0.35,0.38,0.215),Vector3(0.48,0.60,0.035),"4c5145",0.09)
 	HomesteadMesh.box(root,Vector3(-0.35,0.81,0.25),Vector3(0.43,0.16,0.05),"efe2be",0.03)
 	for x in [-0.48,-0.22]: HomesteadMesh.ellipsoid(root,Vector3(x,0.82,0.29),Vector3(0.055,0.045,0.02),"a68054")

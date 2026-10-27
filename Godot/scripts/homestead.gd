@@ -771,37 +771,12 @@ func new_command_id() -> String:
  var hex=bytes.hex_encode()
  return hex.substr(0,8)+"-"+hex.substr(8,4)+"-"+hex.substr(12,4)+"-"+hex.substr(16,4)+"-"+hex.substr(20,12)
 
-# Guests use the same reachable routes and grounded actor as the child. They
-# are presentation only: arriving never grants goods or changes saved progress.
+# The baker and storyteller stay in the saved visit. They are hidden until the
+# yard feels alive. Hiding them does not spend or keep the loaf.
 func update_guest():
- var present: Array[String]=[]
+ if guests.is_empty(): return
  for person in guests:
-  if is_instance_valid(person): present.append(str(person.get_meta("role","")))
- if present!=data.visitors:
-  for person in guests:
-   if is_instance_valid(person):
-    remove_child(person)
-    person.queue_free()
-  guests.clear()
-  for role in data.visitors:
-   var person:=HomesteadResident.new()
-   person.set_meta("role",role)
-   add_child(person)
-   person.setup(data,navigation)
-   var origin:=Vector3(5.5,0,6.5) if role=="baker" else Vector3(9.5,0,8.5)
-   person.position=HomesteadItems.cell_center(navigation.closest(origin))
-   person.timer=2.3
-   person.activity_scale=2.0
-   person.schedule=["cottage","garden"]
-   person.model.apply_appearance({"skin":2,"hair":3 if role=="storyteller" else 1,"top":3 if role=="storyteller" else 0,"hat":0,"glasses":role=="storyteller"})
-   if role=="storyteller":
-    for item in data.items:
-     if item.kind=="nook":
-      person.visit(item.id)
-      break
-   guests.append(person)
- var moving=not paused and session!="" and selected_id==""
- for person in guests:
-  person.reduced_motion=reduced_motion
-  person.set_physics_process(moving)
-  person.model.set_process(not paused and selected_id=="")
+  if is_instance_valid(person):
+   remove_child(person)
+   person.queue_free()
+ guests.clear()

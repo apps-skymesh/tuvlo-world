@@ -102,8 +102,8 @@ func _ready():
 	for x in [-0.27,0.27]:
 		ears.append(soft_form(head,Vector3(x,-0.025,0),Vector3(0.044,0.064,0.045),"d6a482"))
 	for x in [-0.1,0.1]:
-		eye_whites.append(soft_form(head,Vector3(x,0.005,0.235),Vector3(0.039,0.051,0.013),"fff9ed"))
-		var eye=soft_form(head,Vector3(x,0.005,0.246),Vector3(0.031,0.043,0.014),"4c443b")
+		eye_whites.append(soft_form(head,Vector3(x,0.008,0.235),Vector3(0.050,0.066,0.013),"fff9ed"))
+		var eye=soft_form(head,Vector3(x,0.008,0.246),Vector3(0.040,0.056,0.014),"4c443b")
 		eyes.append(eye)
 		pupils.append(soft_form(head,Vector3(x,0.005,0.258),Vector3(0.014,0.026,0.005),"28342f"))
 		eye_glints.append(soft_form(head,Vector3(x-0.008,0.02,0.266),Vector3.ONE*0.0085,"fff9ed"))
@@ -112,15 +112,17 @@ func _ready():
 	soft_form(head,Vector3(0,-0.043,0.249),Vector3(0.029,0.028,0.027),"d6a17d")
 	expression_root=Node3D.new()
 	head.add_child(expression_root)
-	grin_teeth=HomesteadMesh.ellipsoid(expression_root,Vector3(0,-0.115,0.238),Vector3(0.05,0.018,0.007),"f7edd8")
+	grin_teeth=HomesteadMesh.ellipsoid(expression_root,Vector3(0,-0.118,0.242),Vector3(0.072,0.022,0.008),"f7edd8")
 	dimples=Node3D.new()
 	head.add_child(dimples)
 	for side in [-1,1]: soft_form(dimples,Vector3(side*0.075,-0.11,0.232),Vector3.ONE*0.008,"9f7156")
 	# Curved, shallow smile and brows sit against the face rather than floating beads.
-	for i in 8:
-		var x0=-0.044+i*0.011
-		var x1=x0+0.011
-		HomesteadMesh.rod(expression_root,Vector3(x0,-0.124+0.012*pow(x0/0.044,2),0.232),Vector3(x1,-0.124+0.012*pow(x1/0.044,2),0.232),0.004,"8c604f")
+	for i in 10:
+		var x0=-0.064+i*0.0128
+		var x1=x0+0.0128
+		var y0=-0.136+0.030*(x0/0.064)*(x0/0.064)
+		var y1=-0.136+0.030*(x1/0.064)*(x1/0.064)
+		HomesteadMesh.rod(expression_root,Vector3(x0,y0,0.236),Vector3(x1,y1,0.236),0.0045,"8c604f")
 	for side in [-1,1]:
 		var brow=soft_form(head,Vector3(side*0.1,0.083,0.23),Vector3(0.046,0.009,0.008),"695440")
 		brow.rotation.z=side*-0.10
@@ -267,7 +269,7 @@ func build_animations():
 	animation_track(idle,right_arm,"rotation",[[0,Vector3(-0.02,0,0.04)],[1.2,Vector3(0.01,0,0.06)],[2.4,Vector3(0.03,0,0.07)],[3.6,Vector3(-0.01,0,0.05)],[4.8,Vector3(-0.02,0,0.04)]])
 	for elbow in [left_elbow,right_elbow]:
 		animation_track(idle,elbow,"rotation",[[0,Vector3(-0.10,0,0)],[2.4,Vector3(-0.14,0,0)],[4.8,Vector3(-0.10,0,0)]])
-	animation_track(idle,hips,"position:y",[[0,0.703],[1.2,0.708],[2.4,0.700],[3.6,0.707],[4.8,0.703]])
+	animation_track(idle,hips,"position:y",[[0,0.703],[0.35,0.732],[0.7,0.704],[1.2,0.708],[2.4,0.700],[2.75,0.730],[3.1,0.704],[3.6,0.707],[4.8,0.703]])
 	animation_track(idle,hips,"position:x",[[0,0.006],[1.2,0.006],[2.4,-0.006],[3.6,-0.006],[4.8,0.006]])
 	animation_track(idle,hips,"rotation",[[0,Vector3(0,0,-0.015)],[1.2,Vector3(0,0,-0.015)],[2.4,Vector3(0,0,0.015)],[3.6,Vector3(0,0,0.015)],[4.8,Vector3(0,0,-0.015)]])
 	library.add_animation("idle",idle)
@@ -493,11 +495,11 @@ func apply_appearance(raw: Dictionary):
 	head.scale=[Vector3.ONE,Vector3(1.05,0.95,1),Vector3(0.92,1.12,1),Vector3(1.1,0.96,1)][appearance.face]*1.06
 	# Long and full styles cover the ears; a skin dot on the hair reads as a defect.
 	for ear in ears: ear.visible=not appearance.hair in [3,4,7,9]
-	normal_eye_height=[0.043,0.051,0.029][appearance.eyes]
+	normal_eye_height=[0.054,0.064,0.038][appearance.eyes]
 	for white in eye_whites: white.scale.y=normal_eye_height*1.18
 	for pupil in pupils: pupil.scale.y=normal_eye_height*0.58
 	for eye in eyes:
-		eye.scale.x=0.037 if appearance.eyes==2 else 0.031
+		eye.scale.x=0.048 if appearance.eyes==2 else 0.040
 		eye.scale.y=normal_eye_height
 
 func update_wardrobe():

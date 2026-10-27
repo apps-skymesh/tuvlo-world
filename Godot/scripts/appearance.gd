@@ -1,10 +1,10 @@
 class_name HomesteadAppearance
 extends RefCounted
 const DEFAULT={"skin":2,"face":0,"eyes":0,"eye_color":0,"hair":0,"hair_color":1,"glasses":0,"freckles":0,"height":1,"build":1,"outfit":0,"top":0,"bottom":0,"shoes":0,"scarf":0,"hat":0,"pattern":0,"expression":0,"accessory":0}
-const SKINS=["FFE0C2","F3C59F","DCA478","B87951","8C563B","57382D"]
+const SKINS=["FFE0B8","F6BE8C","E8A56A","C67A42","9A5C38","60402E"]
 const HAIR_COLORS=["282839","684735","B8703D","E8BF69","A58BCD"]
 const EYES=["423b33","5c7869","5b7488","8a6242"]
-const TOPS=["558BEB","A487DC","F08083","4CA68F","E9B94F","E88750"]
+const TOPS=["3B8FFF","B090F0","FF6B78","2EBF8A","FFC53D","FF8A3D"]
 const BOTTOMS=["b59562","657e9a","9c7c9a","8caa7f","ba856e","e2c3a6"]
 const SHOES=["975f48","586a66","798db0","e6d8bc"]
 const SCARVES=["c58462","d9b468","7c9da6","b293ab"]
