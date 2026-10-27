@@ -124,6 +124,7 @@ func _ready():
  add_child(resident)
  resident.setup(data,navigation)
  resident.activity_changed.connect(func(_text): call_deferred("send_activity"))
+ resident.tree_watered.connect(_on_tree_watered)
  ready_for_snapshot=true
  resident.set_physics_process(false)
  if OS.has_feature("web"):
@@ -225,6 +226,7 @@ func receive_host_json(json: String):
    land_preview=show
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "sunrise": begin_sunrise()
+  "waterTree": begin_tree_watering(maxi(0,int(payload.get("count",0))))
   "camera":
    hold_menu_camera=false # Only an explicit camera action may move a paused view.
    camera_preview_frames=1 if reduced_motion else 90
@@ -762,6 +764,15 @@ func selected_item() -> Dictionary:
  var placed=data.find(selected_id)
  return placed if not placed.is_empty() else data.inventory.get(selected_id,{})
 
+func begin_tree_watering(count: int):
+ if count<=0 or data.growth_tree_id=="" or reduced_motion: return
+ presentation.pending_tree_growth=count
+ presentation.rebuild()
+ resident.water_growth_tree(data.growth_tree_id,count)
+func _on_tree_watered():
+ if presentation.pending_tree_growth<=0: return
+ presentation.pending_tree_growth-=1
+ presentation.rebuild()
 func begin_sunrise():
  if not reduced_motion: sunrise_remaining=SUNRISE_SECONDS
  resident.notice_sunny_day()

@@ -1,6 +1,7 @@
 class_name HomesteadResident
 extends Node3D
 signal activity_changed(text: String)
+signal tree_watered
 var data: HomesteadWorldData
 var navigation: HomesteadNavigation
 var model: HomesteadResidentModel
@@ -28,6 +29,8 @@ var current_target=Vector3.ZERO
 var target_anchor=Vector3.ZERO
 var target_rotation=0
 var activity_scale=1.0
+var watering_remaining=0
+var watering_tree_id=""
 var reduced_motion=false
 var steps=0
 
@@ -72,6 +75,11 @@ func choose_destination():
 	model.set_motion("idle")
 	announce("Enjoying a quiet moment")
 # Tap visits are read-only play. The host still owns placement and progression.
+func water_growth_tree(id: String, times: int):
+	if times<=0 or id=="": return
+	watering_remaining=times
+	watering_tree_id=id
+	visit(id)
 func visit(id: String):
 	var target=data.find(id)
 	if target.is_empty() or not data.building(id).is_empty(): return
@@ -145,6 +153,12 @@ func arrive():
 	else: desired_facing=facing+0.4
 func begin_activity():
 	arrivals[destination_kind]=int(arrivals.get(destination_kind,0))+1
+	if watering_remaining>0 and target_id==watering_tree_id:
+		state="water"
+		timer=1.7
+		model.set_motion("water")
+		announce("Watering the tree")
+		return
 	var target=data.find(target_id)
 	if destination_kind=="garden" and not target.is_empty():
 		state="water"
@@ -170,6 +184,13 @@ func begin_activity():
 		model.set_motion("idle")
 		announce("Watching the water" if destination_kind=="pond" else "A little pause at home" if destination_kind=="cottage" else "Enjoying this little place")
 func finish_activity():
+	if state=="water" and watering_remaining>0 and target_id==watering_tree_id:
+		watering_remaining-=1
+		tree_watered.emit()
+		if watering_remaining>0:
+			begin_activity()
+			return
+		watering_tree_id=""
 	if state=="rest":
 		var target=data.find(target_id)
 		if not target.is_empty():

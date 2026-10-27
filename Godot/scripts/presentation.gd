@@ -21,6 +21,7 @@ var grid_visible=false
 var visual_revision=0
 var land_signature=""
 var land_waters: Array[ShaderMaterial]=[]
+var pending_tree_growth=0
 var harvest_root: Node3D
 var bubbles: Array[Node3D]=[]
 var production_root: Node3D
@@ -71,11 +72,12 @@ func rebuild():
 			removed.queue_free()
 			nodes.erase(id)
 	for item in data.items:
-		var growth=(0 if data.approvals<3 else 1 if data.approvals<13 else 2) if item.kind=="tree" and item.id==data.growth_tree_id else -1
+		var tree_wins=max(0,data.approvals-pending_tree_growth)
+		var growth=(0 if tree_wins<3 else 1 if tree_wins<13 else 2) if item.kind=="tree" and item.id==data.growth_tree_id else -1
 		var build=data.building(item.id)
 		var building_phase=-1 if build.is_empty() else int(floor(clampf(build.progress,0.0,0.999)*5.0))
 		var completed=nodes.has(item.id) and nodes[item.id].get_meta("building",false) and build.is_empty()
-		var signature=JSON.stringify([building_phase,item.kind,item.rotation,item.get("style",0),growth,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat"),data.farm_stages] if item.kind=="garden" else data.farm_fruit_stage if item.kind=="orchard" else []])
+		var signature=JSON.stringify([building_phase,item.kind,item.rotation,item.get("style",0),growth,growth_fill(tree_wins) if growth>=0 else 0,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat"),data.farm_stages] if item.kind=="garden" else data.farm_fruit_stage if item.kind=="orchard" else []])
 		if nodes.has(item.id):
 			var existing: Node3D=nodes[item.id]
 			if existing.get_meta("art_signature","")==signature:
@@ -122,7 +124,7 @@ func rebuild():
 		body.add_child(collider)
 		var shape=BoxShape3D.new()
 		var height=HomesteadItems.DEFINITIONS[item.kind].height
-		if item.kind=="tree" and item.id==data.growth_tree_id: height=1.4 if data.approvals<3 else 2.4 if data.approvals<13 else 3.6
+		if item.kind=="tree" and item.id==data.growth_tree_id: height=1.4 if tree_wins<3 else 2.4 if tree_wins<13 else 3.6
 		shape.size=Vector3(size.x,height,size.y)
 		collider.shape=shape
 		collider.position.y=shape.size.y/2
@@ -534,7 +536,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0,growth=-1) -> Node
 		"garden": garden(art)
 		"pond": pond(art,ghost,style)
 		"bench": bench(art)
-		"tree": mission_tree(art,ghost,growth) if growth>=0 else tree(art,ghost)
+		"tree": mission_tree(art,ghost,growth,growth_fill(max(0,data.approvals-pending_tree_growth))) if growth>=0 else tree(art,ghost)
 		"flowers": flowers(art,ghost)
 		"rocks": rocks(art)
 		"nook": reading_nook(art,style)
@@ -844,11 +846,16 @@ func tree(root: Node3D,ghost: bool):
 
 # The mission tree has its own seedling, young, and mature forms. The mature
 # canopy stays inside the tree's five-square plot, clear of the cottage, path, and garden.
-func mission_tree(root: Node3D,ghost: bool,stage: int):
+func growth_fill(wins: int) -> float:
+	if wins<3: return clampf(float(wins)/2.0,0.0,1.0)
+	if wins<13: return clampf(float(wins-3)/9.0,0.0,1.0)
+	return 1.0
+func mission_tree(root: Node3D,ghost: bool,stage: int,fill: float):
 	var trunk="8b5a3c"
 	var leaves=["3f9a45","58b84e","7ed45c"]
 	var crown=Node3D.new()
 	root.add_child(crown)
+	crown.scale=Vector3.ONE*(0.9+0.1*clampf(fill,0.0,1.0))
 	root.set_meta("growth_stage",stage)
 	if stage<=0:
 		HomesteadMesh.cylinder(root,Vector3(0,0.42,0),0.07,0.8,trunk,0.08)

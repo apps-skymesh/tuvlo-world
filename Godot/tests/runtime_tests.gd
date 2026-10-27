@@ -642,6 +642,17 @@ func run():
  scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"snapshot","payload":{"items":tree_items,"land":[],"appearance":{"hair":3},"approvedWins":13,"growthTreeID":"tree"}}))
  var mature=scene.presentation.nodes.tree.get_child(0)
  check(mature.get_meta("growth_stage",-1)==2 and mature.get_meta("canopy_radius",9.0)<=2.0 and is_equal_approx(mature.scale.x,1.0),"The grown mission tree keeps its own form inside its plot")
+ scene.reduced_motion=false
+ messages.clear()
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"waterTree","payload":{"count":2}}))
+ check(scene.resident.watering_remaining==2 and scene.resident.target_id=="tree" and scene.presentation.pending_tree_growth==2,"New approvals walk the child to water the mission tree")
+ check(scene.presentation.nodes.tree.get_child(0).get_meta("growth_stage",-1)==1,"The tree waits at the earlier form until each watering finishes")
+ check(not messages.any(func(message): return message.type=="placementIntent"),"Watering the tree does not buy or move it")
+ scene.resident.state="water"
+ scene.resident.finish_activity()
+ check(scene.presentation.pending_tree_growth==1 and scene.resident.watering_remaining==1 and scene.resident.state=="water","One watering grows the tree by one mission")
+ scene.resident.finish_activity()
+ check(scene.presentation.pending_tree_growth==0 and scene.resident.watering_remaining==0 and scene.presentation.nodes.tree.get_child(0).get_meta("growth_stage",-1)==2,"The child stops once every new mission is watered")
  scene.queue_free()
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)
