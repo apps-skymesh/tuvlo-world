@@ -635,6 +635,13 @@ func run():
  check(scene.sunrise_remaining==0 and is_equal_approx(scene.sun.light_energy,0.92),"Reduce Motion returns the sun immediately")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"cottage"}}))
  check(scene.selected_id=="","Prior child callbacks cannot mutate the reopened scene")
+ var tree_items=[{"id":"cottage","kind":"cottage","cell":{"x":3,"z":2},"rotation":0},{"id":"garden","kind":"garden","cell":{"x":2,"z":10},"rotation":0},{"id":"path","kind":"path","cell":{"x":5,"z":5},"rotation":0},{"id":"tree","kind":"tree","cell":{"x":12,"z":2},"rotation":0}]
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"snapshot","payload":{"items":tree_items,"land":[],"appearance":{"hair":3},"approvedWins":0,"growthTreeID":"tree"}}))
+ var seedling=scene.presentation.nodes.tree.get_child(0)
+ check(seedling.get_meta("growth_stage",-1)==0 and seedling.get_meta("canopy_radius",9.0)<=0.5,"The mission tree starts as its own seedling")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"snapshot","payload":{"items":tree_items,"land":[],"appearance":{"hair":3},"approvedWins":13,"growthTreeID":"tree"}}))
+ var mature=scene.presentation.nodes.tree.get_child(0)
+ check(mature.get_meta("growth_stage",-1)==2 and mature.get_meta("canopy_radius",9.0)<=2.0 and is_equal_approx(mature.scale.x,1.0),"The grown mission tree keeps its own form inside its plot")
  scene.queue_free()
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)

@@ -90,14 +90,12 @@ func rebuild():
 		var foliage_start=foliage.size()
 		var waters_start=waters.size()
 		var sails_start=sails.size()
-		var root=make_item(item.kind,item.rotation,false,int(item.get("style",0))) if building_phase in [-1,4] else Node3D.new()
+		var root=make_item(item.kind,item.rotation,false,int(item.get("style",0)),growth) if building_phase in [-1,4] else Node3D.new()
 		if building_phase>=0: construction_site(root,item,building_phase)
 		root.set_meta("building",building_phase>=0)
 		prop_root.add_child(root)
 		root.position=HomesteadItems.item_center(item)
 		root.set_meta("item_id",item.id)
-		if item.kind=="tree" and item.id==data.growth_tree_id:
-			root.get_child(0).scale=Vector3.ONE*(0.35 if data.approvals<3 else 0.65 if data.approvals<13 else 1.0)
 		if item.kind=="cottage" and data.approvals>=34:
 			for x in [-1.4,1.4]:
 				HomesteadMesh.box(root,Vector3(x,1.5,1.35),Vector3(0.18,0.28,0.18),"edc577",0.03)
@@ -124,7 +122,7 @@ func rebuild():
 		body.add_child(collider)
 		var shape=BoxShape3D.new()
 		var height=HomesteadItems.DEFINITIONS[item.kind].height
-		if item.kind=="tree" and item.id==data.growth_tree_id: height*=0.35 if data.approvals<3 else 0.65 if data.approvals<13 else 1.0
+		if item.kind=="tree" and item.id==data.growth_tree_id: height=1.4 if data.approvals<3 else 2.4 if data.approvals<13 else 3.6
 		shape.size=Vector3(size.x,height,size.y)
 		collider.shape=shape
 		collider.position.y=shape.size.y/2
@@ -519,7 +517,7 @@ func update_production_effects():
 				puff.position=Vector3(sin(phase*PI)*0.13,phase*0.85,0)
 				puff.scale=Vector3.ONE*sin(phase*PI)*0.12
 
-func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
+func make_item(kind: String,rotation: int,ghost=false,style=0,growth=-1) -> Node3D:
 	var root=Node3D.new()
 	var art=Node3D.new()
 	root.add_child(art)
@@ -536,7 +534,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0) -> Node3D:
 		"garden": garden(art)
 		"pond": pond(art,ghost,style)
 		"bench": bench(art)
-		"tree": tree(art,ghost)
+		"tree": mission_tree(art,ghost,growth) if growth>=0 else tree(art,ghost)
 		"flowers": flowers(art,ghost)
 		"rocks": rocks(art)
 		"nook": reading_nook(art,style)
@@ -844,6 +842,36 @@ func tree(root: Node3D,ghost: bool):
 	for p in [Vector3(0.25,0.05,0.28),Vector3(-0.3,0.04,0.1)]:
 		HomesteadMesh.ellipsoid(root,p,Vector3(0.21,0.07,0.15),"92a677")
 
+# The mission tree has its own seedling, young, and mature forms. The mature
+# canopy stays inside the tree's five-square plot, clear of the cottage, path, and garden.
+func mission_tree(root: Node3D,ghost: bool,stage: int):
+	var trunk="8b5a3c"
+	var leaves=["3f9a45","58b84e","7ed45c"]
+	var crown=Node3D.new()
+	root.add_child(crown)
+	root.set_meta("growth_stage",stage)
+	if stage<=0:
+		HomesteadMesh.cylinder(root,Vector3(0,0.42,0),0.07,0.8,trunk,0.08)
+		HomesteadMesh.ellipsoid(crown,Vector3(0,0.95,0),Vector3(0.36,0.4,0.36),leaves[2])
+		root.set_meta("canopy_radius",0.4)
+	elif stage==1:
+		HomesteadMesh.cylinder(root,Vector3(0,0.75,0),0.11,1.45,trunk,0.08)
+		HomesteadMesh.rod(root,Vector3(0,1.15,0),Vector3(0.42,1.55,0.08),0.045,trunk)
+		HomesteadMesh.ellipsoid(crown,Vector3(0,1.7,0),Vector3(0.52,0.58,0.52),leaves[1])
+		HomesteadMesh.ellipsoid(crown,Vector3(-0.4,1.35,0.08),Vector3(0.4,0.46,0.4),leaves[0])
+		HomesteadMesh.ellipsoid(crown,Vector3(0.38,1.42,-0.06),Vector3(0.38,0.44,0.38),leaves[2])
+		root.set_meta("canopy_radius",0.85)
+	else:
+		HomesteadMesh.cylinder(root,Vector3(0,0.9,0),0.16,1.7,trunk,0.1)
+		HomesteadMesh.rod(root,Vector3(0,1.35,0),Vector3(0.7,2.05,0.12),0.055,trunk)
+		HomesteadMesh.rod(root,Vector3(0,1.7,0),Vector3(-0.62,2.25,-0.08),0.048,trunk)
+		HomesteadMesh.rod(root,Vector3(0,2.05,0),Vector3(0.12,2.75,0.4),0.042,trunk)
+		var clumps=[[Vector3(0,2.55,0),Vector3(0.68,0.74,0.68),2],[Vector3(-0.82,2.05,0.12),Vector3(0.58,0.66,0.58),0],[Vector3(0.86,2.15,-0.08),Vector3(0.62,0.68,0.62),1],[Vector3(0.12,1.72,0.7),Vector3(0.48,0.52,0.48),2],[Vector3(-0.16,1.85,-0.66),Vector3(0.5,0.55,0.5),0],[Vector3(0.4,2.9,0.08),Vector3(0.4,0.46,0.4),1]]
+		for clump in clumps:
+			HomesteadMesh.ellipsoid(crown,clump[0],clump[1],leaves[int(clump[2])])
+		root.set_meta("canopy_radius",1.55)
+	if not ghost: foliage.append(crown)
+
 func flowers(root: Node3D,ghost: bool):
 	HomesteadMesh.ellipsoid(root,Vector3(0,0.035,0),Vector3(0.46,0.05,0.43),"91a778")
 	var patch=Node3D.new()
@@ -939,10 +967,11 @@ func preview_object(item: Dictionary,cell: Vector2i,rotation: int):
 	if preview_item_id!=item.id or not is_instance_valid(preview_item):
 		clear_preview_object()
 		preview_item_id=item.id
-		preview_item=make_item(item.kind,rotation,true,int(item.get("style",0)))
-		add_child(preview_item)
+		var growth=-1
 		if item.kind=="tree" and item.id==data.growth_tree_id:
-			preview_item.get_child(0).scale=Vector3.ONE*(0.35 if data.approvals<3 else 0.65 if data.approvals<13 else 1.0)
+			growth=0 if data.approvals<3 else 1 if data.approvals<13 else 2
+		preview_item=make_item(item.kind,rotation,true,int(item.get("style",0)),growth)
+		add_child(preview_item)
 	if nodes.has(item.id): nodes[item.id].visible=false
 	preview_item.position=HomesteadItems.center(cell,HomesteadItems.footprint(item.kind,rotation))+Vector3(0,0.32,0)
 	preview_item.get_child(0).rotation.y=rotation*PI/2
