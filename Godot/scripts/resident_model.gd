@@ -59,7 +59,7 @@ func _ready():
 	hips.name="Hips"
 	rig.add_child(hips)
 	hips.position.y=0.705
-	garment(hips,[[-0.13,0.235,0.16],[0.04,0.235,0.17],[0.14,0.22,0.16]],"b59562")
+	garment(hips,[[-0.13,0.228,0.158],[0.04,0.216,0.15],[0.14,0.205,0.145]],"b59562")
 	left_leg=limb(hips,"LeftLeg",Vector3(-0.135,0,0),0.32,0.105,"b59562")
 	right_leg=limb(hips,"RightLeg",Vector3(0.135,0,0),0.32,0.105,"b59562")
 	left_knee=limb(left_leg,"LeftKnee",Vector3(0,-0.32,0),0.28,0.075,"d9af88")
@@ -71,14 +71,9 @@ func _ready():
 		knee.add_child(ankle)
 		if knee==left_knee: left_ankle=ankle
 		else: right_ankle=ankle
-		HomesteadMesh.box(ankle,Vector3(0,-0.035,0.045),Vector3(0.19,0.14,0.32),"975f48",0.065)
-		# A fitted sole, heel tab and inset laces follow the existing ankle rig.
-		HomesteadMesh.box(ankle,Vector3(0,-0.091,0.045),Vector3(0.195,0.032,0.325),"e8deca",0.015)
-		HomesteadMesh.box(ankle,Vector3(0,0.014,-0.09),Vector3(0.045,0.055,0.025),"e8deca",0.008)
-		for z in [0.07,0.11,0.15]:
-			HomesteadMesh.rod(ankle,Vector3(-0.045,0.035,z),Vector3(0.045,0.035,z),0.006,"e8deca")
+		HomesteadChildCraft.attach(ankle,"Shoe")
 		soft_form(knee,Vector3.ZERO,Vector3(0.076,0.076,0.076),"d9af88")
-	garment(hips,[[0.02,0.225,0.16],[0.12,0.245,0.18],[0.39,0.235,0.16],[0.53,0.245,0.15],[0.60,0.13,0.115]],"83a89a")
+	HomesteadChildCraft.attach(hips,"Shirt")
 	outfit_details=Node3D.new()
 	hips.add_child(outfit_details)
 	HomesteadMesh.box(outfit_details,Vector3(0,0.22,0.185),Vector3(0.32,0.32,0.035),"c3a36c",0.025)
@@ -93,14 +88,13 @@ func _ready():
 		HomesteadMesh.torus(arm,Vector3(0,-0.25,0),0.083,0.012,"83a89a")
 	for elbow in [left_elbow,right_elbow]:
 		soft_form(elbow,Vector3.ZERO,Vector3(0.066,0.066,0.066),"dfb38c")
-		soft_form(elbow,Vector3(0,-0.245,0),Vector3(0.062,0.078,0.055),"dfb38c")
-		soft_form(elbow,Vector3(-0.045 if elbow==right_elbow else 0.045,-0.23,0.02),Vector3(0.025,0.04,0.03),"dfb38c")
+		HomesteadChildCraft.attach(elbow,"RightHand" if elbow==right_elbow else "LeftHand")
 	HomesteadMesh.cylinder(hips,Vector3(0,0.65,0),0.09,0.16,"dfb38c")
 	head=Node3D.new()
 	head.name="Head"
 	hips.add_child(head)
 	head.position.y=0.91
-	soft_form(head,Vector3.ZERO,Vector3(0.285,0.30,0.255),"e1b68f")
+	HomesteadChildCraft.attach(head,"Face")
 	for x in [-0.27,0.27]:
 		ears.append(soft_form(head,Vector3(x,-0.025,0),Vector3(0.044,0.064,0.045),"d6a482"))
 	for x in [-0.1,0.1]:
@@ -172,17 +166,13 @@ func _ready():
 	build_animations()
 	remember_colors(self)
 	apply_appearance(appearance)
-func limb(parent: Node3D,node_name: String,pos: Vector3,length: float,radius: float,color: String) -> Node3D:
+func limb(parent: Node3D,node_name: String,pos: Vector3,_length: float,_radius: float,_color: String) -> Node3D:
 	var joint=Node3D.new()
 	joint.name=node_name
 	parent.add_child(joint)
 	joint.position=pos
-	var mesh=CapsuleMesh.new()
-	mesh.radius=radius
-	mesh.height=length+radius*0.7
-	mesh.radial_segments=24
-	mesh.rings=8
-	HomesteadMesh.instance(joint,mesh,color,Vector3(0,-length/2,0))
+	var part="UpperLeg" if node_name.ends_with("Leg") else "LowerLeg" if node_name.ends_with("Knee") else "Sleeve" if node_name.ends_with("Arm") else "Forearm"
+	HomesteadChildCraft.attach(joint,part)
 	return joint
 func animation_track(animation: Animation,node: Node3D,property: String,values: Array,interpolation=Animation.INTERPOLATION_CUBIC):
 	var index=animation.add_track(Animation.TYPE_VALUE)
@@ -390,7 +380,12 @@ func remember_colors(node: Node):
 func recolor(node: Node,palette: Dictionary):
 	if node is MeshInstance3D:
 		var original=str(node.get_meta("original_color",""))
-		if palette.has(original): node.material_override=HomesteadMesh.material(palette[original])
+		if palette.has(original):
+			var material=HomesteadMesh.material(palette[original])
+			if node.has_meta("authored_surface"):
+				material=material.duplicate()
+				material.vertex_color_use_as_albedo=true
+			node.material_override=material
 	for child in node.get_children(): recolor(child,palette)
 func soft_form(parent: Node3D,pos: Vector3,size: Vector3,color: String) -> MeshInstance3D:
 	if character_sphere==null:
@@ -426,67 +421,12 @@ func garment(parent: Node3D,rings: Array,color: String) -> MeshInstance3D:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 	return HomesteadMesh.instance(parent,mesh,color,Vector3.ZERO)
 
-# A single fitted scalp follows a shaped hairline: high at the brow, low at the nape.
-func hair_cap(style: int):
-	var vertices=PackedVector3Array()
-	var normals=PackedVector3Array()
-	var indices=PackedInt32Array()
-	for r in 17:
-		for i in 49:
-			var angle=i*TAU/48
-			var front=maxf(0,sin(angle))
-			var edge=1.65-front*0.45+maxf(0,-sin(angle))*0.4
-			if style in [3,4,9]: edge=2.52-front*1.28
-			if style in [0,1,12]: edge+=front*(0.13*sin(angle*3+0.8) if style==0 else 0.27*cos(angle+0.3))
-			var t=float(r)/16*edge
-			var n=Vector3(sin(t)*cos(angle),cos(t),sin(t)*sin(angle))
-			vertices.append(n*Vector3(0.3,0.32,0.273)+Vector3(0,0.01,-0.014))
-			normals.append(n)
-			if r<16 and i<48:
-				var a=r*49+i
-				indices.append_array(PackedInt32Array([a,a+49,a+1,a+1,a+49,a+50]))
-	var arrays=[]
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX]=vertices
-	arrays[Mesh.ARRAY_NORMAL]=normals
-	arrays[Mesh.ARRAY_INDEX]=indices
-	var mesh=ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
-	HomesteadMesh.instance(hair_root,mesh,"695440",Vector3.ZERO)
-
+# The saved 0...12 style catalogue uses original fitted Blender surfaces.
 func build_hair(style: int):
 	for child in hair_root.get_children():
 		hair_root.remove_child(child)
 		child.queue_free()
-	hair_cap(style)
-	match style:
-		2,7:
-			for row in (4 if style==7 else 3):
-				for i in 12:
-					var angle=(i+row*0.5)*TAU/12
-					if style==7 and sin(angle)>0.35 and row>=2: continue
-					var t=0.35+row*0.38
-					var size=0.12 if style==7 else 0.075
-					soft_form(hair_root,Vector3(cos(angle)*sin(t)*0.28,cos(t)*0.3,sin(angle)*sin(t)*0.26),Vector3.ONE*size,"695440")
-		10:
-			soft_form(hair_root,Vector3(0,0.245,-0.235),Vector3(0.115,0.12,0.105),"695440")
-			HomesteadMesh.torus(hair_root,Vector3(0,0.24,-0.215),0.09,0.009,"c58462").rotation.x=PI/2
-		3,4,9:
-			for side in [-1,1]:
-				var length=0.19 if style==4 else 0.32
-				var lock=soft_form(hair_root,Vector3(side*0.25,-0.015-(length-0.19),-0.03),Vector3(0.065,length,0.15),"695440")
-				lock.rotation.z=side*(0.18 if style==9 else 0.08)
-		5:
-			soft_form(hair_root,Vector3(0,-0.06,-0.3),Vector3(0.105,0.3,0.1),"695440")
-		6,8:
-			for side in [-1,1]:
-				for i in (5 if style==8 else 1):
-					soft_form(hair_root,Vector3(side*(0.28+0.01*i),-0.04-i*0.075,-0.1),Vector3(0.07,0.065 if style==8 else 0.24,0.07),"695440")
-		11:
-			for i in 5:
-				var tuft=soft_form(hair_root,Vector3(-0.2+i*0.1,0.28,0),Vector3(0.07,0.14,0.07),"695440")
-				tuft.rotation.z=0.25-i*0.12
-	remember_colors(hair_root)
+	HomesteadChildCraft.attach(hair_root,"Hair%d"%style)
 	hair_style=style
 func apply_appearance(raw: Dictionary):
 	var normalized=HomesteadAppearance.normalize(raw)

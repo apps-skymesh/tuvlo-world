@@ -8,7 +8,7 @@ var capture_index=0
 var capture_times=[1.0,4.0,8.0,14.0,19.0]
 var payload: Dictionary
 var activity_label: Label
-var appearance_index=0
+var appearance_index=3
 var events=[]
 var busy_capture=false
 var motion_samples=[]
@@ -120,7 +120,8 @@ func camera(mode: String): send("camera",{"mode":mode})
 func button(parent: Node,text: String,action: Callable):
  var control=Button.new()
  control.text=text
- control.pressed.connect(action)
+ # The runtime uses raw input; a lab button must cancel its underlying map tap.
+ control.pressed.connect(func(): world.reset_press(); action.call())
  parent.add_child(control)
 func build_controls():
  var layer=CanvasLayer.new()
@@ -140,6 +141,15 @@ func build_controls():
   button(toolbar,"Missed day",func(): tree_story_clock=-1; well_phase=-1; send("treeLeaves",{"yellow":true}))
   button(toolbar,"Play life",func(): well_phase=-1; tree_seed(); tree_story_step=-1; tree_story_clock=0.0)
   button(toolbar,"Quiet",func(): payload.reducedMotion=not payload.get("reducedMotion",false); snapshot())
+  var child_toolbar=HBoxContainer.new()
+  child_toolbar.position=Vector2(820,14)
+  layer.add_child(child_toolbar)
+  button(child_toolbar,"Child",child_portrait)
+  button(child_toolbar,"Look",func():
+   appearance_index=(appearance_index+1)%13
+   payload.appearance={"hair":appearance_index,"outfit":appearance_index%6}
+   world.resident.model.apply_appearance(payload.appearance)
+   child_portrait())
   tree_label=Label.new()
   tree_label.position=Vector2(18,50)
   layer.add_child(tree_label)
@@ -210,6 +220,25 @@ func toggle_visibility_study():
  world.pan_focus=Vector3(0.5,1.5,0.0)
  world.pan_size=10.4
  send("camera",{"mode":"pan","resetZoom":true})
+func child_portrait():
+ well_phase=-1
+ tree_story_clock=-1
+ var actor=world.resident
+ actor.state="pause"
+ actor.timer=3600
+ actor.fetching_water=false
+ actor.carrying_water=false
+ actor.model.carrying_water=false
+ actor.model.set_motion("idle")
+ actor.position=HomesteadItems.cell_center(Vector2i(9,8))
+ actor.facing=world.orbit_yaw
+ actor.desired_facing=actor.facing
+ actor.rotation.y=actor.facing
+ world.pan_focus=actor.position+Vector3(0,1.0,0)
+ world.pan_size=3.2
+ send("camera",{"mode":"pan","resetZoom":true})
+ tree_label.text="Child · look %d / 13"%(appearance_index+1)
+
 func tree_camera():
  world.pan_focus=HomesteadItems.item_center(world.data.find("tree"))+Vector3(0,1.4,0)
  world.pan_size=6.4

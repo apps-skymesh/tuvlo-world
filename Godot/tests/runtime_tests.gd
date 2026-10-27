@@ -19,6 +19,27 @@ func run():
  var packet={"version":1,"session":"test-child-session","type":"snapshot","payload":payload}
  scene.receive_host_json(JSON.stringify(packet))
  check(scene.data.items.size()==4,"Host snapshot must replace empty scene")
+ # Imported child surfaces retain every saved choice and independent palettes.
+ var child_model=scene.resident.model
+ for style in 13:
+  child_model.apply_appearance({"hair":style,"outfit":style%6,"skin":4,"hair_color":2,"top":3,"bottom":4,"shoes":2})
+  var hair_surfaces=child_model.hair_root.find_children("*","MeshInstance3D",true,false)
+  check(not hair_surfaces.is_empty() and hair_surfaces.size()<=2,"Every saved hairstyle has fitted, consolidated art")
+  for surface in hair_surfaces:
+   check(surface.material_override.albedo_color.is_equal_approx(Color(HomesteadAppearance.HAIR_COLORS[2])),"Imported hair follows saved color after switching styles")
+   check(surface.material_override.vertex_color_use_as_albedo,"Recoloring preserves authored vertex paint")
+  check(child_model.outfit_details.visible==(style%6==4) and child_model.skirt.visible==(style%6==2),"All six outfits retain their saved visibility rules")
+ var guest_model=HomesteadResidentModel.new()
+ root.add_child(guest_model)
+ guest_model.apply_appearance({"hair":12,"hair_color":0,"skin":0})
+ var first_hair=child_model.hair_root.find_children("*","MeshInstance3D",true,false)[0]
+ check(first_hair.material_override.albedo_color.is_equal_approx(Color(HomesteadAppearance.HAIR_COLORS[2])),"A second resident cannot recolor shared cached child geometry")
+ check(child_model.can.get_parent()==child_model.right_elbow,"Imported hands preserve the watering-can joint")
+ for surface in child_model.find_children("*","MeshInstance3D",true,false):
+  if surface.get_meta("original_color","")=="e1b68f":
+   check(surface.material_override.albedo_color.is_equal_approx(Color(HomesteadAppearance.SKINS[4])),"Sculpted face follows saved skin color independently of guests")
+ guest_model.free()
+ child_model.apply_appearance(payload.appearance)
  # Animal buildings use real footprints and validated, distinct producer links.
  var animal_payload=payload.duplicate(true)
  animal_payload.items.append_array([
