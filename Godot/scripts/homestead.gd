@@ -37,7 +37,7 @@ var reduced_motion=false
 var sun: DirectionalLight3D
 var sunrise_remaining=0.0
 const SUNRISE_SECONDS=3.6
-const SUN_REST_ENERGY=0.78
+const SUN_REST_ENERGY=0.92
 var paused=false
 var ready_for_snapshot=false
 var web_callback
@@ -73,19 +73,20 @@ func _ready():
  var environment=WorldEnvironment.new()
  var settings=Environment.new()
  settings.background_mode=Environment.BG_COLOR
- settings.background_color=Color("c5cebe")
+ settings.background_color=Color("efe6c8")
  settings.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR
- settings.ambient_light_color=Color("cedddc")
- settings.ambient_light_energy=0.42
+ settings.ambient_light_color=Color("f6ead0")
+ settings.ambient_light_energy=0.50
  # Keep diffuse highlights below clipping in the shipped Compatibility/WebGL renderer.
  # Tune the lights directly: post-process exposure is not shared by every renderer.
+ # Glow stays off. The grade holds the highlight cap.
  settings.tonemap_mode=Environment.TONE_MAPPER_LINEAR
  environment.environment=settings
  add_child(environment)
  var light=DirectionalLight3D.new()
  light.rotation_degrees=Vector3(-48,-38,0)
- light.light_color=Color("fff0d8")
- light.light_energy=0.78
+ light.light_color=Color("fff4d0")
+ light.light_energy=SUN_REST_ENERGY
  light.light_angular_distance=0.8
  light.shadow_opacity=0.68
  light.directional_shadow_max_distance=100.0

@@ -615,10 +615,10 @@ func run():
  scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"sunrise","payload":{}}))
  check(scene.sunrise_remaining==3.6 and scene.resident.activity=="A sunny day","A new approval asks the valley to notice")
  scene._process(1.8)
- check(scene.sun.light_energy>0.78,"The sun lifts while the sunny day plays")
+ check(scene.sun.light_energy>0.92,"The sun lifts while the sunny day plays")
  scene.reduced_motion=true
  scene._process(0.1)
- check(scene.sunrise_remaining==0 and is_equal_approx(scene.sun.light_energy,0.78),"Reduce Motion returns the sun immediately")
+ check(scene.sunrise_remaining==0 and is_equal_approx(scene.sun.light_energy,0.92),"Reduce Motion returns the sun immediately")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"cottage"}}))
  check(scene.selected_id=="","Prior child callbacks cannot mutate the reopened scene")
  scene.queue_free()
