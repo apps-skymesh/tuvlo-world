@@ -112,7 +112,8 @@ func run():
    var cell=Vector2i(x,z)
    var occupied=scene.data.item_at(cell)
    var blocked=not scene.data.buildable(cell) or (not occupied.is_empty() and HomesteadItems.DEFINITIONS[occupied.kind].blocks)
-   check(scene.navigation.open(cell)==not blocked,"Optimized grid retains canonical walking boundaries")
+   var utility=scene.navigation.well_center.is_finite() and Rect2i(scene.navigation.well_cell,HomesteadItems.WELL_SIZE).has_point(cell)
+   check(scene.navigation.open(cell)==not (blocked or utility),"Walking boundaries retain saved obstacles, locked land and the visible well")
  scene.set_paused(true,true)
  check(scene.production_preview_active() and scene.presentation.is_processing() and not scene.resident.is_physics_processing(),"Menu keeps production moving while residents stay paused")
  scene.reduced_motion=true
@@ -646,20 +647,83 @@ func run():
  messages.clear()
  scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"waterTree","payload":{"count":2}}))
  check(scene.resident.watering_remaining==2 and scene.resident.target_id=="tree" and scene.presentation.pending_tree_growth==2,"New approvals walk the child to water the mission tree")
+ check(scene.navigation.well_center.is_finite() and scene.resident.fetching_water,"Mission watering first visits the free well")
+ check(not scene.data.items.any(func(item): return item.kind=="well"),"The well adds no saved placement or purchase")
+ var well_box=Rect2i(scene.navigation.well_cell,HomesteadItems.WELL_SIZE)
+ for item in scene.data.items:
+  check(not well_box.intersects(Rect2i(item.cell,HomesteadItems.footprint(item.kind,item.rotation))),"The well never displaces saved places or paths")
  check(scene.presentation.nodes.tree.get_child(0).get_meta("growth_stage",-1)==1,"The tree waits at the earlier form until each watering finishes")
  check(not messages.any(func(message): return message.type=="placementIntent"),"Watering the tree does not buy or move it")
+ if scene.resident.fetching_water:
+  scene.resident.state="fill"
+  scene.resident.finish_activity()
+  check(scene.resident.carrying_water and not scene.resident.fetching_water,"Refilling at the well starts the loaded return trip")
  scene.resident.state="water"
  scene.resident.finish_activity()
  check(scene.presentation.pending_tree_growth==1 and scene.resident.watering_remaining==1 and scene.resident.state=="water","One watering grows the tree by one mission")
  scene.resident.finish_activity()
  check(scene.presentation.pending_tree_growth==0 and scene.resident.watering_remaining==0 and scene.presentation.nodes.tree.get_child(0).get_meta("growth_stage",-1)==2,"The child stops once every new mission is watered")
+ var growing_tree=scene.presentation.nodes.tree.get_child(0).get_node("MissionTree")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"treeLeaves","payload":{"yellow":true}}))
  var thirsty=scene.presentation.nodes.tree.get_child(0)
+ check(thirsty.get_node("MissionTree")==growing_tree and scene.data.approvals==13,"Thirst updates the living tree in place without changing earned wins")
  check(thirsty.get_meta("yellow_leaves",false) and thirsty.get_meta("growth_stage",-1)==2 and thirsty.get_meta("canopy_radius",9.0)<=2.0,"A missed day yellows a few leaves without shrinking the earned tree")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"waterTree","payload":{"count":1}}))
+ if scene.resident.fetching_water:
+  scene.resident.state="fill"
+  scene.resident.finish_activity()
+  check(scene.resident.carrying_water and not scene.resident.fetching_water,"Refilling at the well starts the loaded return trip")
  scene.resident.state="water"
  scene.resident.finish_activity()
  check(not scene.presentation.nodes.tree.get_child(0).get_meta("yellow_leaves",true) and scene.presentation.nodes.tree.get_child(0).get_meta("growth_stage",-1)==2,"Watering clears the yellow leaves and keeps the earned tree")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"treeLeaves","payload":{"yellow":true}}))
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"waterTree","payload":{"count":1}}))
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"treeLeaves","payload":{"yellow":false}}))
+ check(scene.presentation.yellow_leaves,"Host approval waits for the queued watering before the canopy recovers")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"third-child","type":"snapshot","payload":{"items":tree_items,"land":[],"appearance":{"hair":3},"approvedWins":0,"growthTreeID":"tree"}}))
+ check(scene.presentation.pending_tree_growth==0 and not scene.presentation.yellow_leaves and scene.resident.watering_remaining==0,"Changing children clears the previous child's watering and cosmetic thirst")
+ var new_seed=scene.presentation.nodes.tree.get_child(0).get_node("MissionTree")
+ check(new_seed.wins==0 and new_seed.thirst==0.0 and new_seed.fallen.is_empty(),"A new child's planted seed inherits neither growth nor thirst animation")
+ var quiet_tree_payload={"items":tree_items,"land":[],"appearance":{"hair":3},"approvedWins":1,"growthTreeID":"tree","reducedMotion":true}
+ var quiet_navigation=scene.navigation.revision
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"third-child","type":"snapshot","payload":quiet_tree_payload}))
+ var first_quiet_size=scene.presentation.nodes.tree.get_child(0).get_node("MissionTree").body.scale.y
+ quiet_tree_payload.approvedWins=2
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"third-child","type":"snapshot","payload":quiet_tree_payload}))
+ var quiet_seedling=scene.presentation.nodes.tree.get_child(0).get_node("MissionTree")
+ check(quiet_seedling.wins==2 and quiet_seedling.body.scale.y>first_quiet_size,"Reduce Motion still grows the seedling on every approved mission within a stage")
+ check(scene.navigation.revision==quiet_navigation,"Earned tree growth does not rebuild navigation")
+ quiet_tree_payload.approvedWins=3
+ quiet_tree_payload.reducedMotion=false
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"third-child","type":"snapshot","payload":quiet_tree_payload}))
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"third-child","type":"waterTree","payload":{"count":1}}))
+ check(scene.presentation.pending_tree_growth==1,"A new approval can queue its watering presentation")
+ quiet_tree_payload.reducedMotion=true
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"third-child","type":"snapshot","payload":quiet_tree_payload}))
+ check(scene.presentation.pending_tree_growth==0 and scene.resident.watering_remaining==0 and not scene.resident.fetching_water,"Enabling Reduce Motion during a trip clears animation deferral")
+ check(scene.presentation.nodes.tree.get_child(0).get_node("MissionTree").wins==3,"Cancelled animation immediately shows the earned young tree")
+ quiet_tree_payload.reducedMotion=false
+ quiet_tree_payload.approvedWins=4
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"third-child","type":"snapshot","payload":quiet_tree_payload}))
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"third-child","type":"waterTree","payload":{"count":1}}))
+ quiet_tree_payload.items=tree_items.filter(func(item): return item.id!="tree")
+ quiet_tree_payload.growthTreeID=""
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"third-child","type":"snapshot","payload":quiet_tree_payload}))
+ check(scene.presentation.pending_tree_growth==0 and scene.resident.watering_remaining==0 and scene.data.approvals==4,"Removing the target cancels only the water trip, preserving approved wins")
+ var crowded_items=[{"id":"dense-garden","kind":"garden","cell":{"x":8,"z":8},"rotation":0}]
+ for z in 20:
+  for x in 20:
+   if Rect2i(8,8,3,2).has_point(Vector2i(x,z)): continue
+   crowded_items.append({"id":"floor-%d-%d"%[x,z],"kind":"path","cell":{"x":x,"z":z},"rotation":0})
+ var crowded_data=HomesteadWorldData.new()
+ check(crowded_data.apply_snapshot({"items":crowded_items,"land":[],"approvedWins":0}),"Crowded saved layouts remain valid")
+ var crowded_nav=HomesteadNavigation.new()
+ crowded_nav.rebuild(crowded_data)
+ var crowded_child=HomesteadResident.new()
+ scene.add_child(crowded_child)
+ crowded_child.setup(crowded_data,crowded_nav)
+ crowded_child.visit("dense-garden")
+ check(not crowded_nav.well_center.is_finite() and not crowded_child.fetching_water and crowded_child.target_id=="dense-garden","A full saved layout skips the well detour and keeps gardening available")
  scene.queue_free()
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)

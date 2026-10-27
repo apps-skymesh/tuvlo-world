@@ -3,6 +3,8 @@ extends RefCounted
 var grid=AStarGrid2D.new()
 var data: HomesteadWorldData
 var revision=0
+var well_cell=Vector2i(10000,10000)
+var well_center=Vector3.INF
 var view_direction=Vector3(sin(0.25),0,cos(0.25))
 func rebuild(world_data: HomesteadWorldData):
 	data=world_data
@@ -28,7 +30,32 @@ func rebuild(world_data: HomesteadWorldData):
 			var blocked=not data.buildable(cell) or (not occupied.is_empty() and HomesteadItems.DEFINITIONS[occupied.kind].blocks)
 			grid.set_point_solid(cell,blocked)
 			grid.set_point_weight_scale(cell,0.8 if not occupied.is_empty() and occupied.kind=="path" else 1.0)
+	place_water_source(occupied_cells)
 	revision+=1
+# Renderer utility only: never displace a saved object, path or unowned land.
+# A vacant one-square ring preserves routes around the new scenery obstacle.
+func place_water_source(occupied: Dictionary):
+	well_center=Vector3.INF
+	if not data.items.any(func(item): return item.kind in ["tree","garden"]): return
+	var candidates=[well_cell,Vector2i(12,10)]
+	for z in range(1,17):
+		for x in range(1,17): candidates.append(Vector2i(x,z))
+	for cell in candidates:
+		var clear=true
+		for z in range(-1,3):
+			for x in range(-1,3):
+				var square=cell+Vector2i(x,z)
+				if not data.buildable(square) or occupied.has(square) or not open(square): clear=false
+		if not clear: continue
+		well_cell=cell
+		well_center=HomesteadItems.center(cell,HomesteadItems.WELL_SIZE)
+		for z in 2:
+			for x in 2: grid.set_point_solid(cell+Vector2i(x,z),true)
+		return
+func well_approach() -> Vector3:
+	# The authored filling tap is on the west, clear of the open water and roof.
+	return well_center+Vector3(-1.42,0,0.10)
+
 func open(cell: Vector2i) -> bool:
 	return grid.is_in_boundsv(cell) and not grid.is_point_solid(cell)
 func closest(point: Vector3) -> Vector2i:
@@ -59,6 +86,7 @@ func path(from: Vector3,to: Vector3) -> PackedVector3Array:
 	var raw=PackedVector3Array()
 	var points=grid.get_id_path(closest(from),closest(to))
 	for cell in points: raw.append(HomesteadItems.cell_center(cell))
+	if not raw.is_empty() and corridor_clear(raw[-1],to): raw[-1]=to
 	if raw.size()<2: return raw
 	# Start where the feet actually are, when that segment has clearance.
 	if corridor_clear(from,raw[1]): raw[0]=from
@@ -86,11 +114,12 @@ func path(from: Vector3,to: Vector3) -> PackedVector3Array:
 	return result
 
 func approach(item: Dictionary,from: Vector3=Vector3.INF) -> Vector3:
+	if item.kind in ["tree","garden"]: return watering_approach(item,from)
 	var size=HomesteadItems.footprint(item.kind,item.rotation)
 	var center=HomesteadItems.item_center(item)
 	var forward=Vector3(sin(item.rotation*PI/2),0,cos(item.rotation*PI/2))
 	var distance=(float(size.x) if item.rotation%2 else float(size.y))/2+0.65
-	if item.kind in ["garden","pond"]:
+	if item.kind in ["garden","pond","tree"]:
 		var best=Vector3.INF
 		var best_score=-INF
 		for side in [Vector3.FORWARD,Vector3.BACK,Vector3.LEFT,Vector3.RIGHT]:
@@ -106,9 +135,40 @@ func approach(item: Dictionary,from: Vector3=Vector3.INF) -> Vector3:
 			# Face the activity across its far edge when reachable, without a
 			# long detour solely for the camera. Doors and seats keep their fronts.
 			var facing=(center-point).normalized()
-			var score=facing.dot(view_direction)*1.2-travel*0.1
+			var score=facing.dot(view_direction)*(0.2 if item.kind=="tree" else 1.2)-travel*0.1
 			if score>best_score:
 				best_score=score
 				best=point
 		if best.is_finite(): return best
 	return HomesteadItems.cell_center(closest(center+forward*distance))
+
+# Choose an actual reachable work position, then face the plant, never the lens.
+func watering_approach(item: Dictionary,from: Vector3) -> Vector3:
+	var size=HomesteadItems.footprint(item.kind,item.rotation)
+	var center=HomesteadItems.item_center(item)
+	var choices=[]
+	var shortest=INF
+	for side in [Vector3.FORWARD,Vector3.BACK,Vector3.LEFT,Vector3.RIGHT]:
+		var reach=(float(size.x) if absf(side.x)>0.5 else float(size.y))/2+(1.42 if item.kind=="tree" else 0.72)
+		var tangent=Vector3(-side.z,0,side.x)
+		for shift in ([-0.8,0.0,0.8] if item.kind=="tree" else [-0.58,0.0,0.58]):
+			var point=center+side*reach+tangent*shift
+			var cell=HomesteadItems.cell_at(point)
+			if not open(cell) or not corridor_clear(HomesteadItems.cell_center(cell),point): continue
+			var distance=0.0
+			if from.is_finite():
+				var route=grid.get_id_path(closest(from),cell)
+				if route.is_empty(): continue
+				for i in range(1,route.size()): distance+=Vector2(route[i]).distance_to(Vector2(route[i-1]))
+			shortest=minf(shortest,distance)
+			var facing=(center-point).normalized()
+			var lateral=absf((center-point).dot(Vector3(view_direction.z,0,-view_direction.x)))
+			var hidden=2.6 if item.kind=="tree" and lateral<1.55 and facing.dot(view_direction)>0.2 else 0.0
+			choices.append({"point":point,"distance":distance,"score":facing.dot(view_direction)*2.4-distance*0.12-hidden})
+	var best=Vector3.INF
+	var score=-INF
+	for choice in choices:
+		if choice.distance<=shortest+3.5 and choice.score>score:
+			score=choice.score
+			best=choice.point
+	return best if best.is_finite() else HomesteadItems.cell_center(closest(center+Vector3(0,0,1.2)))

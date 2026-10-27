@@ -25,19 +25,14 @@ void vertex() {
 }
 
 void fragment() {
-	// Inset the drawing so the edge and shadow stay inside the quad.
-	vec2 p = vec2(UV.x * 2.0 - 1.0, 1.0 - UV.y * 2.0) * 1.12;
+	vec2 p = vec2(UV.x * 2.0 - 1.0, 1.0 - UV.y * 2.0);
 	float face = token_shape(p);
-	float wall = token_shape(p + vec2(0.0, 0.10));
-	if (face > 0.0 && wall > 0.0) discard;
+	if (face > 0.0) discard;
 
-	vec3 ink = vec3(0.16, 0.24, 0.23);
-	vec3 col = vec3(0.98, 0.95, 0.88);
+	vec3 ink = vec3(0.22, 0.16, 0.12);
+	vec3 col = vec3(0.99, 0.97, 0.93);
 	float alpha = 1.0;
-	if (face > 0.0) {
-		float lip = clamp((wall + 0.10) / 0.10, 0.0, 1.0);
-		col = mix(vec3(0.36, 0.32, 0.26), vec3(0.74, 0.67, 0.54), lip);
-	} else {
+	{
 		float shape = face;
 		if (shape > -0.026) col = vec3(0.63, 0.57, 0.47);
 		vec2 q = p - vec2(0.0, 0.12);
@@ -91,7 +86,12 @@ void fragment() {
 			tint = icon < 0.0 ? vec3(0.84, 0.33, 0.27) : vec3(0.46, 0.61, 0.51);
 			icon = min(icon, leaf);
 		}
-		if (icon < 0.0 && shape < -0.026) col = icon > -0.04 ? ink : tint;
+		if (icon < 0.0 && shape < -0.026) col = icon > -0.045 ? ink : tint;
+		if (icon < -0.04) {
+			vec2 shine = q - vec2(-0.12, 0.18);
+			float gloss = smoothstep(0.2, 0.0, length(shine * vec2(1.15, 1.45)));
+			col = mix(col, min(col + vec3(0.45), vec3(1.0)), gloss);
+		}
 		if (production_state >= 0) {
 			float ring = abs(length(q) - 0.70);
 			if (ring < 0.035) {

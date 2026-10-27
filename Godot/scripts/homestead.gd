@@ -157,13 +157,27 @@ func receive_host_json(json: String):
    return
   var first_snapshot=session==""
   var changing_child=session!="" and session!=packet.session
+  if changing_child:
+   # All living-tree animation belongs to the previous child session.
+   for root in presentation.nodes.values():
+    presentation.prop_root.remove_child(root)
+    root.queue_free()
+   presentation.nodes.clear()
+   layout_signature=""
+   presentation.pending_tree_growth=0
+   presentation.yellow_leaves=false
+   resident.watering_remaining=0
+   resident.watering_tree_id=""
+   resident.fetching_water=false
+   resident.carrying_water=false
+   resident.model.carrying_water=false
+   navigation.well_cell=Vector2i(10000,10000)
   var new_discovery=not data.discovered and next_data.discovered and not first_snapshot and not changing_child
   session=packet.session
   var wins=int(payload.get("approvedWins",0))
-  var growth=0 if wins<3 else (1 if wins<13 else 2)
   # Crop art and building phases do not change walkable footprints.
   var next_navigation=JSON.stringify([next_data.items,next_data.land_sides])
-  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),growth,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage,next_data.construction.map(func(build): return [build.placeID,int(floor(clampf(build.progress,0.0,0.999)*5.0))])])
+  var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),wins,next_data.growth_tree_id,payload.get("reducedMotion",false)==true,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage,next_data.construction.map(func(build): return [build.placeID,int(floor(clampf(build.progress,0.0,0.999)*5.0))])])
   data.items=next_data.items
   data.inventory=next_data.inventory
   data.land_sides=next_data.land_sides
@@ -181,6 +195,15 @@ func receive_host_json(json: String):
   data.farm_fruit_stage=next_data.farm_fruit_stage
   reduced_motion=payload.get("reducedMotion",false)==true
   presentation.reduced_motion=reduced_motion
+  resident.reduced_motion=reduced_motion
+  # Animation may defer a reveal, never the authoritative earned size forever.
+  if reduced_motion or data.find(data.growth_tree_id).is_empty() or (resident.watering_tree_id!="" and resident.watering_tree_id!=data.growth_tree_id):
+   presentation.pending_tree_growth=0
+   resident.cancel_tree_watering()
+  else:
+   presentation.pending_tree_growth=mini(presentation.pending_tree_growth,data.approvals)
+   resident.watering_remaining=mini(resident.watering_remaining,presentation.pending_tree_growth)
+   if presentation.pending_tree_growth==0: resident.cancel_tree_watering()
   diagnostics=payload.get("diagnostics",false)==true
   if signature!=layout_signature:
    layout_signature=signature
@@ -188,6 +211,7 @@ func receive_host_json(json: String):
   if next_navigation!=navigation_signature:
    navigation_signature=next_navigation
    navigation.rebuild(data)
+   presentation.well.place(navigation.well_center)
    resident.world_changed()
    for person in guests:
     if is_instance_valid(person): person.world_changed()
@@ -228,7 +252,10 @@ func receive_host_json(json: String):
   "sunrise": begin_sunrise()
   "waterTree": begin_tree_watering(maxi(0,int(payload.get("count",0))))
   "treeLeaves":
-   presentation.yellow_leaves=payload.get("yellow",false)==true
+   var requested_yellow=payload.get("yellow",false)==true
+   # The host clears its memory on approval; show recovery when water lands.
+   if requested_yellow or resident.watering_remaining<=0 or reduced_motion:
+    presentation.yellow_leaves=requested_yellow
    presentation.rebuild()
   "camera":
    hold_menu_camera=false # Only an explicit camera action may move a paused view.
@@ -319,6 +346,14 @@ func set_paused(value: bool, previewing: bool=false):
 
 # The native app retains one engine but releases all child-specific scene state.
 func clear_host_session():
+ presentation.pending_tree_growth=0
+ presentation.yellow_leaves=false
+ resident.watering_remaining=0
+ resident.watering_tree_id=""
+ resident.fetching_water=false
+ resident.carrying_water=false
+ resident.model.carrying_water=false
+ navigation.well_cell=Vector2i(10000,10000)
  session=""
  reset_press()
  selected_id=""
@@ -347,6 +382,7 @@ func clear_host_session():
  presentation.rebuild()
  presentation.update_harvest()
  navigation.rebuild(data)
+ presentation.well.place(navigation.well_center)
  resident.route.clear()
  resident.target_id=""
  resident.state="pause"
@@ -640,6 +676,11 @@ func unowned_land_at(cell: Vector2i) -> String:
  return ""
 
 func _process(delta):
+ if presentation.nodes.has(data.growth_tree_id):
+  var tree=presentation.nodes[data.growth_tree_id].get_child(0).get_node_or_null("MissionTree")
+  if tree is HomesteadMissionTree:
+   tree.quiet=reduced_motion
+   tree.set_water_source(resident.model.can.to_global(Vector3(0.29,0.09,0)),resident.state=="water" and resident.target_id==data.growth_tree_id)
  if session=="": return
  if paused:
   if not panel_preview or (camera_preview_frames<=0 and not production_preview_active()):
@@ -652,6 +693,9 @@ func _process(delta):
   clock+=delta
   metrics_clock+=delta
   update_sunrise(delta)
+  presentation.well.update_watering(resident,delta,reduced_motion)
+  presentation.tending_item_id=resident.target_id if resident.state=="water" else ""
+  presentation.tending_position=resident.position
  if diagnostics and metrics_clock>=5:
   metrics_clock=0
   emit_message("metrics",{"fps":Engine.get_frames_per_second(),"processSeconds":Performance.get_monitor(Performance.TIME_PROCESS),"staticBytes":Performance.get_monitor(Performance.MEMORY_STATIC),"drawCalls":Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),"residentSteps":resident.steps})
@@ -768,8 +812,10 @@ func selected_item() -> Dictionary:
  return placed if not placed.is_empty() else data.inventory.get(selected_id,{})
 
 func begin_tree_watering(count: int):
- if count<=0 or data.growth_tree_id=="" or reduced_motion: return
- presentation.pending_tree_growth=count
+ if count<=0 or data.growth_tree_id=="" or reduced_motion or data.find(data.growth_tree_id).is_empty(): return
+ count=mini(count,maxi(0,data.approvals-presentation.pending_tree_growth))
+ if count<=0: return
+ presentation.pending_tree_growth+=count
  presentation.rebuild()
  resident.water_growth_tree(data.growth_tree_id,count)
 func _on_tree_watered():

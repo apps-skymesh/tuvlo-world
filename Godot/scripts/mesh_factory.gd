@@ -53,6 +53,33 @@ static func rod(parent: Node3D,a: Vector3,b: Vector3,radius: float,color: String
 	if absf(direction.dot(Vector3.UP))<0.999:
 		node.quaternion=Quaternion(Vector3.UP,direction)
 	return node
+static var fine_sphere: SphereMesh
+static func fine_ellipsoid(parent: Node3D,pos: Vector3,scale: Vector3,color: String,roughness=0.68) -> MeshInstance3D:
+	if fine_sphere==null:
+		fine_sphere=SphereMesh.new()
+		fine_sphere.radius=1
+		fine_sphere.height=2
+		fine_sphere.radial_segments=32
+		fine_sphere.rings=16
+	var node=instance(parent,fine_sphere,color,pos)
+	node.material_override=material(color,roughness)
+	node.scale=scale
+	return node
+static func fine_cylinder(parent: Node3D,pos: Vector3,radius: float,height: float,color: String,top_radius=-1.0,roughness=0.92) -> MeshInstance3D:
+	var mesh=CylinderMesh.new()
+	mesh.top_radius=radius if top_radius<0 else top_radius
+	mesh.bottom_radius=radius
+	mesh.height=height
+	mesh.radial_segments=24
+	var node=instance(parent,mesh,color,pos)
+	node.material_override=material(color,roughness)
+	return node
+static func fine_rod(parent: Node3D,a: Vector3,b: Vector3,radius: float,color: String) -> MeshInstance3D:
+	var node=fine_cylinder(parent,(a+b)/2,radius,maxf(a.distance_to(b),0.02),color)
+	var direction=(b-a).normalized()
+	if absf(direction.dot(Vector3.UP))<0.999:
+		node.quaternion=Quaternion(Vector3.UP,direction)
+	return node
 static func torus(parent: Node3D,pos: Vector3,radius: float,thickness: float,color: String) -> MeshInstance3D:
 	var mesh=TorusMesh.new()
 	mesh.inner_radius=radius-thickness

@@ -17,6 +17,7 @@ var left_elbow: Node3D
 var can: Node3D
 var clock=0.0
 var reduced_motion=false
+var carrying_water=false
 var eyes: Array[MeshInstance3D]=[]
 var eye_glints: Array[MeshInstance3D]=[]
 var eye_whites: Array[MeshInstance3D]=[]
@@ -41,6 +42,7 @@ var dimples: Node3D
 var ears: Array[MeshInstance3D]=[]
 # Gentle attention: the head eases toward a glance or the path ahead.
 var look_yaw=0.0
+var activity_camera_yaw=0.0
 var glance=Vector2.ZERO
 var glance_target=Vector2.ZERO
 var next_glance=2.0
@@ -302,32 +304,56 @@ func build_animations():
 	for clip in [wave,water,sit]:
 		animation_track(clip,hips,"position:x",[[0,0.0],[clip.length,0.0]])
 		animation_track(clip,hips,"rotation",[[0,Vector3.ZERO],[clip.length,Vector3.ZERO]])
+	for clip in [idle,walk,water,sit,wave]:
+		animation_track(clip,can,"rotation",[[0,Vector3.ZERO],[clip.length,Vector3.ZERO]])
+	# The carrying gait keeps the existing planted-foot walk, holding the can level.
+	var carry=walk.duplicate() as Animation
+	for i in range(carry.get_track_count()-1,-1,-1):
+		var path=carry.track_get_path(i)
+		if path==NodePath(str(get_path_to(right_arm))+":rotation") or path==NodePath(str(get_path_to(right_elbow))+":rotation") or path==NodePath(str(get_path_to(can))+":rotation"):
+			carry.remove_track(i)
+	animation_track(carry,right_arm,"rotation",[[0,Vector3(-0.22,0,-0.09)],[0.8,Vector3(-0.22,0,-0.09)]])
+	animation_track(carry,right_elbow,"rotation",[[0,Vector3(-0.65,0,0)],[0.8,Vector3(-0.65,0,0)]])
+	animation_track(carry,can,"rotation",[[0,Vector3(0.87,0,0.09)],[carry.length,Vector3(0.87,0,0.09)]])
+	library.add_animation("carry",carry)
+	for title in ["hold","fill"]:
+		var pose=idle.duplicate() as Animation
+		for i in range(pose.get_track_count()-1,-1,-1):
+			var path=pose.track_get_path(i)
+			if path==NodePath(str(get_path_to(right_arm))+":rotation") or path==NodePath(str(get_path_to(right_elbow))+":rotation") or path==NodePath(str(get_path_to(can))+":rotation"):
+				pose.remove_track(i)
+		animation_track(pose,right_arm,"rotation",[[0,Vector3(-0.70 if title=="fill" else -0.22,0,-0.09)],[pose.length,Vector3(-0.70 if title=="fill" else -0.22,0,-0.09)]])
+		animation_track(pose,right_elbow,"rotation",[[0,Vector3(-0.28 if title=="fill" else -0.65,0,0)],[pose.length,Vector3(-0.28 if title=="fill" else -0.65,0,0)]])
+		var level=Vector3(0.98 if title=="fill" else 0.87,0,0.09)
+		animation_track(pose,can,"rotation",[[0,level],[pose.length,level]])
+		library.add_animation(title,pose)
 	animator.add_animation_library("",library)
 	animator.play("idle")
 func set_motion(next: String,speed=1.0):
-	can.visible=next=="water"
+	if carrying_water and next in ["walk","idle"]: next="carry" if next=="walk" else "hold"
+	can.visible=next in ["water","fill","carry","hold"]
 	if mode!=next:
-		if next in ["idle","walk"]: animator.play(next,0.22)
+		if next in ["idle","walk","carry","hold"]: animator.play(next,0.22)
 		else:
 			animator.play("idle",0)
 			animator.advance(0)
 			animator.play(next,0.25)
 		mode=next
-		if reduced_motion and next!="walk":
+		if reduced_motion and next not in ["walk","carry"]:
 			animator.advance(0.3)
 			animator.seek(1.0 if next=="wave" else 0.25,true)
 	# .36 m planted-foot travel over 60% of the .8 s cycle gives .75 m/s.
 	# Rig forward scale follows saved build, not its vertical height scale.
 	var stride_speed=0.75*[0.86,1.0,1.17][appearance.build]
-	animator.speed_scale=maxf(0.05,speed/stride_speed) if next=="walk" else 1.0
+	animator.speed_scale=maxf(0.05,speed/stride_speed) if next in ["walk","carry"] else 1.0
 func _process(delta):
 	if not reduced_motion: clock+=delta
-	if animator and mode!="walk": animator.speed_scale=0.0 if reduced_motion else 1.0
+	if animator and mode not in ["walk","carry"]: animator.speed_scale=0.0 if reduced_motion else 1.0
 	var height_scale=[0.9,1.0,1.12][appearance.height]
 	position.y=lerpf(position.y,0.65*(1.0-height_scale) if mode=="sit" else 0.0,minf(1,delta*12))
 	if skirt:
 		skirt.rotation.x=lerpf(skirt.rotation.x,-0.95 if mode=="sit" else 0.0,minf(1,delta*12))
-		skirt.scale.z=lerpf(skirt.scale.z,1.5 if mode=="walk" else 1.0,minf(1,delta*12))
+		skirt.scale.z=lerpf(skirt.scale.z,1.5 if mode in ["walk","carry"] else 1.0,minf(1,delta*12))
 	# Natural blinks: irregular spacing with an occasional double blink.
 	if not reduced_motion:
 		next_blink-=delta
@@ -351,8 +377,9 @@ func _process(delta):
 		glance_target=Vector2(look_rng.randf_range(-0.45,0.45),look_rng.randf_range(-0.10,0.12)) if look_rng.randf()>0.3 else Vector2.ZERO
 	var goal=Vector2.ZERO
 	if mode=="idle": goal=glance_target
-	elif mode=="walk": goal=Vector2(clampf(look_yaw*0.6,-0.5,0.5),0.06)
-	glance=glance.lerp(goal,minf(1,delta*(3.0 if mode=="walk" else 2.2)))
+	elif mode in ["water","fill"]: goal=Vector2(clampf(activity_camera_yaw,-0.22,0.22),0.06)
+	elif mode in ["walk","carry"]: goal=Vector2(clampf(look_yaw*0.6,-0.5,0.5),0.06)
+	glance=glance.lerp(goal,minf(1,delta*(3.0 if mode in ["walk","carry"] else 2.2)))
 	head.rotation.y=glance.x
 	head.rotation.x=glance.y+(sin(clock*0.9)*0.015 if mode=="idle" else 0.0)
 

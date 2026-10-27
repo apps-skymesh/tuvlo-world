@@ -1,6 +1,9 @@
 class_name HomesteadPresentation
 extends Node3D
 var data: HomesteadWorldData
+var tending_item_id=""
+var tending_position=Vector3.ZERO
+var well: HomesteadWell
 var prop_root: Node3D
 var land_root: Node3D
 var foliage: Array[Node3D]=[]
@@ -34,6 +37,10 @@ const BUBBLE_SHADER=preload("res://scripts/harvest_bubble.gdshader")
 
 func setup(world_data: HomesteadWorldData):
 	data=world_data
+	well=HomesteadWell.new()
+	well.name="SharedWell"
+	add_child(well)
+	well.place(Vector3.INF)
 	land_root=Node3D.new()
 	add_child(land_root)
 	prop_root=Node3D.new()
@@ -78,7 +85,7 @@ func rebuild():
 		var build=data.building(item.id)
 		var building_phase=-1 if build.is_empty() else int(floor(clampf(build.progress,0.0,0.999)*5.0))
 		var completed=nodes.has(item.id) and nodes[item.id].get_meta("building",false) and build.is_empty()
-		var signature=JSON.stringify([building_phase,item.kind,item.rotation,item.get("style",0),growth,growth_fill(tree_wins) if growth>=0 else 0,yellow_leaves and growth>=0,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat"),data.farm_stages] if item.kind=="garden" else data.farm_fruit_stage if item.kind=="orchard" else []])
+		var signature=JSON.stringify([building_phase,item.kind,item.rotation,item.get("style",0),growth,tree_wins if growth>=0 else 0,yellow_leaves and growth>=0,data.approvals>=34 if item.kind=="cottage" else data.approvals>=55 if item.kind=="path" else false,[data.wheat_garden,data.harvest.values().has("wheat"),data.farm_stages] if item.kind=="garden" else data.farm_fruit_stage if item.kind=="orchard" else []])
 		if nodes.has(item.id):
 			var existing: Node3D=nodes[item.id]
 			if existing.get_meta("art_signature","")==signature:
@@ -87,6 +94,18 @@ func rebuild():
 				waters.append_array(existing.get_meta("waters",[]))
 				sails.append_array(existing.get_meta("sails",[]))
 				pet_parts.append_array(existing.get_meta("pet_parts",[]))
+				continue
+			var growing=existing.get_child(0).get_node_or_null("MissionTree")
+			if growing is HomesteadMissionTree and growth>=0 and not existing.get_meta("building",false) and building_phase<0 and is_equal_approx(existing.get_child(0).rotation.y,item.rotation*PI/2):
+				growing.configure(tree_wins,yellow_leaves,reduced_motion)
+				existing.position=HomesteadItems.item_center(item)
+				existing.set_meta("art_signature",signature)
+				for child in existing.get_children():
+					if child is StaticBody3D:
+						var collider=child.get_child(0)
+						var height=1.4 if tree_wins<3 else 2.4 if tree_wins<13 else 3.6
+						collider.shape.size=Vector3(1,height,1)
+						collider.position.y=height/2
 				continue
 			prop_root.remove_child(existing)
 			existing.queue_free()
@@ -297,6 +316,7 @@ func update_harvest():
 		harvest_root.add_child(bubble)
 		bubble.position=anchor
 		bubble.set_meta("anchor",anchor)
+		bubble.set_meta("producer_key",key)
 		var quad=QuadMesh.new()
 		quad.size=Vector2(1.7,1.7)
 		var face=MeshInstance3D.new()
@@ -307,7 +327,6 @@ func update_harvest():
 		material.set_shader_parameter("kind",["wood","stone","food","wheat"].find(data.harvest[key]))
 		face.material_override=material
 		bubble.add_child(face)
-		add_token_shadow(bubble, 1.15)
 		var body=StaticBody3D.new()
 		bubble.add_child(body)
 		if nodes.has(key): body.set_meta("item_id",key)
@@ -395,9 +414,6 @@ func update_livestock_growth():
 			# Collection starts the next young flock, without a slaughter scene.
 			part.scale=Vector3.ONE*lerpf(0.60,0.90,clampf(growth,0.0,1.0))
 
-func add_token_shadow(parent: Node3D, breadth: float):
-	var shade=HomesteadMesh.contact_shadow(parent, Vector2(breadth, breadth*0.72))
-	shade.position=Vector3(0.03, -0.22, 0.04)
 func countdown(seconds: int) -> String:
 	return "%d:%02d" % [seconds/60,seconds%60] if seconds>=60 else str(seconds)+"s"
 
@@ -413,7 +429,6 @@ func make_status_bubble() -> Node3D:
 	material.shader=BUBBLE_SHADER
 	face.material_override=material
 	bubble.add_child(face)
-	add_token_shadow(bubble, 0.95)
 	bubble.set_meta("material",material)
 	var body=StaticBody3D.new()
 	body.collision_layer=1
@@ -851,46 +866,17 @@ func tree(root: Node3D,ghost: bool):
 		HomesteadMesh.ellipsoid(root,p,Vector3(0.21,0.07,0.15),"92a677")
 
 # The mission tree has its own seedling, young, and mature forms. The mature
-# canopy stays inside the tree's five-square plot, clear of the cottage, path, and garden.
+# canopy keeps its existing overhang; the one-square stem placement never moves.
 func growth_fill(wins: int) -> float:
 	if wins<3: return clampf(float(wins)/2.0,0.0,1.0)
 	if wins<13: return clampf(float(wins-3)/9.0,0.0,1.0)
 	return 1.0
 func mission_tree(root: Node3D,ghost: bool,stage: int,fill: float,yellow=false):
-	var trunk="8b5a3c"
-	var leaves=["3f9a45","58b84e","7ed45c"]
-	var crown=Node3D.new()
-	root.add_child(crown)
-	crown.scale=Vector3.ONE*(0.9+0.1*clampf(fill,0.0,1.0))
-	root.set_meta("growth_stage",stage)
-	root.set_meta("yellow_leaves",yellow)
-	if yellow:
-		var height=0.72 if stage<=0 else 1.35 if stage==1 else 2.15
-		HomesteadMesh.ellipsoid(crown,Vector3(0.16,height,0.08),Vector3(0.1,0.045,0.07),"e2b84a")
-		HomesteadMesh.ellipsoid(crown,Vector3(-0.14,height-0.16,-0.06),Vector3(0.09,0.04,0.06),"c9842a")
-		HomesteadMesh.ellipsoid(root,Vector3(0.24,0.04,0.18),Vector3(0.09,0.02,0.06),"e2b84a")
-		HomesteadMesh.ellipsoid(root,Vector3(-0.2,0.035,0.14),Vector3(0.08,0.02,0.055),"c9842a")
-	if stage<=0:
-		HomesteadMesh.cylinder(root,Vector3(0,0.42,0),0.07,0.8,trunk,0.08)
-		HomesteadMesh.ellipsoid(crown,Vector3(0,0.95,0),Vector3(0.36,0.4,0.36),leaves[2])
-		root.set_meta("canopy_radius",0.4)
-	elif stage==1:
-		HomesteadMesh.cylinder(root,Vector3(0,0.75,0),0.11,1.45,trunk,0.08)
-		HomesteadMesh.rod(root,Vector3(0,1.15,0),Vector3(0.42,1.55,0.08),0.045,trunk)
-		HomesteadMesh.ellipsoid(crown,Vector3(0,1.7,0),Vector3(0.52,0.58,0.52),leaves[1])
-		HomesteadMesh.ellipsoid(crown,Vector3(-0.4,1.35,0.08),Vector3(0.4,0.46,0.4),leaves[0])
-		HomesteadMesh.ellipsoid(crown,Vector3(0.38,1.42,-0.06),Vector3(0.38,0.44,0.38),leaves[2])
-		root.set_meta("canopy_radius",0.85)
-	else:
-		HomesteadMesh.cylinder(root,Vector3(0,0.9,0),0.16,1.7,trunk,0.1)
-		HomesteadMesh.rod(root,Vector3(0,1.35,0),Vector3(0.7,2.05,0.12),0.055,trunk)
-		HomesteadMesh.rod(root,Vector3(0,1.7,0),Vector3(-0.62,2.25,-0.08),0.048,trunk)
-		HomesteadMesh.rod(root,Vector3(0,2.05,0),Vector3(0.12,2.75,0.4),0.042,trunk)
-		var clumps=[[Vector3(0,2.55,0),Vector3(0.68,0.74,0.68),2],[Vector3(-0.82,2.05,0.12),Vector3(0.58,0.66,0.58),0],[Vector3(0.86,2.15,-0.08),Vector3(0.62,0.68,0.62),1],[Vector3(0.12,1.72,0.7),Vector3(0.48,0.52,0.48),2],[Vector3(-0.16,1.85,-0.66),Vector3(0.5,0.55,0.5),0],[Vector3(0.4,2.9,0.08),Vector3(0.4,0.46,0.4),1]]
-		for clump in clumps:
-			HomesteadMesh.ellipsoid(crown,clump[0],clump[1],leaves[int(clump[2])])
-		root.set_meta("canopy_radius",1.55)
-	if not ghost: foliage.append(crown)
+	var model=HomesteadMissionTree.new()
+	model.name="MissionTree"
+	root.add_child(model)
+	var wins=roundi(fill*2) if stage<=0 else 3+roundi(fill*9) if stage==1 else 13
+	model.configure(wins,yellow,reduced_motion,ghost)
 
 func flowers(root: Node3D,ghost: bool):
 	HomesteadMesh.ellipsoid(root,Vector3(0,0.035,0),Vector3(0.46,0.05,0.43),"91a778")
@@ -1029,7 +1015,15 @@ func _process(delta):
 	for i in bubbles.size():
 		var bubble=bubbles[i]
 		if is_instance_valid(bubble):
-			bubble.position=bubble.get_meta("anchor")+Vector3(0,0.0 if reduced_motion else sin(clock*2.2+i*1.3)*0.12,0)
+			var offset=Vector3.ZERO
+			var camera=get_viewport().get_camera_3d()
+			if camera and bubble.get_meta("producer_key","")==tending_item_id:
+				var side=-1.0 if (tending_position-Vector3(bubble.get_meta("anchor"))).dot(camera.global_basis.x)>0 else 1.0
+				offset=camera.global_basis.x*side*1.6
+			var held: Vector3=bubble.get_meta("work_offset",Vector3.ZERO)
+			held=offset if reduced_motion else held.lerp(offset,1-exp(-delta*6.0))
+			bubble.set_meta("work_offset",held)
+			bubble.position=bubble.get_meta("anchor")+held+Vector3(0,0.0 if reduced_motion else sin(clock*2.2+i*1.3)*0.12,0)
 	update_production_effects()
 	for water in waters:
 		water.set_shader_parameter("clock",clock)

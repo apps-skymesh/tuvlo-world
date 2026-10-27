@@ -3,6 +3,8 @@ extends RefCounted
 
 # Starter plots contain 5x5 squares; extensions now contain 12x12 squares.
 # Enlargement adds outer strips; saved item coordinates never move.
+const WELL_SIZE=Vector2i(2,2)
+const WELL_HEIGHT=2.6
 const SQUARES_PER_PLOT=5
 const STARTER_PLOTS=4
 const EXPANSION_SIDE=12

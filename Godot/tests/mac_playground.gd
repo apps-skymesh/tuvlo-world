@@ -18,6 +18,15 @@ var initial_camera="overview"
 var animals_slice=false
 var equipped=false
 var cottage_slice=false
+var tree_slice=false
+var well_slice=false
+var well_phase=-1
+var well_elapsed=0.0
+var tree_story_clock=-1.0
+var tree_story_step=-1
+var next_tree_frame=0.0
+var tree_captures=[]
+var tree_label: Label
 var meadow_slice=false
 var windmill_slice=false
 var greenhouse_slice=false
@@ -39,6 +48,8 @@ func run():
   if args[index]=="--equipped": equipped=true
   if args[index]=="--windmill": windmill_slice=true
   if args[index]=="--cottage": cottage_slice=true
+  if args[index]=="--well": well_slice=true; tree_slice=true; cottage_slice=true
+  if args[index]=="--tree": tree_slice=true; cottage_slice=true
   if args[index]=="--waterside": meadow_slice=true; waterside_slice=true
   if args[index]=="--meadow": meadow_slice=true
   if args[index]=="--orchard": meadow_slice=true; greenhouse_slice=true; orchard_slice=true
@@ -53,6 +64,11 @@ func run():
  build_controls()
  reset(equipped)
  camera(initial_camera)
+ if tree_slice:
+  tree_seed()
+  tree_camera()
+  tree_story_clock=0.0
+  if well_slice: start_well_story()
  if animals_slice: send("camera",{"mode":"place","id":"barn","zoom":1.1})
 func keep_landscape():
  # This host is a landscape-only visual lab; app orientation uses UIKit's lease.
@@ -109,6 +125,23 @@ func build_controls():
  var toolbar=HBoxContainer.new()
  toolbar.position=Vector2(16,14)
  layer.add_child(toolbar)
+ if tree_slice:
+  button(toolbar,"Tree",tree_camera)
+  button(toolbar,"Home",func(): camera("home"))
+  button(toolbar,"Water trip",start_well_story)
+  button(toolbar,"Seed",func(): tree_story_clock=-1; well_phase=-1; tree_seed())
+  button(toolbar,"Mission +1",func(): tree_story_clock=-1; well_phase=-1; tree_mission(1))
+  button(toolbar,"Full grown",func(): tree_story_clock=-1; well_phase=-1; tree_set(13))
+  button(toolbar,"Missed day",func(): tree_story_clock=-1; well_phase=-1; send("treeLeaves",{"yellow":true}))
+  button(toolbar,"Play life",func(): well_phase=-1; tree_seed(); tree_story_step=-1; tree_story_clock=0.0)
+  button(toolbar,"Quiet",func(): payload.reducedMotion=not payload.get("reducedMotion",false); snapshot())
+  tree_label=Label.new()
+  tree_label.position=Vector2(18,50)
+  layer.add_child(tree_label)
+  activity_label=Label.new()
+  activity_label.position=Vector2(18,root.size.y-40)
+  layer.add_child(activity_label)
+  return
  for mode in ["home","overview","follow"]: button(toolbar,mode.capitalize(),func(): camera(mode))
  var options=MenuButton.new()
  options.text="Camera options"
@@ -162,6 +195,82 @@ func cycle_production():
  snapshot()
  activity_label.text="Production: "+["Idle","Working","Ready"][production_phase]
 
+# Disposable mission approvals and family-day state only; no real family store.
+func tree_camera():
+ world.pan_focus=HomesteadItems.item_center(world.data.find("tree"))+Vector3(0,1.4,0)
+ world.pan_size=6.4
+ send("camera",{"mode":"pan","resetZoom":true})
+func tree_set(wins: int):
+ world.presentation.pending_tree_growth=0
+ world.presentation.yellow_leaves=false
+ world.resident.watering_remaining=0
+ world.resident.watering_tree_id=""
+ world.resident.fetching_water=false
+ world.resident.carrying_water=false
+ world.resident.model.carrying_water=false
+ payload.approvedWins=wins
+ snapshot()
+ send("treeLeaves",{"yellow":false})
+func tree_seed():
+ tree_set(0)
+ world.resident.position=HomesteadItems.cell_center(Vector2i(10,7))
+ world.resident.route.clear()
+ world.resident.state="pause"
+ world.resident.timer=2.0
+func tree_mission(count: int):
+ payload.approvedWins+=count
+ snapshot()
+ send("waterTree",{"count":count})
+func start_well_story():
+ tree_story_clock=-1
+ tree_set(13)
+ world.resident.position=HomesteadItems.cell_center(world.navigation.closest(world.navigation.well_approach()+Vector3(-1,0,0))) if world.navigation.well_center.is_finite() else Vector3.ZERO
+ world.resident.route.clear()
+ world.resident.state="pause"
+ world.resident.timer=100
+ world.pan_focus=Vector3(0.5,1.2,0.5)
+ world.pan_size=9.2
+ send("camera",{"mode":"pan","resetZoom":true})
+ well_phase=0
+ well_elapsed=0.0
+func advance_tree_story(delta: float):
+ if well_phase>=0:
+  well_elapsed+=delta
+  if well_phase==0 and well_elapsed>1:
+   well_phase=1
+   tree_mission(1)
+  elif well_phase==1 and world.resident.watering_remaining==0:
+   well_phase=2
+   world.resident.visit("garden")
+  elif well_phase==2 and world.resident.state=="water" and world.resident.target_id=="garden":
+   well_phase=3
+ if tree_story_clock>=0:
+  tree_story_clock+=delta
+  if tree_story_step<0:
+   tree_story_step=0
+   tree_seed()
+  # Wait for the real refill/walk/watering to finish, rather than cutting a trip.
+  var wait=7.0 if tree_story_step==8 else 3.0
+  if tree_story_clock>=wait and world.resident.watering_remaining==0:
+   tree_story_step+=1
+   tree_story_clock=0.0
+   if tree_story_step==8: send("treeLeaves",{"yellow":true})
+   elif tree_story_step<=9: tree_mission(3 if tree_story_step in [4,5,6] else 1)
+   else: tree_story_clock=-1
+ var model=world.presentation.nodes.tree.get_child(0).get_node("MissionTree")
+ var stage="Planted seed" if model.wins==0 else "Seedling" if model.wins<3 else "Young tree" if model.wins<13 else "Full grown"
+ if world.resident.watering_remaining>0: stage="Watering"
+ elif model.yellow: stage="Amber leaves · growth kept"
+ elif model.thirst>0.03: stage="Recovering"
+ if well_slice: stage=world.resident.activity
+ tree_label.text=stage+" · "+str(payload.approvedWins)+" approved missions"
+ if output!="" and not busy_capture and elapsed>=next_tree_frame:
+  next_tree_frame=elapsed+0.2
+  tree_captures.append({"frame":capture_index+1,"wins":model.wins,"yellow":model.yellow,"stage":stage})
+  busy_capture=true
+  capture_index+=1
+  capture()
+
 func camera_option(id: int):
  match id:
   0: camera("detail")
@@ -204,6 +313,7 @@ func _unhandled_key_input(event):
 func _process(delta):
  if world==null: return false
  elapsed+=delta
+ if tree_slice: advance_tree_story(delta)
  if construction_review:
   var step=mini(3,int(elapsed/5.0))
   if step!=construction_step:
@@ -215,13 +325,14 @@ func _process(delta):
   next_sample+=0.5
   var actor=world.resident
   motion_samples.append({"seconds":snapped(elapsed,0.01),"state":actor.state,"position":[actor.position.x,actor.position.z],"facing":actor.facing,"leftLeg":actor.model.left_leg.rotation.x,"leftKnee":actor.model.left_knee.rotation.x,"rightArm":actor.model.right_arm.rotation.x,"canVisible":actor.model.can.visible,"animation":actor.model.animator.current_animation})
- if output!="" and not busy_capture and capture_index<capture_times.size() and elapsed>=capture_times[capture_index]:
+ if not tree_slice and output!="" and not busy_capture and capture_index<capture_times.size() and elapsed>=capture_times[capture_index]:
   busy_capture=true
   capture_index+=1
   capture()
  if duration>0 and float(Time.get_ticks_msec()-started_ms)/1000>=duration and not busy_capture:
   if output!="":
    var report={"engine":Engine.get_version_info(),"platform":OS.get_name(),"seconds":elapsed,"wallSeconds":float(Time.get_ticks_msec()-started_ms)/1000,"renderer":RenderingServer.get_video_adapter_name(),"motionSamples":motion_samples,"events":events,"distanceWalked":world.resident.distance_walked,"blockedSamples":world.resident.blocked_samples,"residentSourceSHA256":FileAccess.get_sha256("res://scripts/resident.gd"),"modelSourceSHA256":FileAccess.get_sha256("res://scripts/resident_model.gd"),"sceneSourceSHA256":FileAccess.get_sha256("res://scripts/homestead.gd"),"presentationSourceSHA256":FileAccess.get_sha256("res://scripts/presentation.gd"),"harnessSHA256":FileAccess.get_sha256("res://tests/mac_playground.gd")}
+   if tree_slice: report.treeFrames=tree_captures
    var file=FileAccess.open(output+"/manifest.json",FileAccess.WRITE)
    file.store_string(JSON.stringify(report,"  "))
   print("HOMESTEAD_MAC_REVIEW seconds=",snapped(elapsed,0.1)," distance=",world.resident.distance_walked," blocked=",world.resident.blocked_samples)
@@ -229,5 +340,5 @@ func _process(delta):
  return false
 func capture():
  await RenderingServer.frame_post_draw
- root.get_texture().get_image().save_png(output+"/frame-%02d.png"%capture_index)
+ root.get_texture().get_image().save_png(output+"/frame-%04d.png"%capture_index)
  busy_capture=false

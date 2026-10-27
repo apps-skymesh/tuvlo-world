@@ -29,6 +29,8 @@ var current_target=Vector3.ZERO
 var target_anchor=Vector3.ZERO
 var target_rotation=0
 var activity_scale=1.0
+var fetching_water=false
+var carrying_water=false
 var watering_remaining=0
 var watering_tree_id=""
 var reduced_motion=false
@@ -46,6 +48,9 @@ func announce(text: String):
 	activity=text
 	activity_changed.emit(text)
 func choose_destination():
+	if watering_remaining>0 and not data.find(watering_tree_id).is_empty():
+		visit(watering_tree_id)
+		return
 	if pending_discovery:
 		pending_discovery=false
 		destination_kind="discovery"
@@ -65,6 +70,9 @@ func choose_destination():
 			if item.kind==destination_kind and data.building(item.id).is_empty(): candidates.append(item)
 		if candidates.is_empty(): continue
 		var target: Dictionary=candidates[cycles%candidates.size()]
+		if target.kind=="garden":
+			visit(target.id)
+			return
 		target_id=target.id
 		start_route(navigation.approach(target,position),{"garden":"Off to tend the garden","bench":"Finding a sunny seat","pond":"Visiting the pond","cottage":"Heading home"}[destination_kind])
 		return
@@ -77,16 +85,45 @@ func choose_destination():
 # Tap visits are read-only play. The host still owns placement and progression.
 func water_growth_tree(id: String, times: int):
 	if times<=0 or id=="": return
+	if watering_tree_id==id and watering_remaining>0:
+		watering_remaining+=times
+		return
 	watering_remaining=times
 	watering_tree_id=id
 	visit(id)
+func cancel_tree_watering():
+	var active=watering_tree_id!="" and target_id==watering_tree_id
+	watering_remaining=0
+	watering_tree_id=""
+	if not active: return
+	fetching_water=false
+	carrying_water=false
+	model.carrying_water=false
+	route.clear()
+	state="pause"
+	timer=0.8
+	model.set_motion("idle")
 func visit(id: String):
 	var target=data.find(id)
 	if target.is_empty() or not data.building(id).is_empty(): return
 	target_id=id
 	destination_kind=target.kind
+	if target.kind=="garden" or (id==watering_tree_id and watering_remaining>0):
+		var can_fetch=navigation.well_center.is_finite() and not carrying_water and not reduced_motion
+		if can_fetch:
+			var entry=navigation.well_approach()
+			can_fetch=not navigation.path(position,entry).is_empty() and not navigation.path(entry,navigation.approach(target,entry)).is_empty()
+		if can_fetch:
+			fetching_water=true
+			model.carrying_water=false
+			model.set_motion("idle")
+			start_route(navigation.well_approach(),"Getting water from the well")
+			return
+	else: carrying_water=false
+	fetching_water=false
+	model.carrying_water=carrying_water
 	model.set_motion("idle")
-	start_route(navigation.approach(target,position),"Visiting a favorite place")
+	start_route(navigation.approach(target,position),"Bringing water to the "+target.kind if carrying_water else "Visiting a favorite place")
 func start_route(destination: Vector3,text: String):
 	current_target=destination
 	var target=data.find(target_id)
@@ -115,7 +152,17 @@ func world_changed():
 		position=HomesteadItems.cell_center(navigation.closest(position))
 		recoveries+=1
 		relocated=true
+	if fetching_water and not target.is_empty():
+		if not navigation.well_center.is_finite() or navigation.path(position,navigation.well_approach()).is_empty():
+			fetching_water=false
+			start_route(navigation.approach(target,position),"Off to water")
+		elif state=="walking" or current_target.distance_to(navigation.well_approach())>0.01 or relocated:
+			start_route(navigation.well_approach(),"Taking the new path to the well")
+		return
 	if target.is_empty() and target_id!="":
+		fetching_water=false
+		carrying_water=false
+		model.carrying_water=false
 		route.clear()
 		state="pause"
 		timer=0.8
@@ -125,7 +172,7 @@ func world_changed():
 		recoveries+=1
 	elif not target.is_empty():
 		# Unrelated decorating leaves a seated or gardening resident undisturbed.
-		var active=state in ["walking","align","seating","unseating","rest","water","look","wave"]
+		var active=state in ["walking","align","seating","unseating","rest","water","fill","look","wave"]
 		if active and (state=="walking" or target_changed or relocated):
 			start_route(navigation.approach(target,position),"Taking the new path")
 			recoveries+=1
@@ -148,10 +195,16 @@ func arrive():
 	model.set_motion("idle")
 	var target=data.find(target_id)
 	if not target.is_empty():
-		var direction=HomesteadItems.item_center(target)-position
+		var direction=(navigation.well_center if fetching_water else HomesteadItems.item_center(target))-position
 		desired_facing=atan2(direction.x,direction.z)
 	else: desired_facing=facing+0.4
 func begin_activity():
+	if fetching_water:
+		state="fill"
+		timer=2.4
+		model.set_motion("fill")
+		announce("Filling the watering can")
+		return
 	arrivals[destination_kind]=int(arrivals.get(destination_kind,0))+1
 	if watering_remaining>0 and target_id==watering_tree_id:
 		state="water"
@@ -184,6 +237,16 @@ func begin_activity():
 		model.set_motion("idle")
 		announce("Watching the water" if destination_kind=="pond" else "A little pause at home" if destination_kind=="cottage" else "Enjoying this little place")
 func finish_activity():
+	if state=="fill":
+		fetching_water=false
+		carrying_water=true
+		model.carrying_water=true
+		var target=data.find(target_id)
+		if not target.is_empty():
+			start_route(navigation.approach(target,position),"Bringing water to the "+target.kind)
+			return
+		carrying_water=false
+		model.carrying_water=false
 	if state=="water" and watering_remaining>0 and target_id==watering_tree_id:
 		watering_remaining-=1
 		tree_watered.emit()
@@ -200,6 +263,9 @@ func finish_activity():
 			timer=0
 			model.set_motion("idle")
 			return
+	carrying_water=false
+	fetching_water=false
+	model.carrying_water=false
 	model.set_motion("idle")
 	state="pause"
 	timer=rng.randf_range(1.2,2.6)*activity_scale
@@ -207,6 +273,7 @@ func _physics_process(delta):
 	if model==null: return
 	steps+=1
 	model.reduced_motion=reduced_motion
+	model.carrying_water=carrying_water
 	if state=="walking":
 		if route.is_empty():
 			arrive()
@@ -287,4 +354,5 @@ func _physics_process(delta):
 		if timer<=0: finish_activity()
 	if state!="walking": facing=rotate_toward(facing,desired_facing,delta*4.5)
 	model.look_yaw=angle_difference(facing,desired_facing)
+	model.activity_camera_yaw=angle_difference(facing,atan2(navigation.view_direction.x,navigation.view_direction.z))
 	rotation.y=facing
