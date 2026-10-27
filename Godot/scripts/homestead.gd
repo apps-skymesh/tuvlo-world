@@ -60,6 +60,7 @@ var hold_candidate=""
 var hold_emitted=false
 var pending_visit=null
 var grab_offset=Vector2i.ZERO
+var moving_selection=false
 var touches={}
 var pinch_distance=0.0
 var multitouch=false
@@ -249,10 +250,11 @@ func receive_host_json(json: String):
     preview_cell=item.cell
     preview_rotation=item.rotation
     grab_offset=Vector2i.ZERO
+    reset_press(false)
     if payload.get("fromHold",false)==true and selected_id==hold_candidate:
      var grabbed=ground_cell(press_origin)
      if grabbed!=null: grab_offset=grabbed-preview_cell
-    reset_press(false)
+     moving_selection=true
     update_preview()
     set_paused(paused,panel_preview)
   "nudge":
@@ -369,13 +371,14 @@ func update_preview():
  emit_message("preview",{"revision":preview_revision,"valid":valid,"cell":{"x":preview_cell.x,"z":preview_cell.y},"rotation":preview_rotation})
 
 # The same gesture state serves real touch and the disposable desktop host.
-# A small movement cancels holding and pans the map, so looking around
-# never accidentally picks up a building.
+# A drag on open ground pans. A drag that starts on the selected piece moves
+# that piece from where it already stands. Looking around never buys land.
 func reset_press(release=true):
  pending_pick=null
  pending_visit=null
  hold_candidate=""
  hold_emitted=false
+ moving_selection=false
  press_elapsed=0.0
  press_cancelled=true
  if release:
@@ -397,23 +400,32 @@ func begin_press(point: Vector2,index: int):
  previous_touch=point
  press_cancelled=false
  grab_offset=Vector2i.ZERO
+ moving_selection=false
  if selected_id=="": pending_pick=point
  else:
   var cell=ground_cell(point)
   var item=selected_item()
-  if cell!=null and not item.is_empty() and Rect2i(preview_cell,HomesteadItems.footprint(item.kind,preview_rotation)).has_point(cell):
-   grab_offset=cell-preview_cell
+  if not item.is_empty():
+   var footprint=Rect2i(preview_cell,HomesteadItems.footprint(item.kind,preview_rotation))
+   if cell!=null and footprint.has_point(cell):
+    grab_offset=cell-preview_cell
+    moving_selection=true
+   elif str(object_at_screen(point).get("id",""))==selected_id:
+    var grabbed=preview_cell if cell==null else Vector2i(clampi(cell.x,footprint.position.x,footprint.end.x-1),clampi(cell.y,footprint.position.y,footprint.end.y-1))
+    grab_offset=grabbed-preview_cell
+    moving_selection=true
   # Wait for a drag or release: the first finger of a pinch is not a move.
 
 func move_press(point: Vector2):
  if not pointer_down: return
  var movement=point-previous_touch
  previous_touch=point
- if selected_id!="":
+ if moving_selection:
   point_at(point)
- elif not hold_emitted:
+  return
+ if not hold_emitted:
   if press_origin.distance_to(point)>HOLD_SLOP:
-   if not press_cancelled:
+   if not press_cancelled and selected_id=="":
     presentation.clear_preview()
     # Include the initial slop so the terrain stays under the finger.
     movement=point-press_origin
@@ -444,12 +456,13 @@ func pan_camera(from: Vector2,to: Vector2):
 
 func end_press(point: Vector2,cancelled=false):
  if not pointer_down: return
- if not cancelled and selected_id!="": point_at(point)
+ if not cancelled and moving_selection: point_at(point)
  if not cancelled and selected_id=="" and not press_cancelled and not hold_emitted and press_origin.distance_to(point)<=HOLD_SLOP:
   pending_visit=press_origin
  pointer_down=false
  pointer_index=-1
  dragging=false
+ moving_selection=false
  pending_pick=null
  if selected_id=="": presentation.clear_preview()
 
