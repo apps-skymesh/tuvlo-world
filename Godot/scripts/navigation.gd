@@ -37,21 +37,42 @@ func rebuild(world_data: HomesteadWorldData):
 func place_water_source(occupied: Dictionary):
 	well_center=Vector3.INF
 	if not data.items.any(func(item): return item.kind in ["tree","garden"]): return
-	var candidates=[well_cell,Vector2i(12,10)]
+	var silhouettes=[]
+	var water_places=[]
+	for item in data.items:
+		if item.kind in ["path","flowers","rocks"]: continue
+		silhouettes.append(HomesteadVisibility.item_bounds(item,view_direction))
+		if item.kind in ["garden","pond","windmill","greenhouse","orchard","workshop","cottage","barn","grill"]:
+			for role in ["material","production"]:
+				silhouettes.append(HomesteadVisibility.marker_bounds(item,role,view_direction))
+		if item.kind in ["tree","garden"]: water_places.append(HomesteadItems.item_center(item))
+	var best=Vector2i(10000,10000)
+	var best_score=INF
 	for z in range(1,17):
-		for x in range(1,17): candidates.append(Vector2i(x,z))
-	for cell in candidates:
-		var clear=true
-		for z in range(-1,3):
-			for x in range(-1,3):
-				var square=cell+Vector2i(x,z)
-				if not data.buildable(square) or occupied.has(square) or not open(square): clear=false
-		if not clear: continue
-		well_cell=cell
-		well_center=HomesteadItems.center(cell,HomesteadItems.WELL_SIZE)
-		for z in 2:
-			for x in 2: grid.set_point_solid(cell+Vector2i(x,z),true)
-		return
+		for x in range(1,17):
+			var cell=Vector2i(x,z)
+			var clear=true
+			for dz in range(-1,3):
+				for dx in range(-1,3):
+					var square=cell+Vector2i(dx,dz)
+					if not data.buildable(square) or occupied.has(square) or not open(square): clear=false
+			if not clear: continue
+			var center=HomesteadItems.center(cell,HomesteadItems.WELL_SIZE)
+			var outline=HomesteadVisibility.projected_box(center,Vector3(1.05,HomesteadItems.WELL_HEIGHT,0.95),view_direction)
+			var score=0.0
+			for silhouette in silhouettes:
+				score+=HomesteadVisibility.overlap(outline.grow(0.25),silhouette.grow(0.2))*18.0
+			for place in water_places: score+=center.distance_to(place)*0.24/maxi(1,water_places.size())
+			if cell==well_cell: score-=0.35
+			if score<best_score:
+				best=cell
+				best_score=score
+	if best.x==10000: return
+	well_cell=best
+	well_center=HomesteadItems.center(best,HomesteadItems.WELL_SIZE)
+	for z in 2:
+		for x in 2: grid.set_point_solid(best+Vector2i(x,z),true)
+
 func well_approach() -> Vector3:
 	# The authored filling tap is on the west, clear of the open water and roof.
 	return well_center+Vector3(-1.42,0,0.10)
@@ -164,7 +185,12 @@ func watering_approach(item: Dictionary,from: Vector3) -> Vector3:
 			var facing=(center-point).normalized()
 			var lateral=absf((center-point).dot(Vector3(view_direction.z,0,-view_direction.x)))
 			var hidden=2.6 if item.kind=="tree" and lateral<1.55 and facing.dot(view_direction)>0.2 else 0.0
-			choices.append({"point":point,"distance":distance,"score":facing.dot(view_direction)*2.4-distance*0.12-hidden})
+			var marker_overlap=0.0
+			var worker=HomesteadVisibility.projected_box(point,Vector3(0.45,1.95,0.4),view_direction)
+			if item.kind=="garden":
+				for role in ["material","production"]:
+					marker_overlap+=HomesteadVisibility.overlap(worker,HomesteadVisibility.marker_bounds(item,role,view_direction))
+			choices.append({"point":point,"distance":distance,"score":facing.dot(view_direction)*2.4-distance*0.12-hidden-marker_overlap*4.0})
 	var best=Vector3.INF
 	var score=-INF
 	for choice in choices:

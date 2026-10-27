@@ -724,6 +724,40 @@ func run():
  crowded_child.setup(crowded_data,crowded_nav)
  crowded_child.visit("dense-garden")
  check(not crowded_nav.well_center.is_finite() and not crowded_child.fetching_water and crowded_child.target_id=="dense-garden","A full saved layout skips the well detour and keeps gardening available")
+ # Visibility is presentation-only: no saved place moves to clear a sightline.
+ var clear_data=HomesteadWorldData.new()
+ clear_data.apply_snapshot({"items":[{"id":"clear-cottage","kind":"cottage","cell":{"x":7,"z":3},"rotation":0},{"id":"clear-tree","kind":"tree","cell":{"x":12,"z":7},"rotation":0},{"id":"clear-garden","kind":"garden","cell":{"x":4,"z":8},"rotation":0}],"land":[],"approvedWins":13})
+ var saved_layout=JSON.stringify(clear_data.items)
+ var clear_nav=HomesteadNavigation.new()
+ clear_nav.rebuild(clear_data)
+ var well_outline=HomesteadVisibility.projected_box(clear_nav.well_center,Vector3(1.05,HomesteadItems.WELL_HEIGHT,0.95),clear_nav.view_direction)
+ for place in clear_data.items:
+  check(HomesteadVisibility.overlap(well_outline,HomesteadVisibility.item_bounds(place,clear_nav.view_direction))<0.01,"The sparse clearing gives the well a separate projected silhouette")
+ check(JSON.stringify(clear_data.items)==saved_layout,"Sightline planning never rewrites saved coordinates")
+ var badge_one=scene.presentation.make_status_bubble()
+ var badge_two=scene.presentation.make_status_bubble()
+ var field=scene.data.find("garden")
+ var badge_anchor=HomesteadItems.item_center(field)+Vector3(0,1.65,0)
+ for badge in [badge_one,badge_two]:
+  badge.set_meta("marker_anchor",badge_anchor)
+  badge.set_meta("marker_place_id",field.id)
+  badge.get_meta("body").set_meta("production_station","field")
+ badge_one.set_meta("marker_role","material")
+ badge_two.set_meta("marker_role","field")
+ var marker_study=HomesteadVisibility.new()
+ marker_study.markers([badge_one,badge_two],scene.data.items)
+ var material_slot=badge_one.global_position
+ var product_slot=badge_two.global_position
+ scene.resident.position+=Vector3(3,0,2)
+ scene.camera.size*=1.2
+ badge_two.get_meta("label").text="0:30"
+ marker_study.markers([badge_two],scene.data.items)
+ check(badge_two.global_position.is_equal_approx(product_slot),"The product marker keeps its fixed world slot through walking, zoom, timer changes and absent neighbours")
+ marker_study.markers([badge_two,badge_one],scene.data.items)
+ check(badge_one.global_position.is_equal_approx(material_slot) and badge_two.global_position.is_equal_approx(product_slot),"Marker order does not rearrange the reserved slots")
+ for badge in [badge_one,badge_two]:
+  check(badge.get_meta("body").global_position.is_equal_approx(badge.global_position) and badge.get_meta("body").get_meta("production_station")=="field","The fixed badge preserves its original tap action")
+ check(material_slot.distance_to(product_slot)>1.2,"The fixed material and product slots retain separate hit areas")
  scene.queue_free()
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)

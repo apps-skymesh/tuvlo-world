@@ -1,8 +1,7 @@
 class_name HomesteadPresentation
 extends Node3D
 var data: HomesteadWorldData
-var tending_item_id=""
-var tending_position=Vector3.ZERO
+var marker_layout=HomesteadVisibility.new()
 var well: HomesteadWell
 var prop_root: Node3D
 var land_root: Node3D
@@ -317,8 +316,10 @@ func update_harvest():
 		bubble.position=anchor
 		bubble.set_meta("anchor",anchor)
 		bubble.set_meta("producer_key",key)
+		bubble.set_meta("marker_place_id",key)
+		bubble.set_meta("marker_role","material")
 		var quad=QuadMesh.new()
-		quad.size=Vector2(1.7,1.7)
+		quad.size=Vector2.ONE
 		var face=MeshInstance3D.new()
 		face.mesh=quad
 		face.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -335,7 +336,7 @@ func update_harvest():
 		body.collision_mask=0
 		var collider=CollisionShape3D.new()
 		var sphere=SphereShape3D.new()
-		sphere.radius=0.9
+		sphere.radius=0.76
 		collider.shape=sphere
 		body.add_child(collider)
 		bubbles.append(bubble)
@@ -355,13 +356,17 @@ func update_production():
 		var offset=0.0
 		if status.station in ["oven","pantry"]: offset=-1.0 if status.station=="oven" else 1.0
 		var camera=get_viewport().get_camera_3d()
-		bubble.position=anchor+(camera.global_basis.x if camera else Vector3.RIGHT)*offset
+		var point=anchor+(camera.global_basis.x if camera else Vector3.RIGHT)*offset
+		bubble.set_meta("marker_anchor",point)
+		bubble.set_meta("marker_place_id",status.placeID)
+		bubble.set_meta("marker_role",status.station)
+		if not bubble.has_meta("marker_placed"): bubble.position=point
 		var material: ShaderMaterial=bubble.get_meta("material")
 		material.set_shader_parameter("kind",(9 if status.good=="meat" else ["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good)))
 		material.set_shader_parameter("production_state",status.state)
 		material.set_shader_parameter("progress",status.progress)
 		bubble.get_meta("label").text=countdown(int(status.remaining)) if status.state==1 else ""
-		bubble.scale=Vector3.ONE*(0.86 if status.state==0 else 1.0)
+
 		# Baking has a quiet physical cue at the authored chimney; packing at the porch.
 		if status.station in ["oven","pantry","barn","grill"]:
 			var effect: Node3D=production_effects.get(status.station)
@@ -422,7 +427,7 @@ func make_status_bubble() -> Node3D:
 	production_root.add_child(bubble)
 	var face=MeshInstance3D.new()
 	var quad=QuadMesh.new()
-	quad.size=Vector2(1.4,1.4)
+	quad.size=Vector2.ONE
 	face.mesh=quad
 	face.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var material=ShaderMaterial.new()
@@ -443,11 +448,11 @@ func make_status_bubble() -> Node3D:
 	var label=Label3D.new()
 	label.billboard=BaseMaterial3D.BILLBOARD_ENABLED
 	label.font_size=44
-	label.pixel_size=0.009
+	label.pixel_size=0.012
 	label.modulate=Color("263e32")
 	label.outline_modulate=Color("fff3d9")
 	label.outline_size=5
-	label.position.y=-0.79
+	label.position.y=-0.63
 	bubble.add_child(label)
 	bubble.set_meta("label",label)
 	return bubble
@@ -464,7 +469,11 @@ func update_construction():
 		var item=data.find(build.placeID)
 		var phase=int(floor(clampf(build.progress,0.0,0.999)*5.0))
 		var height=1.15+float(phase)*0.38
-		bubble.position=HomesteadItems.item_center(item)+Vector3(0,height,0)
+		var anchor=HomesteadItems.item_center(item)+Vector3(0,height,0)
+		bubble.set_meta("marker_anchor",anchor)
+		bubble.set_meta("marker_place_id",build.placeID)
+		bubble.set_meta("marker_role","construction")
+		if not bubble.has_meta("marker_placed"): bubble.position=anchor
 		var material: ShaderMaterial=bubble.get_meta("material")
 		material.set_shader_parameter("kind",8)
 		material.set_shader_parameter("production_state",1)
@@ -1012,51 +1021,67 @@ func _process(delta):
 		if not is_instance_valid(part): continue
 		var motion=str(part.get_meta("pet_motion",""))
 		part.rotation.z=0.0 if reduced_motion else sin(clock*(4.0 if motion=="tail" else 0.9)+part.get_instance_id()%7)*(0.25 if motion=="tail" else 0.04)
-	for i in bubbles.size():
-		var bubble=bubbles[i]
-		if is_instance_valid(bubble):
-			var offset=Vector3.ZERO
-			var camera=get_viewport().get_camera_3d()
-			if camera and bubble.get_meta("producer_key","")==tending_item_id:
-				var side=-1.0 if (tending_position-Vector3(bubble.get_meta("anchor"))).dot(camera.global_basis.x)>0 else 1.0
-				offset=camera.global_basis.x*side*1.6
-			var held: Vector3=bubble.get_meta("work_offset",Vector3.ZERO)
-			held=offset if reduced_motion else held.lerp(offset,1-exp(-delta*6.0))
-			bubble.set_meta("work_offset",held)
-			bubble.position=bubble.get_meta("anchor")+held+Vector3(0,0.0 if reduced_motion else sin(clock*2.2+i*1.3)*0.12,0)
 	update_production_effects()
 	for water in waters:
 		water.set_shader_parameter("clock",clock)
 		water.set_shader_parameter("motion",0.0 if reduced_motion else 1.0)
 
-func update_character_visibility(camera: Camera3D,feet: Vector3,enabled: bool):
-	var target=feet+Vector3(0,1.1,0)
+func layout_markers():
+	var entries=[]
+	entries.append_array(bubbles)
+	entries.append_array(production_nodes.values())
+	entries.append_array(construction_nodes.values())
+	marker_layout.markers(entries,data.items)
+
+func blocks_view(camera: Camera3D,target: Vector3,center: Vector3,radius: float) -> bool:
 	var segment=target-camera.global_position
-	var length_squared=segment.length_squared()
+	var amount=(center-camera.global_position).dot(segment)/maxf(0.01,segment.length_squared())
+	return amount>0 and amount<1 and (camera.global_position+segment*amount).distance_to(center)<radius
+func update_character_visibility(camera: Camera3D,feet: Vector3,enabled: bool):
+	var face=feet+Vector3(0,1.65,0)
+	var chest=feet+Vector3(0,1.0,0)
 	for item in data.items:
-		if item.kind not in ["tree","cottage","treehouse"]: continue
+		if not HomesteadItems.DEFINITIONS[item.kind].blocks or HomesteadItems.DEFINITIONS[item.kind].height<0.9: continue
 		var root: Node3D=nodes.get(item.id)
 		if not is_instance_valid(root): continue
-		var center=HomesteadItems.item_center(item)+Vector3(0,2.3 if item.kind=="tree" else 2.8 if item.kind=="treehouse" else 1.9,0)
-		var amount=(center-camera.global_position).dot(segment)/maxf(0.01,length_squared)
-		var radius=1.35 if item.kind=="tree" else 2.5
-		var obstructs=enabled and amount>0 and amount<1 and (camera.global_position+segment*amount).distance_to(center)<radius
-		if bool(root.get_meta("camera_faded",false))!=obstructs:
-			root.set_meta("camera_faded",obstructs)
-			fade_obstruction(root,obstructs)
-func fade_obstruction(node: Node,faded: bool):
+		var height=HomesteadItems.DEFINITIONS[item.kind].height
+		var center=HomesteadItems.item_center(item)+Vector3(0,2.3 if item.kind=="tree" else height*0.55,0)
+		var size=HomesteadItems.footprint(item.kind,item.rotation)
+		var radius=1.35 if item.kind=="tree" else clampf(maxf(size.x,size.y)*0.55,0.7,2.5)
+		var tree_stage=int(root.get_child(0).get_meta("growth_stage",2)) if item.kind=="tree" else -1
+		if tree_stage in [0,1]:
+			center=HomesteadItems.item_center(item)+Vector3(0,0.55 if tree_stage==0 else 1.25,0)
+			radius=0.35 if tree_stage==0 else 0.8
+		var mode=2 if enabled and (blocks_view(camera,face,center,radius) or blocks_view(camera,chest,center,radius)) else 0
+		if enabled and mode==0 and item.kind=="tree" and tree_stage>=1:
+			for cottage_item in data.items:
+				if cottage_item.kind!="cottage": continue
+				var door=HomesteadItems.item_center(cottage_item)+Vector3(0,1.35,1.5).rotated(Vector3.UP,cottage_item.rotation*PI/2)
+				if blocks_view(camera,door,center,radius):
+					mode=1 if item.id==data.growth_tree_id else 2
+					break
+		if int(root.get_meta("visibility_mode",0))!=mode or bool(root.get_meta("camera_faded",false))!=(mode>0):
+			fade_obstruction(root,false)
+			if mode>0: fade_obstruction(root,true,mode==1)
+			root.set_meta("visibility_mode",mode)
+			root.set_meta("camera_faded",mode>0)
+	var well_hidden=enabled and well.art.visible and (blocks_view(camera,face,well.position+Vector3(0,1.3,0),1.05) or blocks_view(camera,chest,well.position+Vector3(0,1.3,0),1.05))
+	if bool(well.get_meta("camera_faded",false))!=well_hidden:
+		well.set_meta("camera_faded",well_hidden)
+		fade_obstruction(well.art,well_hidden)
+func fade_obstruction(node: Node,faded: bool,leaves_only=false):
 	if node is MeshInstance3D:
-		if faded and node.material_override is StandardMaterial3D:
+		if faded and (not leaves_only or str(node.name).begins_with("Crown")) and node.material_override is StandardMaterial3D:
 			node.set_meta("camera_original_material",node.material_override)
 			var material=node.material_override.duplicate()
 			material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
-			material.albedo_color.a=0.13
+			material.albedo_color.a=0.24
 			material.depth_draw_mode=BaseMaterial3D.DEPTH_DRAW_DISABLED
 			node.material_override=material
 		elif not faded and node.has_meta("camera_original_material"):
 			node.material_override=node.get_meta("camera_original_material")
 			node.remove_meta("camera_original_material")
-	for child in node.get_children(): fade_obstruction(child,faded)
+	for child in node.get_children(): fade_obstruction(child,faded,leaves_only)
 
 func reading_nook(root: Node3D,style=0):
 	HomesteadMesh.box(root,Vector3(0,0.1,0),Vector3(1.9,0.2,1.9),"d0c7ad",0.09)

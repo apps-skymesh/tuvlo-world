@@ -694,8 +694,6 @@ func _process(delta):
   metrics_clock+=delta
   update_sunrise(delta)
   presentation.well.update_watering(resident,delta,reduced_motion)
-  presentation.tending_item_id=resident.target_id if resident.state=="water" else ""
-  presentation.tending_position=resident.position
  if diagnostics and metrics_clock>=5:
   metrics_clock=0
   emit_message("metrics",{"fps":Engine.get_frames_per_second(),"processSeconds":Performance.get_monitor(Performance.TIME_PROCESS),"staticBytes":Performance.get_monitor(Performance.MEMORY_STATIC),"drawCalls":Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),"residentSteps":resident.steps})
@@ -706,7 +704,9 @@ func _process(delta):
   if is_instance_valid(person): person.reduced_motion=reduced_motion
  if is_instance_valid(creature): creature.reduced_motion=reduced_motion
  # Menus may redraw appearance/highlights without changing the held map view.
- if paused and hold_menu_camera and camera_initialized: return
+ if paused and hold_menu_camera and camera_initialized:
+  presentation.layout_markers()
+  return
  var viewport=get_viewport().get_visible_rect().size
  var aspect=viewport.x/maxf(1,viewport.y)
  var immediate=reduced_motion or not camera_initialized
@@ -761,7 +761,8 @@ func _process(delta):
  camera.v_offset=-camera.size*panel_framing*0.5
  camera.look_at(orbit_focus)
  camera_initialized=true
- presentation.update_character_visibility(camera,resident.position,camera_mode in ["follow","detail"])
+ presentation.update_character_visibility(camera,resident.position,true)
+ presentation.layout_markers()
 
 func overview_points() -> Array[Vector3]:
  # Include inactive plots as well as the active clearing; no imaginary roofs

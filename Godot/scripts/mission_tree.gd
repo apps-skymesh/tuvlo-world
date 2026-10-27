@@ -77,7 +77,7 @@ func apply_weather():
   material.albedo_color=mesh.get_meta("leaf_green").lerp(Color("ddb34f"),thirst*0.95)
   if mesh.has_meta("camera_original_material"):
    mesh.get_meta("camera_original_material").albedo_color=material.albedo_color
-  if get_parent().get_parent().get_meta("camera_faded",false): material.albedo_color.a=0.13
+  if get_parent().get_parent().get_meta("camera_faded",false): material.albedo_color.a=0.24
 
 func start_leaf_fall():
  for leaf in fallen:

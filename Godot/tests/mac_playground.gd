@@ -90,9 +90,12 @@ func reset(equipped: bool):
  if cottage_slice:
   payload.items=[
    {"id":"cottage","kind":"cottage","cell":{"x":7,"z":3},"rotation":0},
-   {"id":"garden","kind":"garden","cell":{"x":4,"z":8},"rotation":0},
-   {"id":"tree","kind":"tree","cell":{"x":12,"z":7},"rotation":0}]
+   {"id":"garden","kind":"garden","cell":{"x":5,"z":9},"rotation":0},
+   {"id":"tree","kind":"tree","cell":{"x":14,"z":4},"rotation":0}]
   for z in range(6,11): payload.items.append({"id":"path-%d"%z,"kind":"path","cell":{"x":9,"z":z},"rotation":0})
+ if well_slice:
+  payload.production=[{"placeID":"garden","station":"field","good":"wheat","state":2,"remaining":0,"progress":1.0}]
+  payload.farmStages=[4,4]
  if equipped:
   payload.items.append({"id":"bench","kind":"bench","cell":{"x":8,"z":10},"rotation":0})
   payload.items.append({"id":"pond","kind":"pond","cell":{"x":12,"z":7},"rotation":0})
@@ -129,6 +132,8 @@ func build_controls():
   button(toolbar,"Tree",tree_camera)
   button(toolbar,"Home",func(): camera("home"))
   button(toolbar,"Water trip",start_well_story)
+  button(toolbar,"Farm",func(): well_phase=-1; tree_story_clock=-1; world.resident.visit("garden"))
+  button(toolbar,"Overlap",toggle_visibility_study)
   button(toolbar,"Seed",func(): tree_story_clock=-1; well_phase=-1; tree_seed())
   button(toolbar,"Mission +1",func(): tree_story_clock=-1; well_phase=-1; tree_mission(1))
   button(toolbar,"Full grown",func(): tree_story_clock=-1; well_phase=-1; tree_set(13))
@@ -196,6 +201,15 @@ func cycle_production():
  activity_label.text="Production: "+["Idle","Working","Ready"][production_phase]
 
 # Disposable mission approvals and family-day state only; no real family store.
+func toggle_visibility_study():
+ well_phase=-1
+ tree_story_clock=-1
+ for item in payload.items:
+  if item.id=="tree": item.cell={"x":9,"z":6} if item.cell.x==14 else {"x":14,"z":4}
+ snapshot()
+ world.pan_focus=Vector3(0.5,1.5,0.0)
+ world.pan_size=10.4
+ send("camera",{"mode":"pan","resetZoom":true})
 func tree_camera():
  world.pan_focus=HomesteadItems.item_center(world.data.find("tree"))+Vector3(0,1.4,0)
  world.pan_size=6.4
@@ -228,8 +242,8 @@ func start_well_story():
  world.resident.route.clear()
  world.resident.state="pause"
  world.resident.timer=100
- world.pan_focus=Vector3(0.5,1.2,0.5)
- world.pan_size=9.2
+ world.pan_focus=Vector3(0.5,1.5,0.0)
+ world.pan_size=10.4
  send("camera",{"mode":"pan","resetZoom":true})
  well_phase=0
  well_elapsed=0.0
