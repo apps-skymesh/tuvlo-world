@@ -17,6 +17,12 @@ var motion_samples=[]
 var next_sample=0.0
 var started_ms=0
 var initial_camera="overview"
+var pond_polish=false
+var pond_polish_step=-1
+var quiet_visits=false
+var visit_report_done=false
+var quiet_place_slice=false
+var quiet_place_step=-1
 var farm_film=false
 var farm_film_title: Label
 var farm_building_slice=false
@@ -50,6 +56,9 @@ func run():
  var args=OS.get_cmdline_user_args()
  for index in args.size():
   if args[index]=="--construction": construction_review=true; windmill_slice=true; capture_times=[1.0,4.0,8.0,13.0,17.0]
+  if args[index]=="--pond-polish": pond_polish=true; farm_film=true; capture_times=[2.0,5.0,10.0,18.0]
+  if args[index]=="--quiet-visits": quiet_visits=true; quiet_place_slice=true; farm_film=true; capture_times=[]
+  if args[index]=="--quiet-places": quiet_place_slice=true; farm_film=true; capture_times=[2.0,7.0,12.0,17.0]
   if args[index]=="--farm-film": farm_film=true
   if args[index]=="--farm-buildings": farm_building_slice=true; capture_times=[2.0,6.0,10.0,14.0,18.0]
   if args[index]=="--animals": animals_slice=true
@@ -66,6 +75,11 @@ func run():
   if args[index]=="--seconds" and index+1<args.size(): duration=clampf(float(args[index+1]),1,60)
   if args[index]=="--capture" and index+1<args.size(): output=args[index+1]
  if output!="": DirAccess.make_dir_recursive_absolute(output)
+ if quiet_visits or pond_polish:
+  # The desktop compositor can stop drawing an occluded movie window while
+  # simulation continues. Keep only this disposable recording window visible.
+  root.always_on_top=true
+  root.grab_focus()
  world=load("res://scenes/homestead.tscn").instantiate()
  root.add_child(world)
  world.host_message.connect(on_message)
@@ -79,6 +93,7 @@ func run():
   if well_slice: start_well_story()
  if animals_slice: send("camera",{"mode":"place","id":"barn","zoom":1.1})
  if farm_building_slice: farm_buildings_portrait()
+ if quiet_place_slice or pond_polish: quiet_places_portrait()
 func keep_landscape():
  # This host is a landscape-only visual lab; app orientation uses UIKit's lease.
  var maximum_height=maxi(540,int(root.size.x*0.625))
@@ -268,6 +283,29 @@ func harvest_portrait():
  world.pan_size=6.8
  send("camera",{"mode":"pan","resetZoom":true})
 
+func quiet_places_portrait():
+ well_phase=-1
+ tree_story_clock=-1
+ payload.items=[
+  {"id":"cottage","kind":"cottage","cell":{"x":3,"z":2},"rotation":0},
+  {"id":"pond","kind":"pond","cell":{"x":9,"z":8},"rotation":0,"style":0},
+  {"id":"nook","kind":"nook","cell":{"x":4,"z":8},"rotation":0,"style":0},
+  {"id":"treehouse","kind":"treehouse","cell":{"x":14,"z":3},"rotation":0,"style":0}]
+ payload.production=[{"placeID":"cottage","station":"oven","good":"bread","state":2,"remaining":0,"progress":1.0}] if quiet_visits else []
+ payload.approvedWins=21
+ snapshot()
+ world.resident.cancel_tree_watering()
+ world.resident.route.clear()
+ world.resident.state="pause"
+ world.resident.timer=3600
+ world.resident.position=HomesteadItems.cell_center(Vector2i(7,7))
+ world.resident.model.set_motion("idle")
+ world.resident.facing=world.orbit_yaw
+ world.resident.desired_facing=world.orbit_yaw
+ world.pan_focus=Vector3(0,1.2,-1.5)
+ world.pan_size=12.0
+ send("camera",{"mode":"pan","resetZoom":true})
+
 func farm_buildings_portrait():
  well_phase=-1
  tree_story_clock=-1
@@ -447,6 +485,51 @@ func _unhandled_key_input(event):
 func _process(delta):
  if world==null: return false
  elapsed+=delta
+ if pond_polish:
+  var step=0 if elapsed<3 else 1 if elapsed<7 else 2 if elapsed<13 else 3
+  if step!=pond_polish_step:
+   pond_polish_step=step
+   farm_film_title.text=["Beside the cottage","Lily cove","A quiet visit","Marsh cove"][step]
+   if step>0:
+    for item in payload.items:
+     if item.kind=="pond": item.style=1 if step==3 else 0
+    snapshot()
+    if step>=2: world.resident.visit("pond")
+  if step>0:
+   var center=HomesteadItems.item_center(world.data.find("pond"))
+   world.pan_focus=center+Vector3(0,.10,0) if step==1 else (center+world.resident.position)*.5+Vector3(0,.55,0)
+   world.pan_size=3.2 if step==1 else 4.7
+   send("camera",{"mode":"pan","resetZoom":true})
+   if world.resident.state=="look": world.resident.timer=maxf(world.resident.timer,60.0)
+ if quiet_place_slice:
+  var step=(0 if elapsed<3 else 1 if elapsed<15 else 2 if elapsed<29 else 3) if quiet_visits else clampi(int((elapsed-.5)/5.0),0,3)
+  if step!=quiet_place_step:
+   quiet_place_step=step
+   farm_film_title.text=["Beside the cottage","Pond","Reading nook","Treehouse"][step]
+   if step>0:
+    var kind=["pond","nook","treehouse"][step-1]
+    if quiet_visits: world.resident.visit(kind)
+    else:
+     world.pan_focus=HomesteadItems.item_center(world.data.find(kind))+Vector3(0,{"pond":.05,"nook":.65,"treehouse":2.2}[kind],0)
+     world.pan_size={"pond":3.7,"nook":2.8,"treehouse":6.2}[kind]
+     send("camera",{"mode":"pan","resetZoom":true})
+  if quiet_visits and step>0:
+   var kind=["pond","nook","treehouse"][step-1]
+   var actor=world.resident
+   var center=HomesteadItems.item_center(world.data.find(kind))
+   var separation=Vector2(center.x-actor.position.x,center.z-actor.position.z).length()
+   world.pan_focus=(center+actor.position)*.5+Vector3(0,{"pond":.55,"nook":.65,"treehouse":2.25}[kind],0)
+   world.pan_size=maxf({"pond":4.8,"nook":4.3,"treehouse":7.8}[kind],separation*.9+3.0)
+   send("camera",{"mode":"pan","resetZoom":true})
+   # Hold an actual native arrival for review; keep its natural idle animation.
+   if actor.state in ["look","wave"]: actor.timer=maxf(actor.timer,60.0)
+  if quiet_visits and elapsed>=47 and not visit_report_done:
+   visit_report_done=true
+   var review={"arrivals":world.resident.arrivals,"distanceWalked":world.resident.distance_walked,"blockedSamples":world.resident.blocked_samples,"recoveries":world.resident.recoveries,"seconds":elapsed,"presentationSourceSHA256":FileAccess.get_sha256("res://scripts/presentation.gd"),"residentSourceSHA256":FileAccess.get_sha256("res://scripts/resident.gd"),"harnessSHA256":FileAccess.get_sha256("res://tests/mac_playground.gd")}
+   if output!="":
+    var file=FileAccess.open(output+"/visits-manifest.json",FileAccess.WRITE)
+    file.store_string(JSON.stringify(review,"  "))
+   print("QUIET_VISIT_REVIEW ",JSON.stringify(review))
  if farm_building_slice:
   var step=clampi(int((elapsed-0.5)/4.0),0,4)
   if step!=farm_building_step:

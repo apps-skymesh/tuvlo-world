@@ -165,24 +165,32 @@ def grill():
  group('WarmCoals',[o for o in bpy.context.scene.objects if o not in before])
 
 
-output_root=Path(os.environ.get('TUVLO_FARM_OUTPUT',str(Path(__file__).resolve().parents[1]/'Godot/assets')))
-for name,build in [('windmill',windmill),('barn',barn),('doghouse',doghouse),('grill',grill)]:
- bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False);build()
- # Keep Rotor as an articulated group while consolidating all matte surfaces.
- roots=[None]+[o for o in list(bpy.context.scene.objects) if o.type=='EMPTY']
- for root in roots:
-  for mat in M.values():
-   objects=[o for o in list(bpy.context.scene.objects) if o.type=='MESH' and o.parent==root and o.data.materials[0]==mat]
-   if not objects:continue
-   bpy.ops.object.select_all(action='DESELECT')
-   for o in objects:o.select_set(True)
-   bpy.context.view_layer.objects.active=objects[0]
-   if len(objects)>1:bpy.ops.object.join()
-   o=bpy.context.object;o.name=(root.name if root else name)+'_'+mat.name
-   colors=o.data.color_attributes.new(name='Color',type='BYTE_COLOR',domain='CORNER')
-   for f in o.data.polygons:
-    for loop in f.loop_indices:
-     v=o.matrix_world@o.data.vertices[o.data.loops[loop].vertex_index].co;shade=.93+.07*min(1,max(0,v.z/3));colors.data[loop].color=(shade,shade,shade,1)
- out=output_root/name/('cozy_'+name+'.glb');out.parent.mkdir(parents=True,exist_ok=True)
- bpy.ops.export_scene.gltf(filepath=str(out),export_format='GLB',export_yup=True,export_materials='EXPORT',export_vertex_color='ACTIVE',export_all_vertex_colors=True,export_cameras=False,export_lights=False)
- print('Original farm building:',name,out.stat().st_size)
+def export_models(models,output_root):
+ for name,build in models:
+  bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False);build()
+  # Keep authored groups separate while consolidating their matte surfaces.
+  roots=[None]+[o for o in list(bpy.context.scene.objects) if o.type=='EMPTY']
+  for root in roots:
+   for mat in M.values():
+    objects=[o for o in list(bpy.context.scene.objects) if o.type=='MESH' and o.parent==root and o.data.materials[0]==mat]
+    if not objects:continue
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in objects:o.select_set(True)
+    bpy.context.view_layer.objects.active=objects[0]
+    if len(objects)>1:bpy.ops.object.join()
+    o=bpy.context.object;o.name=(root.name if root else name)+'_'+mat.name
+    # Preserve authored masks/paint (pond depth); shade unpainted surfaces as before.
+    colors=o.data.color_attributes.get('Color')
+    if colors is None:
+     colors=o.data.color_attributes.new(name='Color',type='BYTE_COLOR',domain='CORNER')
+     for f in o.data.polygons:
+      for loop in f.loop_indices:
+       v=o.matrix_world@o.data.vertices[o.data.loops[loop].vertex_index].co;shade=.93+.07*min(1,max(0,v.z/3));colors.data[loop].color=(shade,shade,shade,1)
+
+  out=output_root/name/('cozy_'+name+'.glb');out.parent.mkdir(parents=True,exist_ok=True)
+  bpy.ops.export_scene.gltf(filepath=str(out),export_format='GLB',export_yup=True,export_materials='EXPORT',export_vertex_color='ACTIVE',export_all_vertex_colors=True,export_cameras=False,export_lights=False)
+  print('Original farm building:',name,out.stat().st_size)
+
+if __name__=='__main__':
+ output_root=Path(os.environ.get('TUVLO_FARM_OUTPUT',str(Path(__file__).resolve().parents[1]/'Godot/assets')))
+ export_models([('windmill',windmill),('barn',barn),('doghouse',doghouse),('grill',grill)],output_root)

@@ -40,6 +40,55 @@ func run():
    check(surface.material_override.albedo_color.is_equal_approx(Color(HomesteadAppearance.SKINS[4])),"Sculpted face follows saved skin color independently of guests")
  guest_model.free()
  child_model.apply_appearance(payload.appearance)
+ # Quiet-place art keeps every saved look/rotation inside its placement envelope.
+ for kind in ["pond","nook","treehouse"]:
+  for style in 2:
+   for rotation in 4:
+    var holder=Node3D.new()
+    root.add_child(holder)
+    var art=HomesteadQuietPlaceArt.attach(holder,kind,style)
+    art.rotation.y=rotation*PI/2
+    var canopy=art.find_child("Canopy",true,false)
+    for tilt in ([-0.017,0.017] if canopy else [0.0]):
+     if canopy: canopy.rotation.z=tilt
+     var bounds=authored_bounds(holder)
+     var size=HomesteadItems.footprint(kind,rotation)
+     check(bounds.position.x>=-size.x*.5-.02 and bounds.end.x<=size.x*.5+.02 and bounds.position.z>=-size.y*.5-.02 and bounds.end.z<=size.y*.5+.02,"Quiet-place geometry respects rotated saved footprint: "+kind)
+     check(bounds.position.y>=-.02 and bounds.end.y<=HomesteadItems.DEFINITIONS[kind].height+.02,"Quiet-place geometry respects height definition: "+kind)
+    for surface in art.find_children("*","MeshInstance3D",true,false):
+     var paint=surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+     check(paint is PackedColorArray and not paint.is_empty(),"Every quiet-place surface retains exported vertex paint: "+kind)
+    if kind=="pond":
+     check((art.find_child("Lilies",true,false)!=null)==(style==0),"Saved pond looks retain their distinct planting")
+     for surface in art.find_children("*","MeshInstance3D",true,false):
+      if surface.material_override is ShaderMaterial:
+       var paint=surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+       check(paint is PackedColorArray and not paint.is_empty(),"Pond depth mask survives GLB import")
+       if paint is PackedColorArray and not paint.is_empty():
+        var low=1.0;var high=0.0
+        for color in paint: low=minf(low,color.r); high=maxf(high,color.r)
+        check(low<.02 and high>.98,"Pond has both shallow and deep vertex-mask values")
+    holder.free()
+ var pond_water=scene.presentation.waters[0]
+ scene.presentation.reduced_motion=true
+ var quiet_clock=scene.presentation.clock
+ scene.presentation._process(.5)
+ check(pond_water.get_shader_parameter("motion")==0.0 and scene.presentation.clock==quiet_clock,"Reduce Motion freezes pond displacement, rings and caustics")
+ scene.presentation.reduced_motion=false
+ var water_count=scene.presentation.waters.size()
+ var foliage_count=scene.presentation.foliage.size()
+ var ghost_pond=scene.presentation.make_item("pond",1,true,1)
+ var ghost_hideaway=scene.presentation.make_item("treehouse",2,true,1)
+ check(scene.presentation.waters.size()==water_count and scene.presentation.foliage.size()==foliage_count,"Ghost quiet places do not register water or canopy animation")
+ ghost_pond.free();ghost_hideaway.free()
+ var rose_holder=Node3D.new();root.add_child(rose_holder)
+ var sage_holder=Node3D.new();root.add_child(sage_holder)
+ var rose=HomesteadQuietPlaceArt.attach(rose_holder,"nook",0)
+ var fabric=rose.find_child("*Fabric",true,false).material_override
+ var rose_color=fabric.albedo_color
+ var sage=HomesteadQuietPlaceArt.attach(sage_holder,"nook",1)
+ check(fabric.albedo_color.is_equal_approx(rose_color) and not sage.find_child("*Fabric",true,false).material_override.albedo_color.is_equal_approx(rose_color),"Nook look changes cannot recolor another instance")
+ rose_holder.free();sage_holder.free()
  # Animal buildings use real footprints and validated, distinct producer links.
  var animal_payload=payload.duplicate(true)
  animal_payload.items.append_array([

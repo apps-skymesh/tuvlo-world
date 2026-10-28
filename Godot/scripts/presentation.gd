@@ -615,7 +615,7 @@ func make_item(kind: String,rotation: int,ghost=false,style=0,growth=-1) -> Node
 		"flowers": flowers(art,ghost)
 		"rocks": rocks(art)
 		"nook": reading_nook(art,style)
-		"treehouse": treehouse(art,style)
+		"treehouse": treehouse(art,style,ghost)
 		"path": path_tile(art)
 	if kind in ["cottage","garden","tree","bench","nook","treehouse","workshop","greenhouse","orchard","windmill","barn","doghouse","grill"]:
 		var size: Vector2i=HomesteadItems.DEFINITIONS[kind].size
@@ -820,24 +820,9 @@ func garden(root: Node3D):
 					HomesteadHarvestCraft.attach(root,"Greens",plant)
 
 func pond(root: Node3D,ghost: bool,style=0):
-	HomesteadMesh.ellipsoid(root,Vector3(0,0.05,0),Vector3(1.46,0.12,1.4),"a49d81")
-	var surface=HomesteadMesh.cylinder(root,Vector3(0,0.13,0),1.27,0.055,"55a9b4")
-	surface.scale.z=0.95
-	var material=ShaderMaterial.new()
-	material.shader=preload("res://scripts/water.gdshader")
-	surface.material_override=material
-	if not ghost: waters.append(material)
-	for i in 16:
-		var a=i*TAU/16
-		var stone=HomesteadMesh.ellipsoid(root,Vector3(cos(a)*1.32,0.17,sin(a)*1.26),Vector3(0.21,0.17,0.18),"c6c4ac" if i%3 else "b4b19c")
-		stone.rotation.y=a
-	for p in ([Vector3(-0.45,0.18,0.45),Vector3(0.6,0.18,-0.3)] if style==0 else []):
-		var lily=HomesteadMesh.cylinder(root,p,0.27,0.022,"8eaa78")
-		lily.scale.z=0.85
-	for i in (4 if style==1 else 0):
-		var p=Vector3(0.76+i*0.1,0,0.79-i*0.11)
-		HomesteadMesh.rod(root,p+Vector3(0,0.13,0),p+Vector3(-0.05,0.75+i*0.07,0),0.025,"6f9371")
-		HomesteadMesh.ellipsoid(root,p+Vector3(-0.05,0.75+i*0.07,0),Vector3(0.05,0.13,0.05),"ad8567")
+	var model=HomesteadQuietPlaceArt.attach(root,"pond",style)
+	for surface in model.find_children("*","MeshInstance3D",true,false):
+		if surface.material_override is ShaderMaterial and not ghost: waters.append(surface.material_override)
 
 func bench(root: Node3D):
 	for x in [-0.65,0.65]:
@@ -1082,29 +1067,12 @@ func fade_obstruction(node: Node,faded: bool,leaves_only=false):
 	for child in node.get_children(): fade_obstruction(child,faded,leaves_only)
 
 func reading_nook(root: Node3D,style=0):
-	HomesteadMesh.box(root,Vector3(0,0.1,0),Vector3(1.9,0.2,1.9),"d0c7ad",0.09)
-	var seat=Node3D.new()
-	root.add_child(seat)
-	seat.scale=Vector3(0.8,0.8,0.8)
-	bench(seat)
-	HomesteadMesh.box(root,Vector3(0,0.57,0),Vector3(1.4,0.1,0.55),"c9879d" if style==0 else "83a89a",0.045)
-	HomesteadMesh.box(root,Vector3(-0.7,0.65,-0.65),Vector3(0.35,1.1,0.3),"bb8055",0.04)
-	for i in 4:
-		HomesteadMesh.box(root,Vector3(-0.8+i*0.07,1.25,-0.65),Vector3(0.05,0.28,0.22),["83a89a","c98778","dfbf77","b2a0bf"][i],0.008)
+	HomesteadQuietPlaceArt.attach(root,"nook",style)
 
-func treehouse(root: Node3D,style=0):
-	tree(root,true)
-	HomesteadMesh.box(root,Vector3(0,2.1,0),Vector3(2.7,0.2,2.7),"bb8055",0.08)
-	var house=Node3D.new()
-	root.add_child(house)
-	house.position.y=2.15
-	house.scale=Vector3(0.55,0.55,0.55)
-	cottage(house)
-	recolor_roof(house,"f0c04a" if style==0 else "d45aa8")
-	for i in 7:
-		HomesteadMesh.box(root,Vector3(0,0.3+i*0.28,1.45),Vector3(0.7,0.07,0.12),"d0c7ad",0.02)
-	for x in [-0.4,0.4]:
-		HomesteadMesh.box(root,Vector3(x,1.15,1.45),Vector3(0.08,2.3,0.1),"bb8055",0.02)
+func treehouse(root: Node3D,style=0,ghost=false):
+	var model=HomesteadQuietPlaceArt.attach(root,"treehouse",style)
+	var canopy=model.find_child("Canopy",true,false)
+	if canopy and not ghost: foliage.append(canopy)
 
 func recolor_roof(node: Node,color: String):
 	if node is MeshInstance3D and bool(node.get_meta("cottage_roof",false)):
