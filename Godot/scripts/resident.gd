@@ -36,6 +36,8 @@ var watering_remaining=0
 var watering_tree_id=""
 var reduced_motion=false
 var steps=0
+# A child's tap on open ground sets a brisker pace for that one walk.
+var pace=1.0
 
 func setup(world_data: HomesteadWorldData,nav: HomesteadNavigation):
 	data=world_data
@@ -128,6 +130,20 @@ func visit(id: String):
 	model.carrying_water=carrying_water
 	model.set_motion("idle")
 	start_route(navigation.approach(target,position),"Bringing water to the "+target.kind if carrying_water else "Visiting a favorite place")
+# Tap-to-walk is presentation only: no item, save or reward is involved.
+# Busy moments (watering, a seat, a place visit) finish first.
+func walk_to(point: Vector3) -> bool:
+	if watering_remaining>0 or place_visit!=null or fetching_water or carrying_water: return false
+	if state in ["seating","rest","unseating"]: return false
+	var cell=HomesteadItems.cell_at(point)
+	if not navigation.open(cell): return false
+	target_id=""
+	destination_kind="stroll"
+	model.set_motion("idle")
+	start_route(HomesteadItems.cell_center(cell),"Walking over")
+	if state!="walking": return false
+	pace=1.35
+	return true
 func start_route(destination: Vector3,text: String):
 	current_target=destination
 	var target=data.find(target_id)
@@ -204,6 +220,7 @@ func greet_discovery():
 	if place_visit==null and state not in ["walking","seating"]:
 		timer=minf(timer,1.0)
 func arrive():
+	pace=1.0
 	speed=0
 	state="align"
 	timer=0.65
@@ -336,8 +353,8 @@ func _physics_process(delta):
 			bend_limit=lerpf(0.50,1.0,maxf(0,direction.dot(next_direction)))
 		# An unhurried child's pace: ease into the first steps and settle into
 		# the stop instead of reaching full speed in a few frames.
-		var desired_speed=minf(0.9*bend_limit,sqrt(remaining*1.6))*alignment*alignment
-		var accel=lerpf(0.9,2.0,clampf(speed/0.9,0,1)) if desired_speed>speed else 3.2
+		var desired_speed=minf(0.9*pace*bend_limit,sqrt(remaining*1.6))*alignment*alignment
+		var accel=lerpf(0.9,2.0,clampf(speed/(0.9*pace),0,1)) if desired_speed>speed else 3.2
 		speed=move_toward(speed,desired_speed,delta*accel)
 		var budget=speed*delta*alignment
 		var moved=0.0

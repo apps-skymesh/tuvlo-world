@@ -1208,3 +1208,19 @@ func mountain_peak(root: Node3D,origin: Vector3,radius: float,height: float,colo
 		var mesh=ArrayMesh.new()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 		HomesteadMesh.instance(root,mesh,"ece9d9" if snow else color,Vector3.ZERO)
+
+# A soft ring where the child tapped to walk. Display only.
+func show_tap(point: Vector3):
+	var ring=HomesteadMesh.torus(self,point+Vector3(0,0.05,0),0.32,0.035,"fff6dc")
+	ring.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var material=HomesteadMesh.transparent(Color("fff6dc"))
+	ring.material_override=material
+	var tween=ring.create_tween()
+	if reduced_motion:
+		tween.tween_interval(0.5)
+	else:
+		tween.set_parallel(true)
+		tween.tween_property(ring,"scale",Vector3.ONE*1.6,0.55).set_ease(Tween.EASE_OUT)
+		tween.tween_property(material,"albedo_color:a",0.0,0.55)
+		tween.set_parallel(false)
+	tween.tween_callback(ring.queue_free)

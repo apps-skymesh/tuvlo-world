@@ -679,6 +679,8 @@ func _physics_process(delta):
    if cell!=null:
     var side=unowned_land_at(cell)
     if side!="": emit_message("landRequested",{"side":side})
+    elif selected_id=="" and resident.walk_to(HomesteadItems.cell_center(cell)):
+     presentation.show_tap(HomesteadItems.cell_center(cell))
  advance_hold(delta)
 
 func unowned_land_at(cell: Vector2i) -> String:
