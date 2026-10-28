@@ -6,6 +6,8 @@ uniform int kind = 0;
 // -1 preserves family material bubbles; prototype states: idle/work/ready.
 uniform int production_state = -1;
 uniform float progress = 0.0;
+// Collect flight fades the token out.
+uniform float fade = 1.0;
 
 float capsule(vec2 p, vec2 a, vec2 b, float r) {
 	vec2 pa = p - a, ba = b - a;
@@ -117,5 +119,5 @@ void fragment() {
 		}
 	}
 	ALBEDO = col;
-	ALPHA = alpha;
+	ALPHA = alpha * fade;
 }

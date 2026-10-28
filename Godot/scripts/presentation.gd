@@ -34,6 +34,8 @@ var production_nodes: Dictionary={}
 var production_effects: Dictionary={}
 var construction_nodes: Dictionary={}
 var harvest_signature=""
+# Bubbles the child just tapped, by producer key, with the clock time of the tap.
+var collecting: Dictionary={}
 const BUBBLE_SHADER=preload("res://scripts/harvest_bubble.gdshader")
 
 func setup(world_data: HomesteadWorldData):
@@ -310,11 +312,18 @@ func update_harvest():
 	for key in data.harvest: anchors[key]=harvest_anchor(key)
 	var signature=JSON.stringify([data.harvest,anchors])
 	if signature==harvest_signature: return
+	var first=harvest_signature==""
 	harvest_signature=signature
+	var previous={}
 	for bubble in bubbles:
-		harvest_root.remove_child(bubble)
-		bubble.queue_free()
+		var key=str(bubble.get_meta("producer_key",""))
+		previous[key]=true
+		if not data.harvest.has(key) and collecting.has(key): fly_to_wallet(bubble)
+		else:
+			harvest_root.remove_child(bubble)
+			bubble.queue_free()
 	bubbles.clear()
+	collecting.clear()
 	for key in data.harvest:
 		var anchor=harvest_anchor(key)
 		if anchor==null: continue
@@ -347,6 +356,7 @@ func update_harvest():
 		collider.shape=sphere
 		body.add_child(collider)
 		bubbles.append(bubble)
+		if not first and not previous.has(key) and not reduced_motion: pop_in(face)
 
 # Cached badges change uniforms, not island geometry, on the host's one-second tick.
 func place_ovens(centers: Dictionary):
@@ -820,7 +830,7 @@ func garden(root: Node3D):
 				if data.wheat_garden or stage>=1:
 					var growth=stage if stage>=1 else 4 if data.harvest.values().has("wheat") else 1
 					var stalk=HomesteadHarvestCraft.attach(root,"Wheat%d"%growth,plant)
-					if stage in [2,3]: foliage.append(stalk)
+					if growth>=2: foliage.append(stalk)
 				else:
 					HomesteadHarvestCraft.attach(root,"Greens",plant)
 
@@ -1198,3 +1208,48 @@ func show_tap(point: Vector3):
 		tween.tween_property(material,"albedo_color:a",0.0,0.55)
 		tween.set_parallel(false)
 	tween.tween_callback(ring.queue_free)
+
+# A new ready bubble grows in with a small overshoot. Layout owns the bubble
+# root's scale, so only the face animates.
+func pop_in(face: Node3D):
+	face.scale=Vector3.ONE*0.01
+	var tween=face.create_tween()
+	tween.tween_property(face,"scale",Vector3.ONE,0.38).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+# The tap answers at once; the flight waits for the saved collection.
+func mark_collecting(key: String):
+	collecting[key]=clock
+	if reduced_motion: return
+	for bubble in bubbles:
+		if str(bubble.get_meta("producer_key",""))!=key or bubble.get_child_count()==0: continue
+		var face: Node3D=bubble.get_child(0)
+		var tween=face.create_tween()
+		tween.tween_property(face,"scale",Vector3.ONE*1.22,0.09).set_ease(Tween.EASE_OUT)
+		tween.tween_property(face,"scale",Vector3.ONE*1.08,0.14)
+		# A tap that opens a menu instead of collecting settles back.
+		tween.tween_interval(1.2)
+		tween.tween_property(face,"scale",Vector3.ONE,0.2)
+
+# A collected bubble leaves the map and flies to the wallet at the top centre.
+# Presentation only: the host has already saved the materials.
+func fly_to_wallet(bubble: Node3D):
+	var camera=get_viewport().get_camera_3d()
+	if reduced_motion or camera==null or bubble.get_child_count()==0:
+		harvest_root.remove_child(bubble)
+		bubble.queue_free()
+		return
+	for body in bubble.find_children("*","StaticBody3D",true,false): body.queue_free()
+	var start=bubble.global_position
+	var size=get_viewport().get_visible_rect().size
+	var depth=maxf(1.0,camera.global_position.distance_to(start)*0.55)
+	var target=camera.project_position(Vector2(size.x*0.5,size.y*0.05),depth)
+	var lift=start.lerp(target,0.3)+camera.global_basis.y*0.8
+	var face: MeshInstance3D=bubble.get_child(0)
+	var material: ShaderMaterial=face.material_override
+	var tween=bubble.create_tween()
+	tween.tween_property(bubble,"scale",bubble.scale*1.25,0.1).set_ease(Tween.EASE_OUT)
+	var arc=func(t: float): bubble.global_position=start.lerp(lift,t).lerp(lift.lerp(target,t),t)
+	tween.tween_method(arc,0.0,1.0,0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tween.parallel().tween_property(bubble,"scale",bubble.scale*0.45,0.6)
+	tween.parallel().tween_method(func(v: float): material.set_shader_parameter("fade",v),1.0,0.0,0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_callback(bubble.queue_free)

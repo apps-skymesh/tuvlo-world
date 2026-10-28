@@ -701,8 +701,12 @@ func _physics_process(delta):
   var producer=producer_at_screen(point)
   var item={} if producer!="" else object_at_screen(point)
   if not production_status.is_empty(): emit_message("productionRequested",{"station":production_status.station,"id":production_status.placeID})
-  elif producer!="": emit_message("gather",{"producer":producer})
-  elif not item.is_empty(): emit_message("visited",{"id":item.id})
+  elif producer!="":
+   presentation.mark_collecting(producer)
+   emit_message("gather",{"producer":producer})
+  elif not item.is_empty():
+   if data.harvest.has(item.id): presentation.mark_collecting(item.id)
+   emit_message("visited",{"id":item.id})
   else:
    var cell=ground_cell(point)
    if cell!=null:
