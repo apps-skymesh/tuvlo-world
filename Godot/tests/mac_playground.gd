@@ -150,6 +150,7 @@ func build_controls():
   button(child_toolbar,"Harvest",harvest_portrait)
   button(child_toolbar,"Oven",oven_portrait)
   button(child_toolbar,"Stage",func(): harvest_stage=(harvest_stage+1)%5; harvest_portrait())
+  button(child_toolbar,"Farm art",farm_buildings_portrait)
   button(child_toolbar,"Look",func():
    appearance_index=(appearance_index+1)%13
    payload.appearance={"hair":appearance_index,"outfit":appearance_index%6}
@@ -246,6 +247,41 @@ func harvest_portrait():
  for i in 2: HomesteadHarvestCraft.attach(harvest_study,"Apple",Vector3(0.33,0.58,-0.57+i*0.24))
  world.pan_focus=center+Vector3(1.0,1.0,-1.2)
  world.pan_size=6.8
+ send("camera",{"mode":"pan","resetZoom":true})
+
+func farm_buildings_portrait():
+ well_phase=-1
+ tree_story_clock=-1
+ payload.items=[
+  {"id":"cottage","kind":"cottage","cell":{"x":4,"z":3},"rotation":0},
+  {"id":"garden","kind":"garden","cell":{"x":5,"z":10},"rotation":0},
+  {"id":"tree","kind":"tree","cell":{"x":15,"z":3},"rotation":0},
+  {"id":"windmill","kind":"windmill","cell":{"x":10,"z":3},"rotation":0},
+  {"id":"barn","kind":"barn","cell":{"x":10,"z":9},"rotation":0},
+  {"id":"doghouse","kind":"doghouse","cell":{"x":4,"z":7},"rotation":0},
+  {"id":"grill","kind":"grill","cell":{"x":7,"z":8},"rotation":0}]
+ for z in range(6,10):payload.items.append({"id":"path-%d"%z,"kind":"path","cell":{"x":6,"z":z},"rotation":0})
+ payload.production=[
+  {"placeID":"garden","station":"field","good":"wheat","state":2,"remaining":0,"progress":1.0},
+  {"placeID":"windmill","station":"mill","good":"flour","state":1,"remaining":20,"progress":0.5},
+  {"placeID":"cottage","station":"oven","good":"bread","state":2,"remaining":0,"progress":1.0},
+  {"placeID":"barn","station":"barn","good":"meat","state":1,"remaining":45,"progress":0.5},
+  {"placeID":"grill","station":"grill","good":"meal","state":1,"remaining":20,"progress":0.5}]
+ payload.farmStages=[4,4]
+ payload.approvedWins=21
+ snapshot()
+ world.resident.position=HomesteadItems.cell_center(Vector2i(8,7))
+ world.resident.cancel_tree_watering()
+ world.resident.carrying_water=false
+ world.resident.model.carrying_water=false
+ world.resident.route.clear()
+ world.resident.state="pause"
+ world.resident.timer=3600
+ world.resident.model.set_motion("idle")
+ world.resident.facing=world.orbit_yaw
+ world.resident.desired_facing=world.orbit_yaw
+ world.pan_focus=Vector3(0,1.25,-0.5)
+ world.pan_size=10.4
  send("camera",{"mode":"pan","resetZoom":true})
 
 func oven_portrait():

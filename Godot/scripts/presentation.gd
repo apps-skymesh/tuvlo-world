@@ -670,49 +670,11 @@ func workshop(root: Node3D):
 # Original plaster-and-joinery mill, including two free material/sail looks.
 # The animated pivot survives static batching; quiet/offscreen mills do no work.
 func windmill(root: Node3D,ghost=false,style=0):
-	var roof_color="2f9a62" if style==0 else "d15a3c"
-	HomesteadMesh.cylinder(root,Vector3(0,0.10,0),1.31,0.20,"c9bc9c")
-	HomesteadMesh.cylinder(root,Vector3(0,1.25,0),0.91,2.3,"eadfc5",0.65)
-	for angle in 8:
-		var a=angle*TAU/8
-		HomesteadMesh.rod(root,Vector3(sin(a)*0.90,0.24,cos(a)*0.90),Vector3(sin(a)*0.67,2.35,cos(a)*0.67),0.045,"b7a07c")
-	HomesteadMesh.torus(root,Vector3(0,0.38,0),0.86,0.045,"bea47c")
-	HomesteadMesh.torus(root,Vector3(0,2.28,0),0.67,0.045,"bea47c")
-	HomesteadMesh.cylinder(root,Vector3(0,2.65,0),0.98,0.72,roof_color,0.06)
-	HomesteadMesh.ellipsoid(root,Vector3(0,3.04,0),Vector3(0.10,0.11,0.10),"c3a56c")
-	# Arched timber doorway and a stone doorstep, facing the visit approach.
-	HomesteadMesh.box(root,Vector3(0,0.64,0.86),Vector3(0.57,0.98,0.12),"947c5b",0.16)
-	for x in [-0.17,0,0.17]:
-		HomesteadMesh.box(root,Vector3(x,0.61,0.94),Vector3(0.025,0.77,0.025),"c6ad83",0.008)
-	HomesteadMesh.ellipsoid(root,Vector3(0.17,0.61,0.98),Vector3(0.035,0.035,0.025),"d7be86")
-	HomesteadMesh.box(root,Vector3(0,0.15,1.03),Vector3(0.83,0.16,0.39),"d9cbaa",0.06)
-	for side in [-1,1]:
-		var window=HomesteadMesh.box(root,Vector3(side*0.61,1.59,0.50),Vector3(0.24,0.39,0.08),"7e9b96",0.10)
-		window.rotation.y=side*0.55
-		HomesteadMesh.rod(root,Vector3(side*0.61,1.40,0.56),Vector3(side*0.61,1.78,0.56),0.018,"e4d3ac")
-	var pivot=Node3D.new()
-	root.add_child(pivot)
-	pivot.position=Vector3(0,2.27,1.02)
-	pivot.rotation.z=0.22
-	for arm in 4:
-		var blade=Node3D.new()
-		pivot.add_child(blade)
-		blade.rotation.z=arm*PI/2
-		HomesteadMesh.rod(blade,Vector3(0,0,0),Vector3(0,1.62,0),0.035,"a68a61")
-		var sail=HomesteadMesh.box(blade,Vector3(0.13,1.03,0),Vector3(0.33,1.08,0.045),"e9d9b5" if style==0 else "90aa9a",0.025)
-		sail.rotation.y=0.20
-		for rung in 4:
-			HomesteadMesh.box(blade,Vector3(0.13,0.63+rung*0.26,0.04),Vector3(0.36,0.025,0.035),"baa07b",0.008)
-	HomesteadMesh.ellipsoid(pivot,Vector3(0,0,0.06),Vector3(0.14,0.14,0.11),"b28e59")
-	if not ghost: sails.append(pivot)
-	# Harvest sacks and a scoop give the recipe a visible home in the scene.
-	for i in 2:
-		HomesteadMesh.ellipsoid(root,Vector3(-0.89+i*0.28,0.37,0.69),Vector3(0.24,0.29,0.21),"d5c29b")
-		HomesteadMesh.torus(root,Vector3(-0.89+i*0.28,0.61,0.69),0.11,0.02,"a58c63")
-	HomesteadMesh.box(root,Vector3(0.86,0.37,0.61),Vector3(0.40,0.08,0.35),roof_color,0.025)
-	HomesteadMesh.rod(root,Vector3(0.86,0.41,0.60),Vector3(1.05,0.63,0.60),0.025,"b49b73")
+	var model=HomesteadFarmBuildingArt.attach(root,"windmill",style)
+	var rotor=model.find_child("Rotor",true,false)
+	rotor.rotation.z=0.22
+	if not ghost: sails.append(rotor)
 
-# Sage joinery, translucent glazing and warm terracotta: an airy garden room.
 func greenhouse(root: Node3D):
 	HomesteadMesh.box(root,Vector3(0,0.09,0),Vector3(2.82,0.18,1.84),"cbbb9d",0.08)
 	var glass=HomesteadMesh.transparent(Color(0.65,0.84,0.80,0.20))
@@ -1144,46 +1106,17 @@ func recolor_roof(node: Node,color: String):
 	for child in node.get_children(): recolor_roof(child,color)
 
 # Small authored homestead additions; animals belong to their saved building.
-func pitched_roof(root: Node3D,center: Vector3,width: float,depth: float,color: String):
-	for side in [-1,1]:
-		var slope=HomesteadMesh.box(root,center+Vector3(side*width*0.24,0,0),Vector3(width*0.59,0.13,depth),color,0.03)
-		slope.rotation.z=-side*0.48
-	HomesteadMesh.rod(root,center+Vector3(0,width*0.14,-depth/2),center+Vector3(0,width*0.14,depth/2),0.055,"e4c995")
-
 func barn(root: Node3D):
-	HomesteadMesh.box(root,Vector3(-0.3,0.09,-0.25),Vector3(3.3,0.18,2.2),"b9b19a",0.09)
-	HomesteadMesh.box(root,Vector3(-0.3,1.18,-0.4),Vector3(3.0,2.15,1.8),"af634e",0.05)
-	for x in range(11):
-		HomesteadMesh.box(root,Vector3(-1.68+x*0.275,1.18,0.52),Vector3(0.035,2.1,0.025),"c48264",0.008)
-	pitched_roof(root,Vector3(-0.3,2.45,-0.4),3.5,2.25,"d24b38")
-	for x in [-1.8,1.2]: HomesteadMesh.box(root,Vector3(x,1.18,0.56),Vector3(0.11,2.2,0.10),"efe2bd",0.015)
-	HomesteadMesh.box(root,Vector3(-0.55,0.88,0.58),Vector3(1.25,1.6,0.09),"824d3d",0.015)
-	for x in [-1.18,0.08]: HomesteadMesh.box(root,Vector3(x,0.88,0.65),Vector3(0.07,1.63,0.07),"f1e4c1",0.01)
-	HomesteadMesh.rod(root,Vector3(-1.14,0.15,0.67),Vector3(0.05,1.65,0.67),0.035,"e8d5b0")
-	HomesteadMesh.rod(root,Vector3(0.05,0.15,0.67),Vector3(-1.14,1.65,0.67),0.035,"e8d5b0")
-	HomesteadMesh.box(root,Vector3(-0.55,2.00,0.57),Vector3(0.55,0.45,0.07),"e7d9ac",0.025)
-	HomesteadMesh.box(root,Vector3(-0.55,2.00,0.62),Vector3(0.37,0.29,0.025),"688f8a",0.01)
-	for x in [-1.55,1.65]:
-		HomesteadMesh.box(root,Vector3(x,0.42,1.12),Vector3(0.09,0.84,0.09),"b99466",0.02)
-	HomesteadMesh.box(root,Vector3(0.10,0.55,1.12),Vector3(3.2,0.08,0.07),"d4b786",0.015)
-	HomesteadMesh.box(root,Vector3(-1.4,0.29,0.75),Vector3(0.48,0.42,0.4),"d9b76c",0.07)
-	for z in [0.62,0.86]: HomesteadMesh.box(root,Vector3(-1.4,0.30,z),Vector3(0.5,0.43,0.025),"92774c",0.005)
+	HomesteadFarmBuildingArt.attach(root,"barn")
 	var sheep=Node3D.new()
 	root.add_child(sheep)
-	sheep.position=Vector3(0.9,0.02,0.94)
+	sheep.position=Vector3(0.25,0.02,0.98)
 	sheep.scale=Vector3.ONE*0.60
 	sheep.set_meta("livestock",true)
 	farm_animal(sheep,false)
 
 func doghouse(root: Node3D):
-	HomesteadMesh.box(root,Vector3(-0.35,0.06,-0.23),Vector3(1.2,0.12,1.25),"b8ac8c",0.08)
-	HomesteadMesh.box(root,Vector3(-0.35,0.50,-0.3),Vector3(1.0,0.85,1.0),"c79d70",0.04)
-	pitched_roof(root,Vector3(-0.35,1.01,-0.3),1.28,1.26,"3f9a62")
-	HomesteadMesh.box(root,Vector3(-0.35,0.38,0.215),Vector3(0.48,0.60,0.035),"4c5145",0.09)
-	HomesteadMesh.box(root,Vector3(-0.35,0.81,0.25),Vector3(0.43,0.16,0.05),"efe2be",0.03)
-	for x in [-0.48,-0.22]: HomesteadMesh.ellipsoid(root,Vector3(x,0.82,0.29),Vector3(0.055,0.045,0.02),"a68054")
-	HomesteadMesh.cylinder(root,Vector3(0.62,0.09,-0.6),0.18,0.14,"759d96")
-	HomesteadMesh.cylinder(root,Vector3(0.62,0.165,-0.6),0.13,0.015,"bcdedb")
+	HomesteadFarmBuildingArt.attach(root,"doghouse")
 	var dog=Node3D.new()
 	root.add_child(dog)
 	dog.position=Vector3(0.4,0,0.44)
@@ -1218,16 +1151,7 @@ func farm_animal(root: Node3D,is_dog: bool):
 		HomesteadMesh.rod(tail,Vector3.ZERO,Vector3(0,0.22,-0.22),0.065,coat)
 
 func grill(root: Node3D):
-	HomesteadMesh.box(root,Vector3(0,0.04,0),Vector3(1.8,0.08,1.6),"b4b39d",0.08)
-	for x in [-0.65,0.45]:
-		for z in [-0.43,0.43]: HomesteadMesh.rod(root,Vector3(x,0.10,z),Vector3(x*0.75,0.85,z*0.8),0.045,"52665d")
-	HomesteadMesh.ellipsoid(root,Vector3(-0.15,0.87,0),Vector3(0.65,0.30,0.52),"526c65")
-	HomesteadMesh.cylinder(root,Vector3(-0.15,1.02,0),0.48,0.06,"313f36")
-	for x in range(7):
-		HomesteadMesh.rod(root,Vector3(-0.58+x*0.14,1.07,-0.32),Vector3(-0.58+x*0.14,1.07,0.32),0.018,"a0aca1")
-	HomesteadMesh.box(root,Vector3(0.63,0.93,0),Vector3(0.42,0.09,0.88),"c2a278",0.03)
-	HomesteadMesh.box(root,Vector3(0.65,1.00,0.16),Vector3(0.29,0.04,0.32),"efe0b7",0.02)
-	for z in [-0.40,0.40]: HomesteadMesh.cylinder(root,Vector3(-0.66,0.14,z),0.14,0.07,"364a40").rotation.x=PI/2
+	HomesteadFarmBuildingArt.attach(root,"grill")
 
 # Future regions hint at different journeys without granting land or inventory.
 func future_meadow(root: Node3D):
