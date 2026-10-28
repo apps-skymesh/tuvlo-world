@@ -304,6 +304,8 @@ func receive_host_json(json: String):
     presentation.clear_preview()
    else:
     preview_cell=item.cell
+    if payload.get("cell") is Dictionary:
+     preview_cell=Vector2i(int(payload.cell.x),int(payload.cell.z))
     preview_rotation=item.rotation
     grab_offset=Vector2i.ZERO
     reset_press(false)
@@ -311,6 +313,13 @@ func receive_host_json(json: String):
      var grabbed=ground_cell(press_origin)
      if grabbed!=null: grab_offset=grabbed-preview_cell
      moving_selection=true
+    if not payload.get("fromHold",false):
+     camera_mode="place"
+     focus_item_id=selected_id
+     focus_station=""
+     zoom=1.0
+     pan_focus=HomesteadItems.center(preview_cell,HomesteadItems.footprint(item.kind,preview_rotation))+Vector3(0,0.7,0)
+     camera_initialized=false
     update_preview()
     set_paused(paused,panel_preview)
   "nudge":
@@ -775,8 +784,14 @@ func _process(delta):
   pitch=OVERVIEW_PITCH
  elif camera_mode=="place":
   var item=data.find(focus_item_id)
+  if focus_item_id==selected_id:
+   item=selected_item().duplicate()
+   if not item.is_empty():
+    item.cell=preview_cell
+    item.rotation=preview_rotation
   if not item.is_empty():
    focus=HomesteadItems.item_center(item)+Vector3(0,0.7,0)
+   if focus_item_id==selected_id: focus=pan_focus
    size=6.4*zoom
    if focus_station=="oven" and presentation.ovens.has(focus_item_id):
     focus=presentation.ovens[focus_item_id].position+Vector3(0,1.05,0)

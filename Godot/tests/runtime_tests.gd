@@ -19,6 +19,17 @@ func run():
  var packet={"version":1,"session":"test-child-session","type":"snapshot","payload":payload}
  scene.receive_host_json(JSON.stringify(packet))
  check(scene.data.items.size()==4,"Host snapshot must replace empty scene")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"bench","cell":{"x":16,"z":14}}}))
+ scene._process(0.016)
+ check(scene.camera_mode=="place" and scene.focus_item_id=="bench","Catalogue selection immediately frames its draft")
+ var draft_focus=HomesteadItems.center(Vector2i(16,14),HomesteadItems.footprint("bench",0))+Vector3(0,0.7,0)
+ check(scene.orbit_focus.is_equal_approx(draft_focus),"First selection frame targets the supplied empty spot")
+ check(scene.data.find("bench").cell==Vector2i(8,10),"Framing a draft never moves its saved piece")
+ scene.preview_cell+=Vector2i(1,0)
+ scene._process(0.016)
+ check(scene.orbit_focus.is_equal_approx(draft_focus),"Dragging a draft does not chase it with the camera")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"cancel","payload":{}}))
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"camera","payload":{"mode":"overview","resetZoom":true}}))
  # Imported child surfaces retain every saved choice and independent palettes.
  var child_model=scene.resident.model
  for style in 13:
