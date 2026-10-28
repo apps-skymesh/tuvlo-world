@@ -1,7 +1,7 @@
 """Original Tuvlo mill, barn, dog house and grill. Blender --background --python.
 Godot Y-up coordinates use the cottage xyz conversion; no external art.
 """
-import bpy,bmesh,math,os
+import bpy,bmesh,math,os,sys
 from pathlib import Path
 from mathutils import Vector
 COLORS={'Plaster':'e8d9b7','Stone':'b5ab92','StoneLight':'d3c5a7','Timber':'936b4a','TimberLight':'c39b68','Trim':'f1e4c4','Door':'866149','Glass':'708e88','MillRoof':'668a7d','Clay':'b77455','ClayLight':'cb8d65','BarnRed':'ae6450','BarnLight':'c27e61','Canvas':'e9d9b5','Iron':'53665f','IronDark':'34473f','Steel':'a4aea2','Brass':'c9a65c','Hay':'d9bd77','Cloth':'d2c09a','Water':'9cbbb0','Roast':'ae7651','Crust':'d6a661','Char':'665244','Ember':'b46635'}
@@ -112,7 +112,10 @@ def barn():
   rod('Door pull',(-.53+side*.08,.92,.44),(-.53+side*.08,1.08,.44),.012,'Iron')
  arch('Hayloft frame',-.53,2.13,.32,.62,.63,.07,'Trim');arch('Hayloft shutter',-.53,2.17,.37,.49,.50,.04,'Glass')
  for x in [-1.65,1.65]:box('Pen post',(x,.42,1.18),(.10,.84,.10),'Timber',.02)
- for y in [.36,.63]:box('Pen rail',(0,y,1.18),(3.40,.065,.065),'TimberLight',.016)
+ # A calm open entry frames the sheep rather than crossing its face.
+ for x in [-.80,.23]:box('Pen entry post',(x,.35,1.18),(.075,.70,.075),'Timber',.015)
+ for y in [.36,.63]:
+  for a,b in [(-1.7,-.80),(.23,1.7)]:box('Pen rail',((a+b)/2,y,1.18),(b-a,.065,.065),'TimberLight',.016)
  box('Feed bin',(-1.4,.24,.73),(.52,.36,.45),'Timber',.04);box('Wheat feed',(-1.4,.425,.73),(.43,.025,.36),'Hay',.025)
 
 def doghouse():
@@ -193,4 +196,6 @@ def export_models(models,output_root):
 
 if __name__=='__main__':
  output_root=Path(os.environ.get('TUVLO_FARM_OUTPUT',str(Path(__file__).resolve().parents[1]/'Godot/assets')))
- export_models([('windmill',windmill),('barn',barn),('doghouse',doghouse),('grill',grill)],output_root)
+ selected=sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else []
+ models=[('windmill',windmill),('barn',barn),('doghouse',doghouse),('grill',grill)]
+ export_models([(name,build) for name,build in models if not selected or name in selected],output_root)

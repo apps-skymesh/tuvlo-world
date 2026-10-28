@@ -992,8 +992,7 @@ func _process(delta):
 				pivot.rotation.z+=delta*(0.46 if not data.production.is_empty() else 0.12)
 	for part in pet_parts:
 		if not is_instance_valid(part): continue
-		var motion=str(part.get_meta("pet_motion",""))
-		part.rotation.z=0.0 if reduced_motion else sin(clock*(4.0 if motion=="tail" else 0.9)+part.get_instance_id()%7)*(0.25 if motion=="tail" else 0.04)
+		HomesteadAnimalArt.animate(part,clock,reduced_motion)
 	update_production_effects()
 	for water in waters:
 		water.set_shader_parameter("clock",clock)
@@ -1099,32 +1098,7 @@ func doghouse(root: Node3D):
 	farm_animal(dog,true)
 
 func farm_animal(root: Node3D,is_dog: bool):
-	root.set_meta("pet_motion","body")
-	var coat="c89e6a" if is_dog else "eee3cb"
-	for x in [-0.18,0.18]:
-		for z in [-0.22,0.22]:
-			HomesteadMesh.box(root,Vector3(x,0.17,z),Vector3(0.11,0.32,0.11),"a57850" if is_dog else "726452",0.04)
-	HomesteadMesh.ellipsoid(root,Vector3(0,0.43,0),Vector3(0.30,0.26,0.43),coat)
-	if not is_dog:
-		for i in 7:
-			HomesteadMesh.ellipsoid(root,Vector3(sin(i*2.4)*0.17,0.48+cos(i*1.7)*0.08,cos(i*2.4)*0.27),Vector3(0.20,0.18,0.20),"f3e9d6")
-	var head=Node3D.new()
-	root.add_child(head)
-	head.position=Vector3(0,0.62,0.30)
-	head.set_meta("pet_motion","head")
-	HomesteadMesh.ellipsoid(head,Vector3.ZERO,Vector3(0.23,0.23,0.24),coat if is_dog else "8b7a60")
-	HomesteadMesh.ellipsoid(head,Vector3(0,-0.06,0.20),Vector3(0.15,0.11,0.12),"e6c7a0" if is_dog else "b7a48a")
-	HomesteadMesh.ellipsoid(head,Vector3(0,-0.015,0.30),Vector3(0.075,0.05,0.035),"35483d")
-	for side in [-1,1]:
-		HomesteadMesh.ellipsoid(head,Vector3(side*0.20,0.02,0),Vector3(0.09,0.20 if is_dog else 0.08,0.10),"815d40" if is_dog else "b6a68c")
-		HomesteadMesh.ellipsoid(head,Vector3(side*0.10,0.05,0.20),Vector3(0.035,0.045,0.023),"2e4037")
-	if is_dog:
-		HomesteadMesh.torus(root,Vector3(0,0.50,0.20),0.20,0.035,"759c8c").rotation.x=PI/2
-		var tail=Node3D.new()
-		root.add_child(tail)
-		tail.position=Vector3(0,0.44,-0.35)
-		tail.set_meta("pet_motion","tail")
-		HomesteadMesh.rod(tail,Vector3.ZERO,Vector3(0,0.22,-0.22),0.065,coat)
+	HomesteadAnimalArt.attach(root,is_dog)
 
 func grill(root: Node3D):
 	HomesteadFarmBuildingArt.attach(root,"grill")

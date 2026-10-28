@@ -27,6 +27,8 @@ var farm_film=false
 var farm_film_title: Label
 var farm_building_slice=false
 var farm_building_step=-1
+var animal_detail=false
+var animal_detail_step=-1
 var animals_slice=false
 var equipped=false
 var cottage_slice=false
@@ -61,6 +63,7 @@ func run():
   if args[index]=="--quiet-places": quiet_place_slice=true; farm_film=true; capture_times=[2.0,7.0,12.0,17.0]
   if args[index]=="--farm-film": farm_film=true
   if args[index]=="--farm-buildings": farm_building_slice=true; capture_times=[2.0,6.0,10.0,14.0,18.0]
+  if args[index]=="--animal-detail": animal_detail=true; farm_film=true; capture_times=[2.0,5.0,9.0,13.0,18.0]
   if args[index]=="--animals": animals_slice=true
   if args[index]=="--equipped": equipped=true
   if args[index]=="--windmill": windmill_slice=true
@@ -75,7 +78,7 @@ func run():
   if args[index]=="--seconds" and index+1<args.size(): duration=clampf(float(args[index+1]),1,60)
   if args[index]=="--capture" and index+1<args.size(): output=args[index+1]
  if output!="": DirAccess.make_dir_recursive_absolute(output)
- if quiet_visits or pond_polish:
+ if quiet_visits or pond_polish or animal_detail:
   # The desktop compositor can stop drawing an occluded movie window while
   # simulation continues. Keep only this disposable recording window visible.
   root.always_on_top=true
@@ -92,7 +95,7 @@ func run():
   tree_story_clock=0.0
   if well_slice: start_well_story()
  if animals_slice: send("camera",{"mode":"place","id":"barn","zoom":1.1})
- if farm_building_slice: farm_buildings_portrait()
+ if farm_building_slice or animal_detail: farm_buildings_portrait()
  if quiet_place_slice or pond_polish: quiet_places_portrait()
 func keep_landscape():
  # This host is a landscape-only visual lab; app orientation uses UIKit's lease.
@@ -485,6 +488,18 @@ func _unhandled_key_input(event):
 func _process(delta):
  if world==null: return false
  elapsed+=delta
+ if animal_detail:
+  var step=0 if elapsed<3 else 1 if elapsed<6 else 2 if elapsed<11 else 3 if elapsed<14 else 4
+  if step!=animal_detail_step:
+   animal_detail_step=step
+   farm_film_title.text=["Beside the cottage","Dog house","Golden companion","Barn","Curled fleece"][step]
+  if step>0:
+   var kind="doghouse" if step<=2 else "barn"
+   var center=HomesteadItems.item_center(world.data.find(kind))
+   var hero=world.presentation.nodes[kind].find_child("Dog" if kind=="doghouse" else "Sheep",true,false)
+   world.pan_focus=hero.global_position+Vector3(0,.43,0) if step in [2,4] else center+Vector3(0,.65 if kind=="doghouse" else 1.4,0)
+   world.pan_size=1.6 if step in [2,4] else 2.9 if step==1 else 4.8
+   send("camera",{"mode":"pan","resetZoom":true})
  if pond_polish:
   var step=0 if elapsed<3 else 1 if elapsed<7 else 2 if elapsed<13 else 3
   if step!=pond_polish_step:

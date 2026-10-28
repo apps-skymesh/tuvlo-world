@@ -123,6 +123,44 @@ func run():
   check(is_equal_approx(flock[0].scale.x,young_size),"Collecting starts the next young flock")
   scene.reduced_motion=false
 
+ # Companions keep authored geometry, growth and quiet poses through animation.
+ for kind in ["barn","doghouse"]:
+  for rotation in 4:
+   var holder=Node3D.new();root.add_child(holder)
+   var pivot=Node3D.new();holder.add_child(pivot)
+   pivot.rotation.y=rotation*PI/2
+   var anchor=Node3D.new();pivot.add_child(anchor)
+   anchor.position=Vector3(-.30,.02,.98) if kind=="barn" else Vector3(.4,0,.44)
+   HomesteadAnimalArt.attach(anchor,kind=="doghouse")
+   var parts=anchor.find_children("*","Node3D",true,false).filter(func(part): return part.has_meta("pet_motion"))
+   check(parts.size()==7,"Companion retains all articulated groups")
+   for scale in ([.60,.90] if kind=="barn" else [1.0]):
+    anchor.scale=Vector3.ONE*scale
+    for time in [0.0,1.3,2.3,4.0,7.0,10.0]:
+     for part in parts: HomesteadAnimalArt.animate(part,time,false)
+     HomesteadAnimalArt.animate(anchor,time,false)
+     var bounds=authored_bounds(holder)
+     var size=HomesteadItems.footprint(kind,rotation)
+     check(bounds.position.x>=-size.x*.5-.02 and bounds.end.x<=size.x*.5+.02 and bounds.position.z>=-size.y*.5-.02 and bounds.end.z<=size.y*.5+.02,"Animated companion respects saved footprint: "+kind)
+     check(bounds.position.y>=-.02 and bounds.end.y<=HomesteadItems.DEFINITIONS[kind].height+.02,"Animated companion respects ground and height: "+kind)
+     check(anchor.scale.is_equal_approx(Vector3.ONE*scale),"Breathing never overwrites livestock growth scale")
+    for part in parts:
+     HomesteadAnimalArt.animate(part,2.3-float(part.get_meta("pet_phase",0.0)),false)
+     HomesteadAnimalArt.animate(part,9.0,true)
+     if str(part.name).begins_with("Eye"): check(is_equal_approx(part.scale.y,1.0),"Reduce Motion reopens a blinking eye")
+     if str(part.name) in ["Body","Head"]: check(part.position.is_equal_approx(part.get_meta("pet_rest")),"Reduce Motion restores breathing/grazing rest position")
+   for surface in anchor.find_children("*","MeshInstance3D",true,false):
+    check(surface.material_override.vertex_color_use_as_albedo and surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] is PackedColorArray,"Companion named surfaces retain vertex shading")
+   holder.free()
+ var pet_count=scene.presentation.pet_parts.size()
+ var ghost_dog=scene.presentation.make_item("doghouse",1,true)
+ check(scene.presentation.pet_parts.size()==pet_count,"Placement ghost never registers a live companion")
+ ghost_dog.free()
+ var coat_before=HomesteadAnimalArt.materials["dogGoldenCoat"].albedo_color
+ scene.presentation.fade_obstruction(dog_art,true)
+ check(HomesteadAnimalArt.materials["dogGoldenCoat"].albedo_color==coat_before,"Camera fading cannot mutate shared companion materials")
+ scene.presentation.fade_obstruction(dog_art,false)
+
  # Authored cooking groups must survive real scene batching and replayed jobs.
  var grill_root=scene.presentation.nodes.grill
  var cooking=grill_root.find_child("CookingFood",true,false)
