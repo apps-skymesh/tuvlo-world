@@ -41,6 +41,9 @@ const SUNRISE_SECONDS=3.6
 const SUN_REST_ENERGY=0.92
 var paused=false
 var ready_for_snapshot=false
+var awaiting_presented_frame=false
+var presentation_generation=0
+var presentation_callback=Callable()
 var web_callback
 var land_preview=false
 var selected_id=""
@@ -257,6 +260,12 @@ func receive_host_json(json: String):
    creature.queue_free()
    creature=null
   if selected_id!="": update_preview()
+  if first_snapshot or changing_child:
+   _cancel_presented_frame()
+   presentation_generation+=1
+   awaiting_presented_frame=true
+   presentation_callback=_scene_presented.bind(session,presentation_generation)
+   RenderingServer.frame_post_draw.connect(presentation_callback,CONNECT_ONE_SHOT)
   set_paused(false)
   emit_message("snapshotApplied",{"revision":payload.get("revision","")})
   return
@@ -347,6 +356,22 @@ func receive_host_json(json: String):
     if pending_intent=="": pending_intent=new_command_id()
     emit_message("placementIntent",{"commandID":pending_intent,"id":selected_id,"cell":{"x":preview_cell.x,"z":preview_cell.y},"rotation":preview_rotation})
 
+# A saved snapshot is acknowledged separately from its first drawn frame. Keep
+# one render alive under the native cover, with residents/input still paused.
+func _scene_presented(expected_session: String,generation: int):
+ if not awaiting_presented_frame or session!=expected_session or generation!=presentation_generation: return
+ _cancel_presented_frame()
+ emit_message("scenePresented",{})
+ if paused and not panel_preview:
+  process_mode=Node.PROCESS_MODE_DISABLED
+  RenderingServer.render_loop_enabled=false
+
+func _cancel_presented_frame():
+ awaiting_presented_frame=false
+ if presentation_callback.is_valid() and RenderingServer.frame_post_draw.is_connected(presentation_callback):
+  RenderingServer.frame_post_draw.disconnect(presentation_callback)
+ presentation_callback=Callable()
+
 func set_paused(value: bool, previewing: bool=false):
  var was_paused=paused
  paused=value
@@ -361,8 +386,8 @@ func set_paused(value: bool, previewing: bool=false):
   dragging=false
  # A native window freezes simulation but may briefly render a new camera or
  # appearance. Background/teardown still stop the entire render loop.
- process_mode=Node.PROCESS_MODE_INHERIT if not value or panel_preview else Node.PROCESS_MODE_DISABLED
- RenderingServer.render_loop_enabled=not value or panel_preview
+ process_mode=Node.PROCESS_MODE_INHERIT if not value or panel_preview or awaiting_presented_frame else Node.PROCESS_MODE_DISABLED
+ RenderingServer.render_loop_enabled=not value or panel_preview or awaiting_presented_frame
  resident.process_mode=Node.PROCESS_MODE_DISABLED if paused or selected_id!="" else Node.PROCESS_MODE_INHERIT
  presentation.process_mode=Node.PROCESS_MODE_DISABLED if paused and not production_preview_active() else Node.PROCESS_MODE_INHERIT
  if is_instance_valid(creature): creature.process_mode=Node.PROCESS_MODE_DISABLED if paused or selected_id!="" else Node.PROCESS_MODE_INHERIT
@@ -379,6 +404,8 @@ func set_paused(value: bool, previewing: bool=false):
 
 # The native app retains one engine but releases all child-specific scene state.
 func clear_host_session():
+ presentation_generation+=1
+ _cancel_presented_frame()
  resident.cancel_place_visit()
  presentation.pending_tree_growth=0
  presentation.yellow_leaves=false
@@ -739,7 +766,7 @@ func _process(delta):
  if session=="": return
  update_frame_rate(delta)
  if paused:
-  if not panel_preview or (camera_preview_frames<=0 and not production_preview_active()):
+  if not awaiting_presented_frame and (not panel_preview or (camera_preview_frames<=0 and not production_preview_active())):
    process_mode=Node.PROCESS_MODE_DISABLED
    RenderingServer.render_loop_enabled=false
    return

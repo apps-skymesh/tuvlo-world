@@ -17,7 +17,24 @@ func run():
  ]
  var payload={"items":items,"land":[],"appearance":{"hair":3},"approvedWins":21,"discovered":false}
  var packet={"version":1,"session":"test-child-session","type":"snapshot","payload":payload}
+ var entry_messages=[]
+ var capture_entry=func(raw): entry_messages.append(JSON.parse_string(raw).type)
+ scene.host_message.connect(capture_entry)
  scene.receive_host_json(JSON.stringify(packet))
+ check(entry_messages.has("snapshotApplied") and not entry_messages.has("scenePresented"),"Applying saved data must not reveal an undrawn scene")
+ scene.set_paused(true)
+ check(RenderingServer.render_loop_enabled and scene.resident.process_mode==Node.PROCESS_MODE_DISABLED,"Warm-up renders beneath the cover without running the child")
+ scene._process(0.016)
+ check(RenderingServer.render_loop_enabled,"The paused update must not disable the awaited first frame")
+ scene._scene_presented("stale-child",scene.presentation_generation)
+ scene._scene_presented(scene.session,scene.presentation_generation+1)
+ check(not entry_messages.has("scenePresented"),"Another child or superseded frame cannot uncover this session")
+ scene._scene_presented(scene.session,scene.presentation_generation)
+ check(entry_messages.count("scenePresented")==1 and not RenderingServer.render_loop_enabled,"A completed frame signals readiness once and restores the paused render policy")
+ scene._scene_presented(scene.session,scene.presentation_generation)
+ check(entry_messages.count("scenePresented")==1,"Repeated frame callbacks cannot repeat the handoff")
+ scene.host_message.disconnect(capture_entry)
+ scene.set_paused(false)
  check(scene.data.items.size()==4,"Host snapshot must replace empty scene")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"bench","cell":{"x":16,"z":14}}}))
  scene._process(0.016)

@@ -1,6 +1,8 @@
 config_version=5
 [application]
 config/name="Tuvlo Homestead Runtime"
+boot_splash/show_image=false
+boot_splash/bg_color=Color(0.898039,0.886275,0.831373,1)
 run/main_scene="res://scenes/homestead.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 [display]
