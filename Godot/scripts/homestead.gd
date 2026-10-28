@@ -69,9 +69,15 @@ var clock=0.0
 var metrics_clock=0.0
 var diagnostics=false
 var pending_intent=""
+# Full frame rate while the child touches the map or the host moves the camera;
+# a calm 30 fps once the world is only being watched, to save battery.
+const ACTIVE_FPS=60
+const CALM_FPS=30
+const CALM_AFTER=4.0
+var calm_timer=0.0
 
 func _ready():
- Engine.max_fps=60
+ Engine.max_fps=ACTIVE_FPS
  var environment=WorldEnvironment.new()
  var settings=Environment.new()
  settings.background_mode=Environment.BG_COLOR
@@ -81,8 +87,13 @@ func _ready():
  settings.ambient_light_energy=0.50
  # Keep diffuse highlights below clipping in the shipped Compatibility/WebGL renderer.
  # Tune the lights directly: post-process exposure is not shared by every renderer.
- # Glow stays off. The grade holds the highlight cap.
+ # Glow stays off. The colour adjustment holds the highlight cap.
  settings.tonemap_mode=Environment.TONE_MAPPER_LINEAR
+ # Noon finish in the renderer's own tonemap step, with no extra full-screen
+ # copy: more colour, a gentle 1.05 curve and a warm cap still below white.
+ settings.adjustment_enabled=true
+ settings.adjustment_saturation=1.22
+ settings.adjustment_color_correction=grade_curve()
  environment.environment=settings
  add_child(environment)
  var light=DirectionalLight3D.new()
@@ -101,19 +112,6 @@ func _ready():
  fill.light_energy=0.10
  fill.light_specular=0.0
  add_child(fill)
- # Grade the final 3D image as well as its lights. Native SwiftUI controls
- # stay outside this pass; no screen-space depth/normal buffers are needed.
- var grade_layer=CanvasLayer.new()
- grade_layer.layer=0
- add_child(grade_layer)
- var grade=ColorRect.new()
- grade.name="WorldColorGrade"
- grade.mouse_filter=Control.MOUSE_FILTER_IGNORE
- grade_layer.add_child(grade)
- grade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
- var grade_material=ShaderMaterial.new()
- grade_material.shader=preload("res://scripts/world_grade.gdshader")
- grade.material=grade_material
  add_child(camera)
  camera.near=0.08
  camera.far=180.0
@@ -133,6 +131,24 @@ func _ready():
   JavaScriptBridge.get_interface("window").tuvloReceive=web_callback
  emit_message("ready",{"protocol":1})
 
+# Per-channel curve: pow(value, 1.05) times a warm cap, tuned to match the
+# former screen-copy grade (0.96, 0.94, 0.90 applied after display encoding).
+static func grade_curve() -> GradientTexture1D:
+ var gradient=Gradient.new()
+ var offsets=PackedFloat32Array()
+ var colors=PackedColorArray()
+ for i in 9:
+  var value=float(i)/8.0
+  var lifted=pow(value,1.05)
+  offsets.append(value)
+  colors.append(Color(lifted*0.93,lifted*0.927,lifted*0.852))
+ gradient.offsets=offsets
+ gradient.colors=colors
+ var texture=GradientTexture1D.new()
+ texture.gradient=gradient
+ texture.width=256
+ return texture
+
 func _web_receive(arguments):
  if arguments.size()==1 and arguments[0] is String: receive_host_json(arguments[0])
 
@@ -150,6 +166,7 @@ func receive_host_json(json: String):
  var type=packet.get("type","")
  var payload=packet.get("payload",{})
  if not payload is Dictionary: return
+ wake_frame_rate()
  if type=="snapshot":
   if not packet.get("session") is String or packet.session.length()>64: return
   var next_data=HomesteadWorldData.new()
@@ -541,8 +558,20 @@ func zoom_camera(factor: float):
  var base=maxf(0.1,camera_base_size())
  zoom=clampf(zoom*factor,MIN_CAMERA_SIZE/base,maximum/base)
 
+func wake_frame_rate():
+ calm_timer=0.0
+ if Engine.max_fps!=ACTIVE_FPS: Engine.max_fps=ACTIVE_FPS
+
+func update_frame_rate(delta: float):
+ calm_timer+=delta
+ var engaged=selected_id!="" or pointer_down or multitouch or not touches.is_empty()
+ if engaged: calm_timer=0.0
+ var target=ACTIVE_FPS if calm_timer<CALM_AFTER else CALM_FPS
+ if Engine.max_fps!=target: Engine.max_fps=target
+
 func _input(event):
  if paused or session=="": return
+ wake_frame_rate()
  if event is InputEventScreenTouch:
   if not event.pressed:
    touches.erase(event.index)
@@ -695,6 +724,7 @@ func _process(delta):
    tree.quiet=reduced_motion
    tree.set_water_source(resident.model.can.to_global(Vector3(0.29,0.09,0)),resident.state=="water" and resident.target_id==data.growth_tree_id)
  if session=="": return
+ update_frame_rate(delta)
  if paused:
   if not panel_preview or (camera_preview_frames<=0 and not production_preview_active()):
    process_mode=Node.PROCESS_MODE_DISABLED

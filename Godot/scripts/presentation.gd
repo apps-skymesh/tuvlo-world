@@ -267,9 +267,9 @@ func woods_edge():
 		var holder=Node3D.new()
 		patch.add_child(holder)
 		holder.position=spots[i]
-		holder.scale=Vector3.ONE*(0.85+0.12*(i%3))
+		holder.scale=Vector3(1.45,1,1.45)*(0.85+0.12*(i%3))
 		holder.rotation.y=i*1.3
-		tree(holder,false)
+		tree(holder,false,i%3)
 	var pile=Node3D.new()
 	patch.add_child(pile)
 	pile.position=Vector3(0.3,0,0.9)
@@ -839,18 +839,10 @@ func bench(root: Node3D):
 	for y in [0.84,1.05]:
 		HomesteadMesh.box(root,Vector3(0,y,-0.32),Vector3(1.8,0.15,0.11),"c49a70",0.045)
 
-func tree(root: Node3D,ghost: bool):
-	HomesteadMesh.cylinder(root,Vector3(0,0.85,0),0.16,1.7,"9b7c59",0.1)
-	HomesteadMesh.rod(root,Vector3(0,1.1,0),Vector3(0.48,2.0,0.1),0.085,"9b7c59")
-	var crown=Node3D.new()
-	root.add_child(crown)
-	crown.position.y=1.45
-	HomesteadMesh.ellipsoid(crown,Vector3(-0.39,0.69,0.06),Vector3(0.72,0.85,0.73),"3f9a45")
-	HomesteadMesh.ellipsoid(crown,Vector3(0.34,0.88,-0.03),Vector3(0.76,1.02,0.76),"58b84e")
-	HomesteadMesh.ellipsoid(crown,Vector3(0.04,1.46,0.04),Vector3(0.62,0.81,0.62),"7ed45c")
-	if not ghost: foliage.append(crown)
-	for p in [Vector3(0.25,0.05,0.28),Vector3(-0.3,0.04,0.1)]:
-		HomesteadMesh.ellipsoid(root,p,Vector3(0.21,0.07,0.15),"92a677")
+func tree(root: Node3D,ghost: bool,variant=0):
+	var model=HomesteadLandscapeArt.attach(root,["grove_tree","aspen_tree","pine_tree"][posmod(variant,3)])
+	var crown=model.find_child("Crown",true,false)
+	if crown and not ghost: foliage.append(crown)
 
 # The mission tree has its own seedling, young, and mature forms. The mature
 # canopy keeps its existing overhang; the one-square stem placement never moves.
@@ -866,33 +858,15 @@ func mission_tree(root: Node3D,ghost: bool,stage: int,fill: float,yellow=false):
 	model.configure(wins,yellow,reduced_motion,ghost)
 
 func flowers(root: Node3D,ghost: bool):
-	HomesteadMesh.ellipsoid(root,Vector3(0,0.035,0),Vector3(0.46,0.05,0.43),"91a778")
-	var patch=Node3D.new()
-	root.add_child(patch)
-	for i in 5:
-		var a=i*2.4
-		var p=Vector3(cos(a)*0.28,0.28+(i%2)*0.13,sin(a)*0.27)
-		HomesteadMesh.rod(patch,Vector3(p.x,0,p.z),p,0.018,"779365")
-		HomesteadMesh.ellipsoid(patch,Vector3(p.x+0.08,p.y*0.5,p.z),Vector3(0.12,0.045,0.06),"8da36e")
-		for petal in 5:
-			var angle=petal*TAU/5
-			HomesteadMesh.ellipsoid(patch,p+Vector3(cos(angle)*0.075,0,sin(angle)*0.075),Vector3(0.075,0.05,0.075),"f25b6a" if i%2 else "ffe14a")
-		HomesteadMesh.ellipsoid(patch,p+Vector3(0,0.035,0),Vector3.ONE*0.05,"f2a31a")
-	if not ghost: foliage.append(patch)
+	var model=HomesteadLandscapeArt.attach(root,"flowers")
+	var crown=model.find_child("Crown",true,false)
+	if crown and not ghost: foliage.append(crown)
 
 func rocks(root: Node3D):
-	var r=HomesteadMesh.ellipsoid(root,Vector3(-0.1,0.26,0),Vector3(0.38,0.3,0.34),"a7afa2")
-	r.rotation.z=0.22
-	HomesteadMesh.ellipsoid(root,Vector3(0.25,0.12,0.2),Vector3(0.2,0.15,0.18),"bec4b1")
+	HomesteadLandscapeArt.attach(root,"rocks")
+
 func path_tile(root: Node3D):
-	# Worn fitted stones leave small grass seams, rather than square beige blocks.
-	for i in 3:
-		var pivot=Node3D.new()
-		root.add_child(pivot)
-		pivot.position=Vector3(-0.24+i*0.23,0,0.10 if i%2 else -0.12)
-		pivot.rotation.y=-0.07+i*0.06
-		var outline=HomesteadMesh.rounded_outline(0.37,0.66 if i%2 else 0.72,0.11)
-		HomesteadMesh.polygon_slab(pivot,outline,0.06,0.025,["c4bda7","d0c4a7","bbb9a3"][i])
+	HomesteadLandscapeArt.attach(root,"path")
 	if data!=null and data.approvals>=55:
 		for x in [-0.42,0.42]:
 			HomesteadMesh.ellipsoid(root,Vector3(x,0.08,0.25),Vector3(0.05,0.035,0.07),"d8bf7d")
@@ -1123,8 +1097,8 @@ func future_meadow(root: Node3D):
 		var holder=Node3D.new()
 		grove.add_child(holder)
 		holder.position=Vector3(-4.5+i*2.8,0,-4.3+sin(i*1.9)*0.5)
-		holder.scale=Vector3.ONE*(0.65+0.06*(i%2))
-		tree(holder,false)
+		holder.scale=Vector3(1.45,1,1.45)*(0.65+0.06*(i%2))
+		tree(holder,false,i%3)
 	# An asymmetric sweep of meadow flowers, rather than a grid of filler props.
 	for i in 22:
 		var angle=float(i)*0.24-1.5
@@ -1177,8 +1151,8 @@ func mountain_ridge(root: Node3D):
 		var holder=Node3D.new()
 		ridge.add_child(holder)
 		holder.position=Vector3(-4.8+i*1.85,0,1.4+sin(i*1.7)*0.7)
-		holder.scale=Vector3.ONE*(0.54+0.07*(i%3))
-		tree(holder,false)
+		holder.scale=Vector3(1.45,1,1.45)*(0.54+0.07*(i%3))
+		tree(holder,false,i%3)
 	for i in 9:
 		HomesteadMesh.ellipsoid(ridge,Vector3(-4.9+i*1.2,0.15,3+sin(i*1.3)*0.6),Vector3(0.35,0.25,0.27),"a5ae9d")
 
