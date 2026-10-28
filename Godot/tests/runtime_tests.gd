@@ -1005,6 +1005,7 @@ func run():
   var arrays=surface.mesh.surface_get_arrays(0)
   check(arrays[Mesh.ARRAY_COLOR] is PackedColorArray and arrays[Mesh.ARRAY_COLOR].size()==arrays[Mesh.ARRAY_VERTEX].size(),"Static batching preserves every authored vertex color")
  painted.free()
+ preload("res://tests/place_visit_tests.gd").run(scene,check)
  scene.queue_free()
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)

@@ -1,5 +1,6 @@
 class_name HomesteadResidentModel
 extends Node3D
+var foot_shadow: MeshInstance3D
 var animator: AnimationPlayer
 var rig: Node3D
 var hips: Node3D
@@ -15,6 +16,9 @@ var right_arm: Node3D
 var right_elbow: Node3D
 var left_elbow: Node3D
 var can: Node3D
+var read_clock=0.0
+var reading_book: Node3D
+var turning_page: Node3D
 var clock=0.0
 var reduced_motion=false
 var carrying_water=false
@@ -51,7 +55,7 @@ var blink_left=0.0
 var look_rng=RandomNumberGenerator.new()
 func _ready():
 	look_rng.seed=91357
-	HomesteadMesh.contact_shadow(self,Vector2(0.85,0.68))
+	foot_shadow=HomesteadMesh.contact_shadow(self,Vector2(0.85,0.68))
 	rig=Node3D.new()
 	rig.name="Rig"
 	add_child(rig)
@@ -163,6 +167,15 @@ func _ready():
 	HomesteadMesh.torus(can,Vector3(-0.14,0.07,0),0.1,0.022,"739c94").rotation.z=PI/2
 	HomesteadMesh.rod(can,Vector3(0.1,0.01,0),Vector3(0.27,0.09,0),0.035,"739c94")
 	can.visible=false
+	reading_book=preload("res://assets/reading_book/cozy_reading_book.glb").instantiate()
+	hips.add_child(reading_book)
+	reading_book.position=Vector3(0,.24,.42)
+	for surface in reading_book.find_children("*","MeshInstance3D",true,false):
+		var material=surface.get_active_material(0).duplicate()
+		material.vertex_color_use_as_albedo=true
+		surface.material_override=material
+	turning_page=reading_book.find_child("TurningPage",true,false)
+	reading_book.visible=false
 	build_animations()
 	remember_colors(self)
 	apply_appearance(appearance)
@@ -317,12 +330,62 @@ func build_animations():
 		var level=Vector3(0.98 if title=="fill" else 0.87,0,0.09)
 		animation_track(pose,can,"rotation",[[0,level],[pose.length,level]])
 		library.add_animation(title,pose)
+	var read=sit.duplicate() as Animation
+	read.length=6.0
+	pose_track(read,hips,"position:y",[[0,.73],[4,.73]])
+	pose_track(read,hips,"rotation",[[0,Vector3(.06,0,0)],[4,Vector3(.06,0,0)]])
+	for side in 2:
+		var arm=left_arm if side==0 else right_arm
+		var elbow=left_elbow if side==0 else right_elbow
+		var sign=1 if side==0 else -1
+		pose_track(read,arm,"rotation",[[0,Vector3(-.65,0,sign*.10)],[4,Vector3(-.65,0,sign*.10)]])
+		pose_track(read,elbow,"rotation",[[0,Vector3(-1.0,0,sign*.15)],[4,Vector3(-1.0,0,sign*.15)]])
+	pose_track(read,right_arm,"rotation",[[0,Vector3(-.65,0,-.10)],[4.5,Vector3(-.65,0,-.10)],[5.0,Vector3(-.55,.12,-.22)],[5.5,Vector3(-.65,0,-.10)],[6,Vector3(-.65,0,-.10)]])
+	pose_track(read,right_elbow,"rotation",[[0,Vector3(-1,0,-.15)],[4.5,Vector3(-1,0,-.15)],[5.0,Vector3(-1,0,-.45)],[5.5,Vector3(-1,0,-.15)],[6,Vector3(-1,0,-.15)]])
+	library.add_animation("read",read)
+	var climb=Animation.new()
+	climb.length=1.2
+	climb.loop_mode=Animation.LOOP_LINEAR
+	animation_track(climb,hips,"position:y",[[0,.705],[1.2,.705]])
+	animation_track(climb,hips,"position:x",[[0,0.0],[1.2,0.0]])
+	animation_track(climb,hips,"rotation",[[0,Vector3.ZERO],[1.2,Vector3.ZERO]])
+	for side in 2:
+		var leg_keys=[];var knee_keys=[];var arm_keys=[];var elbow_keys=[];var ankle_keys=[]
+		for i in 33:
+			var t=float(i)/32
+			var phase=t*TAU+side*PI
+			var down=.705-(.19+.10*sin(phase))
+			var reach=clampf(Vector2(.22,down).length(),.08,.599)
+			var thigh=-atan2(.22,down)-acos(clampf((.32*.32+reach*reach-.28*.28)/(.64*reach),-1,1))
+			var knee=PI-acos(clampf((.32*.32+.28*.28-reach*reach)/(.64*.28),-1,1))
+			leg_keys.append([t*1.2,Vector3(thigh,0,0)])
+			knee_keys.append([t*1.2,Vector3(knee,0,0)])
+			ankle_keys.append([t*1.2,Vector3(-thigh-knee,0,0)])
+			down=1.195-(1.52+.10*sin(phase+PI))
+			reach=clampf(Vector2(.28,down).length(),.06,.559)
+			var shoulder=-atan2(.28,down)-acos(clampf((.27*.27+reach*reach-.29*.29)/(.54*reach),-1,1))
+			var elbow=PI-acos(clampf((.27*.27+.29*.29-reach*reach)/(.54*.29),-1,1))
+			arm_keys.append([t*1.2,Vector3(shoulder,0,-.10 if side==0 else .10)])
+			elbow_keys.append([t*1.2,Vector3(elbow,0,0)])
+		animation_track(climb,left_leg if side==0 else right_leg,"rotation",leg_keys,Animation.INTERPOLATION_LINEAR)
+		animation_track(climb,left_knee if side==0 else right_knee,"rotation",knee_keys,Animation.INTERPOLATION_LINEAR)
+		animation_track(climb,left_ankle if side==0 else right_ankle,"rotation",ankle_keys,Animation.INTERPOLATION_LINEAR)
+		animation_track(climb,left_arm if side==0 else right_arm,"rotation",arm_keys,Animation.INTERPOLATION_LINEAR)
+		animation_track(climb,left_elbow if side==0 else right_elbow,"rotation",elbow_keys,Animation.INTERPOLATION_LINEAR)
+	library.add_animation("climb",climb)
 	animator.add_animation_library("",library)
 	animator.play("idle")
+func pose_track(clip: Animation,node: Node3D,property: String,keys: Array):
+	var path=NodePath(str(get_path_to(node))+":"+property)
+	for i in range(clip.get_track_count()-1,-1,-1):
+		if clip.track_get_path(i)==path: clip.remove_track(i)
+	animation_track(clip,node,property,keys)
 func set_motion(next: String,speed=1.0):
 	if carrying_water and next in ["walk","idle"]: next="carry" if next=="walk" else "hold"
 	can.visible=next in ["water","fill","carry","hold"]
+	reading_book.visible=next=="read"
 	if mode!=next:
+		if next=="read": read_clock=0.0
 		if next in ["idle","walk","carry","hold"]: animator.play(next,0.22)
 		else:
 			animator.play("idle",0)
@@ -340,10 +403,15 @@ func _process(delta):
 	if not reduced_motion: clock+=delta
 	if animator and mode not in ["walk","carry"]: animator.speed_scale=0.0 if reduced_motion else 1.0
 	var height_scale=[0.9,1.0,1.12][appearance.height]
-	position.y=lerpf(position.y,0.65*(1.0-height_scale) if mode=="sit" else 0.0,minf(1,delta*12))
+	position.y=lerpf(position.y,(.60 if mode=="read" else .65)*(1.0-height_scale) if mode in ["sit","read"] else 0.0,minf(1,delta*12))
 	if skirt:
-		skirt.rotation.x=lerpf(skirt.rotation.x,-0.95 if mode=="sit" else 0.0,minf(1,delta*12))
+		skirt.rotation.x=lerpf(skirt.rotation.x,-0.95 if mode in ["sit","read"] else -.35 if mode=="climb" else 0.0,minf(1,delta*12))
 		skirt.scale.z=lerpf(skirt.scale.z,1.5 if mode in ["walk","carry"] else 1.0,minf(1,delta*12))
+	if turning_page:
+		if mode=="read" and not reduced_motion: read_clock+=delta
+		var turn=fposmod(read_clock,6.0)
+		turning_page.visible=mode=="read" and not reduced_motion and turn>4.6 and turn<5.6
+		turning_page.rotation.z=PI*smoothstep(4.6,5.6,turn)
 	# Natural blinks: irregular spacing with an occasional double blink.
 	if not reduced_motion:
 		next_blink-=delta
@@ -351,13 +419,13 @@ func _process(delta):
 			blink_left=0.13
 			next_blink=look_rng.randf_range(2.2,5.5) if look_rng.randf()>0.18 else 0.28
 		blink_left-=delta
-	var blink=blink_left>0
+	var blink=not reduced_motion and blink_left>0
 	for glint in eye_glints: glint.visible=not blink
 	for white in eye_whites: white.scale.y=normal_eye_height*0.16 if blink else normal_eye_height*1.18
 	for pupil in pupils: pupil.scale.y=normal_eye_height*0.08 if blink else normal_eye_height*0.58
 	for eye in eyes: eye.scale.y=normal_eye_height*0.15 if blink else normal_eye_height
 	if reduced_motion:
-		head.rotation=Vector3.ZERO
+		head.rotation=Vector3(.40,0,0) if mode=="read" else Vector3.ZERO
 		return
 	# Idle glances settle on a point for a few seconds; walking looks into the
 	# coming turn. Both ease, so the head never snaps.
@@ -367,6 +435,8 @@ func _process(delta):
 		glance_target=Vector2(look_rng.randf_range(-0.45,0.45),look_rng.randf_range(-0.10,0.12)) if look_rng.randf()>0.3 else Vector2.ZERO
 	var goal=Vector2.ZERO
 	if mode=="idle": goal=glance_target
+	elif mode=="read": goal=Vector2(sin(clock*.5)*.025,.40)
+	elif mode=="climb": goal=Vector2(0,-.08)
 	elif mode in ["water","fill"]: goal=Vector2(clampf(activity_camera_yaw,-0.22,0.22),0.06)
 	elif mode in ["walk","carry"]: goal=Vector2(clampf(look_yaw*0.6,-0.5,0.5),0.06)
 	glance=glance.lerp(goal,minf(1,delta*(3.0 if mode in ["walk","carry"] else 2.2)))

@@ -14,7 +14,8 @@ var timer=1.1
 var speed=0.0
 var facing=0.0
 var desired_facing=0.0
-var schedule=["garden","bench","pond","cottage"]
+var schedule=["garden","nook","bench","pond","treehouse","cottage"]
+var place_visit: HomesteadPlaceVisit
 var schedule_index=-1
 var cycles=0
 var arrivals: Dictionary={}
@@ -74,7 +75,7 @@ func choose_destination():
 			visit(target.id)
 			return
 		target_id=target.id
-		start_route(navigation.approach(target,position),{"garden":"Off to tend the garden","bench":"Finding a sunny seat","pond":"Visiting the pond","cottage":"Heading home"}[destination_kind])
+		start_route(navigation.approach(target,position),{"garden":"Off to tend the garden","bench":"Finding a sunny seat","pond":"Visiting the pond","nook":"Finding a book","treehouse":"Visiting the treehouse","cottage":"Heading home"}[destination_kind])
 		return
 	target_id=""
 	state="pause"
@@ -106,6 +107,9 @@ func cancel_tree_watering():
 func visit(id: String):
 	var target=data.find(id)
 	if target.is_empty() or not data.building(id).is_empty(): return
+	if place_visit!=null:
+		if id!=target_id: place_visit.leave(self,id)
+		return
 	target_id=id
 	destination_kind=target.kind
 	if target.kind=="garden" or (id==watering_tree_id and watering_remaining>0):
@@ -146,7 +150,9 @@ func world_changed():
 	if model==null: return
 	var target=data.find(target_id)
 	var target_changed=not target.is_empty() and (HomesteadItems.item_center(target).distance_to(target_anchor)>0.01 or int(target.rotation)!=target_rotation or not navigation.open(HomesteadItems.cell_at(current_target)))
-	var seated_safely=state in ["seating","rest","unseating"] and not target.is_empty() and target.kind=="bench" and not target_changed
+	if place_visit!=null and (target.is_empty() or target_changed):
+		cancel_place_visit()
+	var seated_safely=(place_visit!=null and not target_changed) or state in ["seating","rest","unseating"] and not target.is_empty() and target.kind=="bench" and not target_changed
 	var relocated=false
 	if not navigation.open(HomesteadItems.cell_at(position)) and not seated_safely:
 		position=HomesteadItems.cell_center(navigation.closest(position))
@@ -178,15 +184,24 @@ func world_changed():
 			recoveries+=1
 	elif state=="walking":
 		start_route(HomesteadItems.cell_center(navigation.closest(current_target)),"Taking a clear path")
+func cancel_place_visit():
+	if place_visit==null: return
+	place_visit=null
+	model.foot_shadow.visible=true
+	position=HomesteadItems.cell_center(navigation.closest(position))
+	state="pause"
+	timer=.8
+	model.set_motion("idle")
+
 func notice_sunny_day():
 	announce("A sunny day")
-	if reduced_motion or state in ["walking","seating","unseating"]: return
+	if reduced_motion or place_visit!=null or state in ["walking","seating","unseating"]: return
 	state="look"
 	timer=2.4
 	model.set_motion("idle")
 func greet_discovery():
 	pending_discovery=true
-	if state not in ["walking","seating"]:
+	if place_visit==null and state not in ["walking","seating"]:
 		timer=minf(timer,1.0)
 func arrive():
 	speed=0
@@ -218,6 +233,15 @@ func begin_activity():
 		timer=rng.randf_range(4.5,6.5)*activity_scale
 		model.set_motion("water")
 		announce("Watering the garden")
+	elif destination_kind in ["nook","treehouse"] and not target.is_empty():
+		var visit=HomesteadPlaceVisit.new()
+		if (destination_kind!="treehouse" or not reduced_motion) and visit.begin(self,target):
+			place_visit=visit
+		else:
+			state="look"
+			timer=3.0*activity_scale
+			model.set_motion("idle")
+			announce("Enjoying this little place")
 	elif destination_kind=="bench" and not target.is_empty():
 		state="seating"
 		timer=0
@@ -274,6 +298,15 @@ func _physics_process(delta):
 	steps+=1
 	model.reduced_motion=reduced_motion
 	model.carrying_water=carrying_water
+	if place_visit!=null:
+		if reduced_motion and place_visit.kind=="treehouse" and not place_visit.exiting: place_visit.leave(self)
+		if place_visit.tick(self,delta):
+			var pending=place_visit.pending_id
+			place_visit=null
+			if pending!="": visit(pending)
+		facing=rotate_toward(facing,desired_facing,delta*4.5)
+		rotation.y=facing
+		return
 	if state=="walking":
 		if route.is_empty():
 			arrive()

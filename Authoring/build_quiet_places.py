@@ -126,6 +126,7 @@ def nook():
  for y in [.26,.70,1.15]:box('Bookcase shelf',(-.73,y,-.58),(.42,.055,.41),'Trim',.012)
  for i,mat in enumerate(['BookBlue','BookRed','BookGold','BookPlum']):book((-.86+i*.085,.91,-.57),(.065,.33,.25),mat)
  for i,mat in enumerate(['BookGold','BookBlue']):book((-.73,.36+i*.11,-.57),(.28,.075,.27),mat)
+ before=set(bpy.context.scene.objects)
  # An open, folded paper book rests on the cushion, rather than a flat icon.
  for side in [-1,1]:
   pts=[(.13,.625,.03),(.13+side*.23,.66,.03),(.13+side*.23,.66,.35),(.13,.625,.35)]
@@ -133,6 +134,7 @@ def nook():
   rod('Book cover rim',pts[1],pts[2],.008,'BookRed',8)
  for z in [.10,.17,.24,.30]:rod('Printed page line',(.16,.637,z),(.32,.663,z),.003,'Cloth',6)
 
+ group('SeatBook',[o for o in bpy.context.scene.objects if o not in before])
 
 def treehouse():
  rings('Rooted treehouse trunk',[(0,.28,.25,-.95,.68),(.22,.25,.23,-.95,.65),(1.8,.19,.18,-.98,.45),(3.5,.12,.11,-1.02,-.25),(4.3,.035,.03,-.65,-.48)],'Timber',16)

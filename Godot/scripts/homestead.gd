@@ -220,7 +220,11 @@ func receive_host_json(json: String):
    if is_instance_valid(creature): creature.world_changed()
   update_guest()
   presentation.update_harvest()
+  # A replayed construction state can remove a deck without changing its grid.
+  if resident.place_visit!=null and not data.building(resident.target_id).is_empty():
+   resident.cancel_place_visit()
   if changing_child:
+   resident.cancel_place_visit()
    resident.route.clear()
    resident.state="pause"
    resident.timer=0.5
@@ -349,6 +353,7 @@ func set_paused(value: bool, previewing: bool=false):
 
 # The native app retains one engine but releases all child-specific scene state.
 func clear_host_session():
+ resident.cancel_place_visit()
  presentation.pending_tree_growth=0
  presentation.yellow_leaves=false
  resident.watering_remaining=0
@@ -705,6 +710,7 @@ func _process(delta):
   emit_message("metrics",{"fps":Engine.get_frames_per_second(),"processSeconds":Performance.get_monitor(Performance.TIME_PROCESS),"staticBytes":Performance.get_monitor(Performance.MEMORY_STATIC),"drawCalls":Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),"residentSteps":resident.steps})
  navigation.view_direction=Vector3(sin(orbit_yaw),0,cos(orbit_yaw))
  presentation.reduced_motion=reduced_motion
+ presentation.set_reading_place(resident.target_id if resident.place_visit!=null and resident.place_visit.kind=="nook" and resident.place_visit.phase in ["sit","reading","stand"] else "")
  resident.reduced_motion=reduced_motion
  for person in guests:
   if is_instance_valid(person): person.reduced_motion=reduced_motion

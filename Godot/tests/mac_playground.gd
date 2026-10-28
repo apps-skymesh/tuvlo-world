@@ -19,6 +19,11 @@ var started_ms=0
 var initial_camera="overview"
 var pond_polish=false
 var pond_polish_step=-1
+var place_interactions=false
+var interaction_started=false
+var interaction_next=false
+var interaction_events=[]
+var last_interaction_phase=""
 var quiet_visits=false
 var visit_report_done=false
 var quiet_place_slice=false
@@ -59,6 +64,7 @@ func run():
  for index in args.size():
   if args[index]=="--construction": construction_review=true; windmill_slice=true; capture_times=[1.0,4.0,8.0,13.0,17.0]
   if args[index]=="--pond-polish": pond_polish=true; farm_film=true; capture_times=[2.0,5.0,10.0,18.0]
+  if args[index]=="--place-interactions": place_interactions=true; quiet_place_slice=true; farm_film=true; capture_times=[3.0,7.0,14.0,21.0,28.0,36.0]
   if args[index]=="--quiet-visits": quiet_visits=true; quiet_place_slice=true; farm_film=true; capture_times=[]
   if args[index]=="--quiet-places": quiet_place_slice=true; farm_film=true; capture_times=[2.0,7.0,12.0,17.0]
   if args[index]=="--farm-film": farm_film=true
@@ -78,7 +84,7 @@ func run():
   if args[index]=="--seconds" and index+1<args.size(): duration=clampf(float(args[index+1]),1,60)
   if args[index]=="--capture" and index+1<args.size(): output=args[index+1]
  if output!="": DirAccess.make_dir_recursive_absolute(output)
- if quiet_visits or pond_polish or animal_detail:
+ if quiet_visits or pond_polish or animal_detail or place_interactions:
   # The desktop compositor can stop drawing an occluded movie window while
   # simulation continues. Keep only this disposable recording window visible.
   root.always_on_top=true
@@ -97,6 +103,8 @@ func run():
  if animals_slice: send("camera",{"mode":"place","id":"barn","zoom":1.1})
  if farm_building_slice or animal_detail: farm_buildings_portrait()
  if quiet_place_slice or pond_polish: quiet_places_portrait()
+ if place_interactions:
+  world.resident.position=HomesteadItems.item_center(world.data.find("nook"))+Vector3(0,0,2.0)
 func keep_landscape():
  # This host is a landscape-only visual lab; app orientation uses UIKit's lease.
  var maximum_height=maxi(540,int(root.size.x*0.625))
@@ -488,6 +496,28 @@ func _unhandled_key_input(event):
 func _process(delta):
  if world==null: return false
  elapsed+=delta
+ if place_interactions:
+  if elapsed>1.0 and not interaction_started:
+   interaction_started=true
+   world.resident.visit("nook")
+   last_interaction_phase="walking"
+  var actor=world.resident
+  var phase=actor.place_visit.phase if actor.place_visit!=null else actor.state
+  if phase!=last_interaction_phase:
+   last_interaction_phase=phase
+   interaction_events.append({"seconds":elapsed,"phase":phase,"place":actor.target_id,"position":[actor.position.x,actor.position.y,actor.position.z]})
+   print("PLACE_INTERACTION ",JSON.stringify(interaction_events[-1]))
+  if actor.target_id=="nook" and actor.place_visit==null and actor.state=="pause" and elapsed>8 and not interaction_next:
+   interaction_next=true
+   actor.visit("treehouse")
+  if interaction_next and actor.place_visit==null and actor.state=="pause": actor.timer=maxf(actor.timer,60.0)
+  var target=world.data.find(actor.target_id)
+  if not target.is_empty():
+   var center=HomesteadItems.item_center(target)
+   world.pan_focus=(center+actor.position)*.5+Vector3(0,1.9 if interaction_next else .85,0)
+   world.pan_size=7.8 if interaction_next else 4.2
+   send("camera",{"mode":"pan","resetZoom":true})
+   farm_film_title.text="Treehouse visit" if interaction_next else "A reading moment"
  if animal_detail:
   var step=0 if elapsed<3 else 1 if elapsed<6 else 2 if elapsed<11 else 3 if elapsed<14 else 4
   if step!=animal_detail_step:
@@ -516,7 +546,7 @@ func _process(delta):
    world.pan_size=3.2 if step==1 else 4.7
    send("camera",{"mode":"pan","resetZoom":true})
    if world.resident.state=="look": world.resident.timer=maxf(world.resident.timer,60.0)
- if quiet_place_slice:
+ if quiet_place_slice and not place_interactions:
   var step=(0 if elapsed<3 else 1 if elapsed<15 else 2 if elapsed<29 else 3) if quiet_visits else clampi(int((elapsed-.5)/5.0),0,3)
   if step!=quiet_place_step:
    quiet_place_step=step

@@ -133,9 +133,11 @@ func rebuild():
 		animated.append_array(sails)
 		animated.append_array(pet_parts)
 		# Job-driven visibility needs its own batching boundary, like animation.
-		for group_name in ["CookingFood","WarmCoals"]:
+		for group_name in ["CookingFood","WarmCoals","SeatBook"]:
 			var group=root.find_child(group_name,true,false)
-			if group: animated.append(group)
+			if group:
+				animated.append(group)
+				if group_name=="SeatBook": root.set_meta("seat_book",group)
 		if root.has_meta("build_tool"): animated.append(root.get_meta("build_tool"))
 		HomesteadStaticBatcher.consolidate(root,animated)
 		nodes[item.id]=root
@@ -1064,6 +1066,12 @@ func fade_obstruction(node: Node,faded: bool,leaves_only=false):
 			node.material_override=node.get_meta("camera_original_material")
 			node.remove_meta("camera_original_material")
 	for child in node.get_children(): fade_obstruction(child,faded,leaves_only)
+
+func set_reading_place(id: String):
+	for key in nodes:
+		if not nodes[key].has_meta("seat_book"): continue
+		var book=nodes[key].get_meta("seat_book")
+		if is_instance_valid(book): book.visible=key!=id
 
 func reading_nook(root: Node3D,style=0):
 	HomesteadQuietPlaceArt.attach(root,"nook",style)
