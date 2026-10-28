@@ -134,7 +134,8 @@ func run():
    var occupied=scene.data.item_at(cell)
    var blocked=not scene.data.buildable(cell) or (not occupied.is_empty() and HomesteadItems.DEFINITIONS[occupied.kind].blocks)
    var utility=scene.navigation.well_center.is_finite() and Rect2i(scene.navigation.well_cell,HomesteadItems.WELL_SIZE).has_point(cell)
-   check(scene.navigation.open(cell)==not (blocked or utility),"Walking boundaries retain saved obstacles, locked land and the visible well")
+   utility=utility or scene.navigation.oven_cells.values().any(func(start): return Rect2i(start,Vector2i(2,2)).has_point(cell))
+   check(scene.navigation.open(cell)==not (blocked or utility),"Walking boundaries retain saved obstacles, locked land and visible utilities")
  scene.set_paused(true,true)
  check(scene.production_preview_active() and scene.presentation.is_processing() and not scene.resident.is_physics_processing(),"Menu keeps production moving while residents stay paused")
  scene.reduced_motion=true
@@ -305,8 +306,11 @@ func run():
  check(scene.data.placement_error("greenhouse",Vector2i(-3,7),0)=="","Greenhouse fits inside owned west meadow")
  check(scene.data.placement_error("greenhouse",Vector2i(-3,7),1)=="","Rotated greenhouse fits inside owned west meadow")
  check(scene.data.placement_error("greenhouse",Vector2i(8,11),0)=="outside-land","Greenhouse remains a west-meadow building")
+ var prior_fruit_stage=scene.data.farm_fruit_stage
+ scene.data.farm_fruit_stage=2
  var orchard=scene.presentation.make_item("orchard",0,false,2)
- check(orchard.get_child(0).get_child_count()>60,"Orchard has authored trees, fruit and a woven basket")
+ scene.data.farm_fruit_stage=prior_fruit_stage
+ check(orchard.find_children("*","MeshInstance3D",true,false).filter(func(surface): return surface.material_override is StandardMaterial3D and surface.material_override.resource_name=="AppleSkin").size()==15,"A ripe orchard retains fruit on both trees and in the harvest basket")
  orchard.free()
  check(HomesteadItems.footprint("orchard",0)==Vector2i(2,2),"Orchard shares the compact native footprint")
  check(scene.data.placement_error("orchard",Vector2i(-2,6),0)=="","Orchard fits the owned west meadow")
@@ -779,6 +783,88 @@ func run():
  for badge in [badge_one,badge_two]:
   check(badge.get_meta("body").global_position.is_equal_approx(badge.global_position) and badge.get_meta("body").get_meta("production_station")=="field","The fixed badge preserves its original tap action")
  check(material_slot.distance_to(product_slot)>1.2,"The fixed material and product slots retain separate hit areas")
+ # Baking keeps its saved cottage identity while using the derived outdoor oven.
+ var bake={"items":items,"land":[],"appearance":{"hair":3}}
+ bake.production=[{"placeID":"cottage","station":"oven","good":"bread","state":1,"remaining":12,"progress":0.4}]
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"snapshot","payload":bake}))
+ check(scene.presentation.ovens.has("cottage"),"An owned cottage gets an outdoor oven on vacant owned ground")
+ var oven=scene.presentation.ovens.get("cottage")
+ if is_instance_valid(oven):
+  var saved_cells=scene.data.items.map(func(item): return item.cell)
+  var oven_cell=scene.navigation.oven_cells.cottage
+  for z in 2:
+   for x in 2:
+    var square=oven_cell+Vector2i(x,z)
+    check(scene.data.buildable(square) and scene.data.item_at(square).is_empty() and not scene.navigation.open(square),"Outdoor oven reserves only vacant owned squares")
+  check(oven.heat.visible and not oven.loaf.visible,"A real baking job warms the outdoor oven without delivering early")
+  scene.presentation.layout_markers()
+  var oven_slot=scene.presentation.production_nodes.oven.global_position
+  var oven_revision=scene.navigation.revision
+  bake.production[0].remaining=6
+  bake.production[0].progress=0.7
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"snapshot","payload":bake}))
+  scene.presentation.layout_markers()
+  check(scene.presentation.ovens.cottage==oven and scene.navigation.revision==oven_revision,"Baking ticks retain the oven and walking grid")
+  check(scene.presentation.production_nodes.oven.global_position.is_equal_approx(oven_slot),"The oven annotation stays fixed through baking ticks")
+  check(scene.presentation.production_effects.oven.global_position.distance_to(oven.to_global(Vector3(-0.4,2.17,-0.37)))<0.01,"Baking smoke comes from the outdoor flue")
+  bake.production[0].state=2
+  bake.production[0].remaining=0
+  bake.production[0].progress=1.0
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"snapshot","payload":bake}))
+  check(oven.loaf.visible and not oven.heat.visible and not scene.presentation.ready_goods.oven.visible,"Ready bread appears once at the outdoor hearth")
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"camera","payload":{"mode":"place","id":"cottage","station":"oven"}}))
+  scene.reduced_motion=true
+  scene._process(0.1)
+  check(scene.orbit_focus.distance_to(oven.position+Vector3(0,1.05,0))<0.05,"Oven menus frame the actual baking station")
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"camera","payload":{"zoom":0.9}}))
+  scene._process(0.1)
+  check(scene.focus_station=="oven" and scene.orbit_focus.distance_to(oven.position+Vector3(0,1.05,0))<0.05,"Zoom-only commands retain the outdoor oven target")
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"camera","payload":{"mode":"place","id":"cottage"}}))
+  check(scene.focus_station=="","An explicit ordinary cottage view clears the station focus")
+  scene.camera.position=oven.position+Vector3(0,4,7)
+  scene.camera.look_at(oven.position+Vector3(0,1,0))
+  await physics_frame
+  await process_frame
+  var tap=scene.production_at_screen(scene.camera.unproject_position(oven.position+Vector3(0,1,0)))
+  check(tap.get("station","")=="oven" and tap.get("placeID","")=="cottage","Tapping the outdoor oven opens the original saved station")
+  bake.production[0].state=0
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"snapshot","payload":bake}))
+  check(not oven.loaf.visible and not oven.heat.visible,"Collection returns the outdoor oven to idle")
+  check(scene.data.items.map(func(item): return item.cell)==saved_cells,"Outdoor baking never moves saved objects")
+ # Crowded layouts keep baking at the existing cottage instead of moving pieces.
+ var crowded=HomesteadWorldData.new()
+ crowded.items.append({"id":"home","kind":"cottage","cell":Vector2i(2,2),"rotation":0})
+ for z in range(0,20,3):
+  for x in 20:
+   if x in range(2,6) and z in range(2,5): continue
+   crowded.items.append({"id":"lane-%d-%d"%[x,z],"kind":"path","cell":Vector2i(x,z),"rotation":0})
+ var baking_crowded_nav=HomesteadNavigation.new()
+ baking_crowded_nav.rebuild(crowded)
+ check(baking_crowded_nav.oven_centers.is_empty(),"Crowded saved lanes are never displaced to fit an oven")
+ # When no derived utility fits, the same ready job remains accessible.
+ bake.production[0].state=2
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"snapshot","payload":bake}))
+ scene.presentation.place_ovens({})
+ scene.presentation.layout_markers()
+ check(scene.presentation.ready_goods.oven.visible and scene.presentation.ovens.is_empty(),"A crowded-layout fallback still shows the saved ready loaf")
+ check(scene.presentation.production_nodes.oven.global_position.is_equal_approx(HomesteadVisibility.marker_position(scene.data.find("cottage"),"oven")),"The fallback retains the cottage's fixed oven slot")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"snapshot","payload":{"items":[],"land":[]}}))
+ check(scene.presentation.ovens.is_empty() and scene.presentation.ready_goods.is_empty(),"Removing the cottage removes only its baking artwork")
+ var cottage_build={"items":items,"land":[],"construction":[{"placeID":"cottage","remaining":5,"progress":0.95}]}
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"snapshot","payload":cottage_build}))
+ check(not scene.presentation.ovens.has("cottage"),"An unfinished cottage does not reveal an outdoor oven early")
+ cottage_build.construction=[]
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"oven-review","type":"snapshot","payload":cottage_build}))
+ check(scene.presentation.ovens.has("cottage"),"Finishing construction reveals the oven without an unrelated layout move")
+ # Vertex paint survives static batching of repeated authored harvest surfaces.
+ var painted=Node3D.new()
+ root.add_child(painted)
+ for i in 3: HomesteadHarvestCraft.attach(painted,"Bread",Vector3(i,0,0))
+ check(HomesteadStaticBatcher.consolidate(painted,[])>0,"Repeated harvest surfaces consolidate")
+ for surface in painted.find_children("*","MeshInstance3D",true,false):
+  var arrays=surface.mesh.surface_get_arrays(0)
+  check(arrays[Mesh.ARRAY_COLOR] is PackedColorArray and arrays[Mesh.ARRAY_COLOR].size()==arrays[Mesh.ARRAY_VERTEX].size(),"Static batching preserves every authored vertex color")
+ painted.free()
  scene.queue_free()
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)

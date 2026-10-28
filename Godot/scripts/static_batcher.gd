@@ -15,16 +15,19 @@ static func consolidate(root: Node3D, animated: Array[Node3D]) -> int:
   var vertices=PackedVector3Array()
   var normals=PackedVector3Array()
   var indices=PackedInt32Array()
+  var colors=PackedColorArray()
   for node in group:
    var arrays=node.mesh.surface_get_arrays(0)
    var source: PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
    var source_normals=arrays[Mesh.ARRAY_NORMAL]
    var source_indices=arrays[Mesh.ARRAY_INDEX]
+   var source_colors=arrays[Mesh.ARRAY_COLOR]
    var transform=root.global_transform.affine_inverse()*node.global_transform
    var normal_basis=transform.basis.inverse().transposed()
    var offset=vertices.size()
    for i in source.size():
     vertices.append(transform*source[i])
+    colors.append(source_colors[i] if source_colors is PackedColorArray and source_colors.size()==source.size() else Color.WHITE)
     normals.append((normal_basis*source_normals[i]).normalized() if source_normals is PackedVector3Array and source_normals.size()==source.size() else Vector3.UP)
    if source_indices is PackedInt32Array and source_indices.size()>0:
     for index in source_indices: indices.append(offset+index)
@@ -35,6 +38,7 @@ static func consolidate(root: Node3D, animated: Array[Node3D]) -> int:
   arrays[Mesh.ARRAY_VERTEX]=vertices
   arrays[Mesh.ARRAY_NORMAL]=normals
   arrays[Mesh.ARRAY_INDEX]=indices
+  arrays[Mesh.ARRAY_COLOR]=colors
   var mesh=ArrayMesh.new()
   mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
   var merged=MeshInstance3D.new()

@@ -13,6 +13,7 @@ var layout_signature=""
 var navigation_signature=""
 var camera_mode="overview"
 var focus_item_id=""
+var focus_station=""
 var panel_framing=0.0
 var camera_preview_frames=0
 var panel_preview=false
@@ -176,7 +177,7 @@ func receive_host_json(json: String):
   session=packet.session
   var wins=int(payload.get("approvedWins",0))
   # Crop art and building phases do not change walkable footprints.
-  var next_navigation=JSON.stringify([next_data.items,next_data.land_sides])
+  var next_navigation=JSON.stringify([next_data.items,next_data.land_sides,next_data.construction.filter(func(build): return next_data.find(build.placeID).get("kind","")=="cottage").map(func(build): return build.placeID)])
   var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),wins,next_data.growth_tree_id,payload.get("reducedMotion",false)==true,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage,next_data.construction.map(func(build): return [build.placeID,int(floor(clampf(build.progress,0.0,0.999)*5.0))])])
   data.items=next_data.items
   data.inventory=next_data.inventory
@@ -212,6 +213,7 @@ func receive_host_json(json: String):
    navigation_signature=next_navigation
    navigation.rebuild(data)
    presentation.well.place(navigation.well_center)
+   presentation.place_ovens(navigation.oven_centers)
    resident.world_changed()
    for person in guests:
     if is_instance_valid(person): person.world_changed()
@@ -267,6 +269,7 @@ func receive_host_json(json: String):
     if camera_mode!=payload.mode: zoom=1.0
     camera_mode=payload.mode
    if payload.has("id"): focus_item_id=str(payload.id)
+   if payload.has("id") or payload.has("mode"): focus_station=str(payload.get("station",""))
    if payload.has("framing"): panel_framing=clampf(float(payload.framing),0,0.65)
    if payload.get("resetZoom",false)==true: zoom=1.0
    if payload.has("zoom"): zoom_camera(float(payload.zoom))
@@ -383,6 +386,7 @@ func clear_host_session():
  presentation.update_harvest()
  navigation.rebuild(data)
  presentation.well.place(navigation.well_center)
+ presentation.place_ovens(navigation.oven_centers)
  resident.route.clear()
  resident.target_id=""
  resident.state="pause"
@@ -395,6 +399,7 @@ func clear_host_session():
   creature=null
  camera_mode="overview"
  focus_item_id=""
+ focus_station=""
  panel_framing=0.0
  yaw=FIXED_YAW
  zoom=1.0
@@ -622,8 +627,9 @@ func production_at_screen(point: Vector2) -> Dictionary:
  var building_id=str(result.collider.get_meta("construction_id",""))
  if not building_id.is_empty() and not data.building(building_id).is_empty(): return {"station":"construction","placeID":building_id}
  var station=str(result.collider.get_meta("production_station",""))
+ var owner=str(result.collider.get_meta("oven_place_id",""))
  for status in data.production:
-  if status.station==station: return status
+  if status.station==station and (owner=="" or status.placeID==owner): return status
  return {}
 
 func production_preview_active() -> bool:
@@ -730,6 +736,9 @@ func _process(delta):
   if not item.is_empty():
    focus=HomesteadItems.item_center(item)+Vector3(0,0.7,0)
    size=6.4*zoom
+   if focus_station=="oven" and presentation.ovens.has(focus_item_id):
+    focus=presentation.ovens[focus_item_id].position+Vector3(0,1.05,0)
+    size=4.4*zoom
   elif focus_item_id.begins_with("edge:") and HomesteadItems.EDGE_CENTERS.has(focus_item_id.substr(5)):
    focus=HomesteadItems.EDGE_CENTERS[focus_item_id.substr(5)]+Vector3(0,0.7,0)
    size=10.0*zoom

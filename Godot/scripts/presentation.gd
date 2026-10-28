@@ -27,6 +27,8 @@ var pending_tree_growth=0
 var yellow_leaves=false
 var harvest_root: Node3D
 var bubbles: Array[Node3D]=[]
+var ovens: Dictionary={}
+var ready_goods: Dictionary={}
 var production_root: Node3D
 var production_nodes: Dictionary={}
 var production_effects: Dictionary={}
@@ -262,11 +264,7 @@ func woods_edge():
 	var pile=Node3D.new()
 	patch.add_child(pile)
 	pile.position=Vector3(0.3,0,0.9)
-	for row in 2:
-		for i in (3-row):
-			var log_node=HomesteadMesh.cylinder(pile,Vector3(-0.32+i*0.32+row*0.16,0.16+row*0.27,0),0.15,1.3,"9b7254")
-			log_node.rotation.z=PI/2
-			HomesteadMesh.cylinder(pile,Vector3(-0.32+i*0.32+row*0.16,0.16+row*0.27,0.655),0.13,0.012,"e2c48f").rotation.x=PI/2
+	HomesteadHarvestCraft.attach(pile,"WoodPile")
 	HomesteadMesh.box(pile,Vector3(1.1,0.22,0.25),Vector3(0.5,0.44,0.5),"8b6a4e",0.05)
 	HomesteadMesh.rod(pile,Vector3(1.05,0.44,0.25),Vector3(1.25,0.95,0.15),0.03,"a47c58")
 	HomesteadMesh.box(pile,Vector3(1.28,0.98,0.14),Vector3(0.24,0.12,0.05),"9aa3a0",0.02)
@@ -342,6 +340,26 @@ func update_harvest():
 		bubbles.append(bubble)
 
 # Cached badges change uniforms, not island geometry, on the host's one-second tick.
+func place_ovens(centers: Dictionary):
+	for id in ovens.keys():
+		if not centers.has(id):
+			remove_child(ovens[id])
+			ovens[id].queue_free()
+			ovens.erase(id)
+	for id in centers:
+		if not ovens.has(id):
+			var oven=HomesteadOutdoorOven.new()
+			oven.name="OutdoorOven"
+			add_child(oven)
+			oven.body.set_meta("oven_place_id",id)
+			ovens[id]=oven
+		ovens[id].position=centers[id]
+		var item=data.find(id)
+		ovens[id].rotation.y=item.rotation*PI/2
+	update_production()
+func oven_marker(id: String) -> Vector3:
+	return ovens[id].position+Vector3(0,1.15,1.85)
+
 func update_production():
 	var present={}
 	for status in data.production:
@@ -367,6 +385,18 @@ func update_production():
 		material.set_shader_parameter("progress",status.progress)
 		bubble.get_meta("label").text=countdown(int(status.remaining)) if status.state==1 else ""
 
+		if status.station=="oven":
+			var outdoor: HomesteadOutdoorOven=ovens.get(status.placeID)
+			if is_instance_valid(outdoor): outdoor.update_status(status)
+			var loaf: Node3D=ready_goods.get(status.station)
+			if not is_instance_valid(loaf):
+				loaf=HomesteadHarvestCraft.attach(production_root,"Bread")
+				HomesteadMesh.box(loaf,Vector3(0,-0.012,0),Vector3(0.72,0.035,0.34),"b99565",0.025)
+				ready_goods[status.station]=loaf
+			var bakery=data.find(status.placeID)
+			loaf.position=HomesteadItems.item_center(bakery)+Vector3(1.15,0.32,1.47).rotated(Vector3.UP,int(bakery.rotation)*PI/2)
+			loaf.rotation.y=int(bakery.rotation)*PI/2
+			loaf.visible=not is_instance_valid(outdoor) and status.good=="bread" and status.state==2
 		# Baking has a quiet physical cue at the authored chimney; packing at the porch.
 		if status.station in ["oven","pantry","barn","grill"]:
 			var effect: Node3D=production_effects.get(status.station)
@@ -395,16 +425,23 @@ func update_production():
 			var item=data.find(status.placeID)
 			var local=Vector3(0.96,4.13,-0.56) if status.station=="oven" else Vector3(-0.25,1.2,0.15) if status.station=="grill" else Vector3(-1.25,0.3,1.1) if status.station=="barn" else Vector3(-0.65,0.55,1.45)
 			effect.position=HomesteadItems.item_center(item)+local.rotated(Vector3.UP,int(item.rotation)*PI/2)
+			if status.station=="oven" and ovens.has(status.placeID):
+				effect.position=ovens[status.placeID].to_global(Vector3(-0.40,2.17,-0.37))
 			effect.set_meta("working",status.state==1)
 	for station in production_nodes.keys():
 		if not present.has(station):
 			production_root.remove_child(production_nodes[station])
 			production_nodes[station].queue_free()
 			production_nodes.erase(station)
+			if ready_goods.has(station):
+				ready_goods[station].queue_free()
+				ready_goods.erase(station)
 			if production_effects.has(station):
 				production_root.remove_child(production_effects[station])
 				production_effects[station].queue_free()
 				production_effects.erase(station)
+	for id in ovens:
+		if not data.production.any(func(status): return status.station=="oven" and status.placeID==id): ovens[id].update_status({})
 	update_construction()
 	update_livestock_growth()
 	update_production_effects()
@@ -744,8 +781,7 @@ func orchard(root: Node3D,style=0):
 			if data.farm_fruit_stage==1: foliage.append(leaves)
 		for j in (6 if data.farm_fruit_stage in [-1,2] else 0):
 			var point=base+Vector3(-0.25+(j%3)*0.25,1.62+(j%3)*0.25,0.57 if j<3 else -0.57)
-			HomesteadMesh.ellipsoid(root,point,Vector3(0.13,0.16 if style==1 else 0.13,0.13),fruit_color)
-			HomesteadMesh.rod(root,point,point+Vector3(0.01,0.14,0),0.012,"8c7757")
+			HomesteadHarvestCraft.attach(root,"Apple",point,Vector3(1,1.2 if style==1 else 1,1),fruit_color if style>0 else "")
 		HomesteadMesh.ellipsoid(root,base+Vector3(-0.24,0.25,0.2),Vector3(0.18,0.08,0.14),"889c76")
 	# Raised, interlaced basket bands and brass-edged label make the scale readable.
 	for i in 5:
@@ -756,7 +792,7 @@ func orchard(root: Node3D,style=0):
 	var handle=HomesteadMesh.torus(root,Vector3(0,0.42,0.62),0.19,0.02,"c6a477")
 	handle.rotation.x=PI/2
 	for i in 3:
-		HomesteadMesh.ellipsoid(root,Vector3(-0.10+i*0.10,0.37,0.62),Vector3(0.07,0.07,0.07),fruit_color)
+		HomesteadHarvestCraft.attach(root,"Apple",Vector3(-0.10+i*0.10,0.39,0.62),Vector3.ONE*0.53,fruit_color if style>0 else "")
 	HomesteadMesh.box(root,Vector3(0.64,0.22,0.77),Vector3(0.24,0.19,0.04),"e5d8b6",0.02)
 	HomesteadMesh.ellipsoid(root,Vector3(0.64,0.23,0.80),Vector3(0.045,0.045,0.015),fruit_color)
 
@@ -799,37 +835,19 @@ func waterside_bank(root: Node3D):
 		HomesteadMesh.box(root,Vector3(-1.95,0.20,z),Vector3(0.15,0.40,0.15),"d0c2a5",0.04)
 
 func garden(root: Node3D):
+	HomesteadHarvestCraft.attach(root,"GardenBeds")
 	for x in [-0.72,0.72]:
-		HomesteadMesh.box(root,Vector3(x,0.16,0),Vector3(1.23,0.3,1.72),"b48a62",0.07)
-		HomesteadMesh.box(root,Vector3(x,0.315,0),Vector3(1.03,0.05,1.5),"71614e",0.03)
+		var stage=int(data.farm_stages[0 if x<0 else 1]) if data.farm_stages.size()==2 else -1
+		if stage==0: continue
 		for z in [-0.48,0,0.48]:
 			for dx in [-0.24,0.24]:
-				var plant=Vector3(x+dx,0.37,z)
-				var stage=int(data.farm_stages[0 if x<0 else 1]) if data.farm_stages.size()==2 else -1
-				if stage==0: continue
+				var plant=Vector3(x+dx,0.312,z)
 				if data.wheat_garden or stage>=1:
-					var stalk=Node3D.new()
-					root.add_child(stalk)
-					stalk.position=plant
+					var growth=stage if stage>=1 else 4 if data.harvest.values().has("wheat") else 1
+					var stalk=HomesteadHarvestCraft.attach(root,"Wheat%d"%growth,plant)
 					if stage in [2,3]: foliage.append(stalk)
-					var ripe=stage==4 if stage>=0 else data.harvest.values().has("wheat")
-					var height=0.62 if ripe else (0.12 if stage in [1,2] else 0.32)
-					var tint="f0c429" if ripe else "3dae3a"
-					HomesteadMesh.rod(stalk,Vector3.ZERO,Vector3(0.025,height,0),0.018,tint)
-					for seed in 3:
-						var y=height-0.06-seed*0.065
-						for side in [-1,1]:
-							var head=HomesteadMesh.ellipsoid(stalk,Vector3(side*0.045,y,0),Vector3(0.035,0.065,0.025),tint)
-							head.rotation.z=-side*0.45
 				else:
-					for leaf_index in 4:
-						var angle=leaf_index*TAU/4+(0.35 if x>0 else 0.0)
-						var offset=Vector3(cos(angle)*0.09,0.06,sin(angle)*0.09)
-						var leaf=HomesteadMesh.ellipsoid(root,plant+offset,Vector3(0.075,0.045,0.17),"2f9a3a" if leaf_index%2 else "62d24e")
-						leaf.rotation=Vector3(-0.25,PI/2-angle,0)
-					HomesteadMesh.ellipsoid(root,plant+Vector3(0,0.14,0),Vector3(0.075,0.10,0.075),"d6ee58")
-	HomesteadMesh.rod(root,Vector3(1.28,0,-0.68),Vector3(1.28,0.88,-0.68),0.035,"a47c58")
-	HomesteadMesh.box(root,Vector3(1.28,0.75,-0.68),Vector3(0.35,0.28,0.045),"dac7a0",0.035)
+					HomesteadHarvestCraft.attach(root,"Greens",plant)
 
 func pond(root: Node3D,ghost: bool,style=0):
 	HomesteadMesh.ellipsoid(root,Vector3(0,0.05,0),Vector3(1.46,0.12,1.4),"a49d81")
@@ -1031,6 +1049,11 @@ func layout_markers():
 	entries.append_array(bubbles)
 	entries.append_array(production_nodes.values())
 	entries.append_array(construction_nodes.values())
+	for entry in entries:
+		var id=str(entry.get_meta("marker_place_id",""))
+		if entry.get_meta("marker_role","")=="oven" and ovens.has(id):
+			entry.set_meta("utility_marker",oven_marker(id))
+		elif entry.has_meta("utility_marker"): entry.remove_meta("utility_marker")
 	marker_layout.markers(entries,data.items)
 
 func blocks_view(camera: Camera3D,target: Vector3,center: Vector3,radius: float) -> bool:
@@ -1065,6 +1088,11 @@ func update_character_visibility(camera: Camera3D,feet: Vector3,enabled: bool):
 			if mode>0: fade_obstruction(root,true,mode==1)
 			root.set_meta("visibility_mode",mode)
 			root.set_meta("camera_faded",mode>0)
+	for oven in ovens.values():
+		var hidden=enabled and (blocks_view(camera,face,oven.position+Vector3(0,1.15,0),1.0) or blocks_view(camera,chest,oven.position+Vector3(0,1.15,0),1.0))
+		if bool(oven.get_meta("camera_faded",false))!=hidden:
+			oven.set_meta("camera_faded",hidden)
+			fade_obstruction(oven.art,hidden)
 	var well_hidden=enabled and well.art.visible and (blocks_view(camera,face,well.position+Vector3(0,1.3,0),1.05) or blocks_view(camera,chest,well.position+Vector3(0,1.3,0),1.05))
 	if bool(well.get_meta("camera_faded",false))!=well_hidden:
 		well.set_meta("camera_faded",well_hidden)

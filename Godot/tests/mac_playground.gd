@@ -9,6 +9,8 @@ var capture_times=[1.0,4.0,8.0,14.0,19.0]
 var payload: Dictionary
 var activity_label: Label
 var appearance_index=3
+var harvest_study: Node3D
+var harvest_stage=4
 var events=[]
 var busy_capture=false
 var motion_samples=[]
@@ -145,6 +147,9 @@ func build_controls():
   child_toolbar.position=Vector2(820,14)
   layer.add_child(child_toolbar)
   button(child_toolbar,"Child",child_portrait)
+  button(child_toolbar,"Harvest",harvest_portrait)
+  button(child_toolbar,"Oven",oven_portrait)
+  button(child_toolbar,"Stage",func(): harvest_stage=(harvest_stage+1)%5; harvest_portrait())
   button(child_toolbar,"Look",func():
    appearance_index=(appearance_index+1)%13
    payload.appearance={"hair":appearance_index,"outfit":appearance_index%6}
@@ -220,6 +225,37 @@ func toggle_visibility_study():
  world.pan_focus=Vector3(0.5,1.5,0.0)
  world.pan_size=10.4
  send("camera",{"mode":"pan","resetZoom":true})
+func harvest_portrait():
+ well_phase=-1
+ tree_story_clock=-1
+ payload.farmStages=[harvest_stage,harvest_stage]
+ payload.wheatGarden=true
+ payload.production=[{"placeID":"garden","station":"field","good":"wheat","state":2 if harvest_stage==4 else 0,"remaining":0,"progress":1.0 if harvest_stage==4 else 0.0},{"placeID":"cottage","station":"oven","good":"bread","state":2,"remaining":0,"progress":1.0}]
+ snapshot()
+ child_portrait()
+ var center=HomesteadItems.item_center(world.data.find("garden"))
+ if is_instance_valid(harvest_study): harvest_study.free()
+ harvest_study=Node3D.new()
+ world.add_child(harvest_study)
+ harvest_study.position=center+Vector3(2.75,0,0)
+ HomesteadHarvestCraft.attach(harvest_study,"WoodPile",Vector3(0,0,0.7),Vector3.ONE*0.65)
+ HomesteadMesh.box(harvest_study,Vector3(0,0.42,-0.45),Vector3(1.2,0.055,0.65),"b99565",0.035)
+ for x in [-0.48,0.48]:
+  for z in [-0.68,-0.22]: HomesteadMesh.box(harvest_study,Vector3(x,0.21,z),Vector3(0.07,0.42,0.07),"9d7952",0.012)
+ HomesteadHarvestCraft.attach(harvest_study,"Bread",Vector3(-0.20,0.45,-0.43),Vector3.ONE*0.9)
+ for i in 2: HomesteadHarvestCraft.attach(harvest_study,"Apple",Vector3(0.33,0.58,-0.57+i*0.24))
+ world.pan_focus=center+Vector3(1.0,1.0,-1.2)
+ world.pan_size=6.8
+ send("camera",{"mode":"pan","resetZoom":true})
+
+func oven_portrait():
+ harvest_portrait()
+ var oven: Node3D=world.presentation.ovens.get("cottage")
+ if not is_instance_valid(oven): return
+ world.pan_focus=oven.global_position+Vector3(0,1.0,0)
+ world.pan_size=3.1
+ send("camera",{"mode":"pan","resetZoom":true})
+
 func child_portrait():
  well_phase=-1
  tree_story_clock=-1

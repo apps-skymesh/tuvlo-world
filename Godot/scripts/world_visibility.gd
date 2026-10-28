@@ -48,6 +48,7 @@ func markers(entries: Array,items: Array):
     break
   var target: Vector3=marker.get_meta("marker_anchor",marker.get_meta("anchor",Vector3.ZERO))
   if not place.is_empty(): target=marker_position(place,str(marker.get_meta("marker_role","material")))
+  if marker.has_meta("utility_marker"): target=marker.get_meta("utility_marker")
   if not marker.has_meta("fixed_marker_position") or not marker.global_position.is_equal_approx(target):
    marker.global_position=target
    marker.set_meta("fixed_marker_position",target)
