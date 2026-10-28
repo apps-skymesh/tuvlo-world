@@ -17,6 +17,8 @@ var motion_samples=[]
 var next_sample=0.0
 var started_ms=0
 var initial_camera="overview"
+var landscape_craft=false
+var landscape_step=-1
 var pond_polish=false
 var pond_polish_step=-1
 var place_interactions=false
@@ -63,6 +65,7 @@ func run():
  var args=OS.get_cmdline_user_args()
  for index in args.size():
   if args[index]=="--construction": construction_review=true; windmill_slice=true; capture_times=[1.0,4.0,8.0,13.0,17.0]
+  if args[index]=="--landscape-craft": landscape_craft=true; farm_film=true; capture_times=[2.0,6.0,10.0,14.0,18.0]
   if args[index]=="--pond-polish": pond_polish=true; farm_film=true; capture_times=[2.0,5.0,10.0,18.0]
   if args[index]=="--place-interactions": place_interactions=true; quiet_place_slice=true; farm_film=true; capture_times=[3.0,7.0,14.0,21.0,28.0,36.0]
   if args[index]=="--quiet-visits": quiet_visits=true; quiet_place_slice=true; farm_film=true; capture_times=[]
@@ -84,7 +87,7 @@ func run():
   if args[index]=="--seconds" and index+1<args.size(): duration=clampf(float(args[index+1]),1,60)
   if args[index]=="--capture" and index+1<args.size(): output=args[index+1]
  if output!="": DirAccess.make_dir_recursive_absolute(output)
- if quiet_visits or pond_polish or animal_detail or place_interactions:
+ if quiet_visits or pond_polish or animal_detail or place_interactions or landscape_craft:
   # The desktop compositor can stop drawing an occluded movie window while
   # simulation continues. Keep only this disposable recording window visible.
   root.always_on_top=true
@@ -100,6 +103,7 @@ func run():
   tree_camera()
   tree_story_clock=0.0
   if well_slice: start_well_story()
+ if landscape_craft: landscape_portrait()
  if animals_slice: send("camera",{"mode":"place","id":"barn","zoom":1.1})
  if farm_building_slice or animal_detail: farm_buildings_portrait()
  if quiet_place_slice or pond_polish: quiet_places_portrait()
@@ -317,6 +321,29 @@ func quiet_places_portrait():
  world.pan_size=12.0
  send("camera",{"mode":"pan","resetZoom":true})
 
+func landscape_portrait():
+ payload.items=[
+  {"id":"cottage","kind":"cottage","cell":{"x":3,"z":2},"rotation":0},
+  {"id":"mission","kind":"tree","cell":{"x":11,"z":2},"rotation":0},
+  {"id":"flowers","kind":"flowers","cell":{"x":5,"z":7},"rotation":0},
+  {"id":"rocks","kind":"rocks","cell":{"x":8,"z":10},"rotation":0}]
+ for z in range(6,12):payload.items.append({"id":"path-"+str(z),"kind":"path","cell":{"x":6,"z":z},"rotation":0})
+ payload.growthTreeID="mission"
+ snapshot()
+ var gallery=Node3D.new();world.add_child(gallery)
+ for i in 3:
+  var holder=Node3D.new();gallery.add_child(holder)
+  holder.position=HomesteadItems.cell_center(Vector2i(9+i*2,7))
+  holder.scale=Vector3(1.45,1,1.45)
+  world.presentation.tree(holder,false,i)
+ world.resident.cancel_tree_watering()
+ world.resident.route.clear();world.resident.state="pause";world.resident.timer=3600
+ world.resident.position=HomesteadItems.cell_center(Vector2i(7,7))
+ world.resident.model.set_motion("idle")
+ world.pan_focus=Vector3(-1,1.3,-3)
+ world.pan_size=12.4
+ send("camera",{"mode":"pan","resetZoom":true})
+
 func farm_buildings_portrait():
  well_phase=-1
  tree_story_clock=-1
@@ -496,6 +523,15 @@ func _unhandled_key_input(event):
 func _process(delta):
  if world==null: return false
  elapsed+=delta
+ if landscape_craft:
+  var step=0 if elapsed<3 else 1 if elapsed<8 else 2 if elapsed<12 else 3 if elapsed<16 else 4
+  if step!=landscape_step:
+   landscape_step=step
+   farm_film_title.text=["Beside the cottage","Grove, aspen and pine","Worn stone path","Meadow flowers","Weathered fieldstones"][step]
+   if step>0:
+    world.pan_focus=HomesteadItems.cell_center([Vector2i.ZERO,Vector2i(11,7),Vector2i(6,8),Vector2i(5,7),Vector2i(8,10)][step])+Vector3(0,[0.0,1.45,.08,.27,.23][step],0)
+    world.pan_size=[12.4,6.4,3.6,1.8,1.8][step]
+    send("camera",{"mode":"pan","resetZoom":true})
  if place_interactions:
   if elapsed>1.0 and not interaction_started:
    interaction_started=true
