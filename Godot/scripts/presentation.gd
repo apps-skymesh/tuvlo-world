@@ -42,6 +42,9 @@ func setup(world_data: HomesteadWorldData):
 	well.name="SharedWell"
 	add_child(well)
 	well.place(Vector3.INF)
+	var valley=HomesteadValley.new()
+	valley.name="Valley"
+	add_child(valley)
 	land_root=Node3D.new()
 	add_child(land_root)
 	prop_root=Node3D.new()
