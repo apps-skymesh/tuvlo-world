@@ -4,7 +4,7 @@ Godot Y-up coordinates use the cottage xyz conversion; no external art.
 import bpy,bmesh,math,os
 from pathlib import Path
 from mathutils import Vector
-COLORS={'Plaster':'e8d9b7','Stone':'b5ab92','StoneLight':'d3c5a7','Timber':'936b4a','TimberLight':'c39b68','Trim':'f1e4c4','Door':'866149','Glass':'708e88','MillRoof':'668a7d','Clay':'b77455','ClayLight':'cb8d65','BarnRed':'ae6450','BarnLight':'c27e61','Canvas':'e9d9b5','Iron':'53665f','IronDark':'34473f','Steel':'a4aea2','Brass':'c9a65c','Hay':'d9bd77','Cloth':'d2c09a','Water':'9cbbb0'}
+COLORS={'Plaster':'e8d9b7','Stone':'b5ab92','StoneLight':'d3c5a7','Timber':'936b4a','TimberLight':'c39b68','Trim':'f1e4c4','Door':'866149','Glass':'708e88','MillRoof':'668a7d','Clay':'b77455','ClayLight':'cb8d65','BarnRed':'ae6450','BarnLight':'c27e61','Canvas':'e9d9b5','Iron':'53665f','IronDark':'34473f','Steel':'a4aea2','Brass':'c9a65c','Hay':'d9bd77','Cloth':'d2c09a','Water':'9cbbb0','Roast':'ae7651','Crust':'d6a661','Char':'665244','Ember':'b46635'}
 def srgb(x):return x/12.92 if x<.04045 else ((x+.055)/1.055)**2.4
 M={}
 for name,h in COLORS.items():
@@ -27,6 +27,10 @@ def mesh(name,pts,faces,mat,bevel=0):
  d=bpy.data.meshes.new(name);d.from_pydata([xyz(p) for p in pts],[],faces);d.update();bm=bmesh.new();bm.from_mesh(d);bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces));bm.to_mesh(d);bm.free();o=bpy.data.objects.new(name,d);bpy.context.collection.objects.link(o);return finish(o,name,mat,bevel)
 def rod(name,a,b,r,mat,n=12):
  a,b=Vector(xyz(a)),Vector(xyz(b));bpy.ops.mesh.primitive_cylinder_add(vertices=n,radius=r,depth=(b-a).length,location=(a+b)/2);o=bpy.context.object;o.rotation_mode='QUATERNION';o.rotation_quaternion=(b-a).to_track_quat('Z','Y');return finish(o,name,mat,.004)
+def beam(name,a,b,width,depth,mat):
+ a,b=Vector(xyz(a)),Vector(xyz(b));mid=(a+b)/2
+ o=box(name,(mid.x,mid.z,-mid.y),(width,(b-a).length,depth),mat,.01)
+ o.rotation_mode='QUATERNION';o.rotation_quaternion=(b-a).to_track_quat('Z','Y');return o
 def rings(name,rows,mat,n=32):
  pts=[];faces=[]
  for y,rx,rz,x,z in rows:
@@ -67,7 +71,10 @@ def windmill():
    a=j*math.tau/32;b=(j+1)*math.tau/32;rod('Timber hoop',(r*math.cos(a),y,r*math.sin(a)),(r*math.cos(b),y,r*math.sin(b)),.024,'TimberLight',8)
  rings('Curved mill cap',[(2.84,.84,.84,0,0),(2.94,.85,.85,0,0),(3.15,.65,.65,0,0),(3.39,.39,.39,0,0),(3.53,.05,.05,0,0)],'MillRoof',32)
  for j in range(8):
-  a=j*math.tau/8;rod('Cap seam',(.81*math.cos(a),2.97,.81*math.sin(a)),(.03*math.cos(a),3.54,.03*math.sin(a)),.012,'Timber')
+  a=j*math.tau/8
+  profile=[(2.945,.855),(3.15,.657),(3.39,.397),(3.535,.055)]
+  for (y,r),(ny,nr) in zip(profile,profile[1:]):rod('Curved cap rib',(r*math.cos(a),y,r*math.sin(a)),(nr*math.cos(a),ny,nr*math.sin(a)),.012,'TimberLight',8)
+ rod('Cap finial',(0,3.53,0),(0,3.64,0),.037,'Brass',12)
  arch('Door frame',0,.22,.89,.66,1.15,.08,'Trim');arch('Planked mill door',0,.25,.942,.53,1.06,.035,'Door')
  for x in [-.16,0,.16]:box('Door seam',(x,.70,.968),(.015,.72,.012),'TimberLight',.004)
  rod('Brass latch',(.12,.68,.98),(.18,.68,.98),.015,'Brass')
@@ -101,7 +108,7 @@ def barn():
  for side in [-1,1]:
   box('Barn door',(-.53+side*.32,.98,.34),(.61,1.63,.08),'Door',.018)
   for x in [-.61,.61]:box('Door upright',(-.53+x,.98,.40),(.07,1.66,.06),'Trim',.01)
-  rod('Cross braced door',(-.53+side*.58,.20,.415),(-.53,1.76,.415),.025,'Trim')
+  beam('Flat door brace',(-.53+side*.58,.20,.415),(-.53,1.76,.415),.075,.04,'Trim')
   rod('Door pull',(-.53+side*.08,.92,.44),(-.53+side*.08,1.08,.44),.012,'Iron')
  arch('Hayloft frame',-.53,2.13,.32,.62,.63,.07,'Trim');arch('Hayloft shutter',-.53,2.17,.37,.49,.50,.04,'Glass')
  for x in [-1.65,1.65]:box('Pen post',(x,.42,1.18),(.10,.84,.10),'Timber',.02)
@@ -121,7 +128,7 @@ def doghouse():
  box('Kennel lintel',(-.35,.83,.28),(.73,.10,.06),'Trim',.035)
  box('Soft bed',(-.35,.25,-.20),(.72,.10,.68),'Canvas',.08)
  box('Paw plaque',(-.35,1.02,.32),(.38,.14,.045),'Trim',.04)
- for x in [-.46,-.24]:rod('Paw carving',(x,1.025,.346),(x,1.025,.355),.025,'Timber',12)
+ for x,y,r in [(-.35,1.0,.030),(-.41,1.045,.018),(-.35,1.06,.018),(-.29,1.045,.018)]:rod('Paw carving',(x,y,.346),(x,y,.355),r,'Timber',12)
  rings('Water bowl',[(.02,.19,.19,.62,-.60),(.06,.20,.20,.62,-.60),(.16,.17,.17,.62,-.60)],'Iron',24)
  rings('Still bowl water',[(.135,.135,.135,.62,-.60),(.14,.135,.135,.62,-.60)],'Water',24)
 
@@ -144,6 +151,19 @@ def grill():
  rod('Cool front handle',(-.43,.91,.57),(.13,.91,.57),.022,'Timber')
  for z in [-.4,.4]:rod('Wheel axle',(-.69,.16,z-.035),(-.69,.16,z+.035),.13,'IronDark',20)
  box('Folded cloth',(.65,1.015,.18),(.27,.028,.29),'Canvas',.02)
+ before=set(bpy.context.scene.objects)
+ for x in [-.38,.06]:
+  rod('Wooden food skewer',(x,1.09,-.36),(x,1.09,.36),.009,'TimberLight',8)
+  for j,z in enumerate([-.22,0,.22]):
+   box('Roasted bite',(x,1.095,z),(.145,.095,.145),'Roast' if j!=1 else 'Crust',.035)
+   for mark in [-.035,.035]:box('Grill sear',(x+mark,1.145,z),(.012,.007,.115),'Char',.003)
+ group('CookingFood',[o for o in bpy.context.scene.objects if o not in before])
+ before=set(bpy.context.scene.objects)
+ for j in range(9):
+  x=-.49+(j%3)*.31;z=-.25+(j//3)*.25
+  o=box('Warm charcoal',(x,1.017,z),(.12,.025,.10),'Ember' if j%3==0 else 'Char',.02);o.rotation_euler.z=j*.41
+ group('WarmCoals',[o for o in bpy.context.scene.objects if o not in before])
+
 
 output_root=Path(os.environ.get('TUVLO_FARM_OUTPUT',str(Path(__file__).resolve().parents[1]/'Godot/assets')))
 for name,build in [('windmill',windmill),('barn',barn),('doghouse',doghouse),('grill',grill)]:

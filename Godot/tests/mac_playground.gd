@@ -17,6 +17,10 @@ var motion_samples=[]
 var next_sample=0.0
 var started_ms=0
 var initial_camera="overview"
+var farm_film=false
+var farm_film_title: Label
+var farm_building_slice=false
+var farm_building_step=-1
 var animals_slice=false
 var equipped=false
 var cottage_slice=false
@@ -46,6 +50,8 @@ func run():
  var args=OS.get_cmdline_user_args()
  for index in args.size():
   if args[index]=="--construction": construction_review=true; windmill_slice=true; capture_times=[1.0,4.0,8.0,13.0,17.0]
+  if args[index]=="--farm-film": farm_film=true
+  if args[index]=="--farm-buildings": farm_building_slice=true; capture_times=[2.0,6.0,10.0,14.0,18.0]
   if args[index]=="--animals": animals_slice=true
   if args[index]=="--equipped": equipped=true
   if args[index]=="--windmill": windmill_slice=true
@@ -72,6 +78,7 @@ func run():
   tree_story_clock=0.0
   if well_slice: start_well_story()
  if animals_slice: send("camera",{"mode":"place","id":"barn","zoom":1.1})
+ if farm_building_slice: farm_buildings_portrait()
 func keep_landscape():
  # This host is a landscape-only visual lab; app orientation uses UIKit's lease.
  var maximum_height=maxi(540,int(root.size.x*0.625))
@@ -128,6 +135,18 @@ func button(parent: Node,text: String,action: Callable):
 func build_controls():
  var layer=CanvasLayer.new()
  root.add_child(layer)
+ if farm_film:
+  activity_label=Label.new()
+  activity_label.visible=false
+  layer.add_child(activity_label)
+  farm_film_title=Label.new()
+  farm_film_title.position=Vector2(24,20)
+  farm_film_title.add_theme_font_size_override("font_size",20)
+  farm_film_title.add_theme_color_override("font_shadow_color",Color(0.12,0.20,0.13,0.75))
+  farm_film_title.add_theme_constant_override("shadow_offset_x",1)
+  farm_film_title.add_theme_constant_override("shadow_offset_y",2)
+  layer.add_child(farm_film_title)
+  return
  var toolbar=HBoxContainer.new()
  toolbar.position=Vector2(16,14)
  layer.add_child(toolbar)
@@ -224,7 +243,7 @@ func toggle_visibility_study():
   if item.id=="tree": item.cell={"x":9,"z":6} if item.cell.x==14 else {"x":14,"z":4}
  snapshot()
  world.pan_focus=Vector3(0.5,1.5,0.0)
- world.pan_size=10.4
+ world.pan_size=12.4
  send("camera",{"mode":"pan","resetZoom":true})
 func harvest_portrait():
  well_phase=-1
@@ -257,7 +276,7 @@ func farm_buildings_portrait():
   {"id":"garden","kind":"garden","cell":{"x":5,"z":10},"rotation":0},
   {"id":"tree","kind":"tree","cell":{"x":15,"z":3},"rotation":0},
   {"id":"windmill","kind":"windmill","cell":{"x":10,"z":3},"rotation":0},
-  {"id":"barn","kind":"barn","cell":{"x":10,"z":9},"rotation":0},
+  {"id":"barn","kind":"barn","cell":{"x":15,"z":10},"rotation":0},
   {"id":"doghouse","kind":"doghouse","cell":{"x":4,"z":7},"rotation":0},
   {"id":"grill","kind":"grill","cell":{"x":7,"z":8},"rotation":0}]
  for z in range(6,10):payload.items.append({"id":"path-%d"%z,"kind":"path","cell":{"x":6,"z":z},"rotation":0})
@@ -281,7 +300,7 @@ func farm_buildings_portrait():
  world.resident.facing=world.orbit_yaw
  world.resident.desired_facing=world.orbit_yaw
  world.pan_focus=Vector3(0,1.25,-0.5)
- world.pan_size=10.4
+ world.pan_size=12.4
  send("camera",{"mode":"pan","resetZoom":true})
 
 func oven_portrait():
@@ -344,7 +363,7 @@ func start_well_story():
  world.resident.state="pause"
  world.resident.timer=100
  world.pan_focus=Vector3(0.5,1.5,0.0)
- world.pan_size=10.4
+ world.pan_size=12.4
  send("camera",{"mode":"pan","resetZoom":true})
  well_phase=0
  well_elapsed=0.0
@@ -428,6 +447,17 @@ func _unhandled_key_input(event):
 func _process(delta):
  if world==null: return false
  elapsed+=delta
+ if farm_building_slice:
+  var step=clampi(int((elapsed-0.5)/4.0),0,4)
+  if step!=farm_building_step:
+   farm_building_step=step
+   if farm_film_title: farm_film_title.text=["Beside the cottage","Windmill","Barn","Dog house","Grill"][step]
+   if step>0:
+    var kind=["windmill","barn","doghouse","grill"][step-1]
+    var height=HomesteadItems.DEFINITIONS[kind].height
+    world.pan_focus=HomesteadItems.item_center(world.data.find(kind))+Vector3(0,height*(0.43 if kind=="barn" else 0.35),0)
+    world.pan_size={"windmill":5.8,"barn":5.8,"doghouse":2.9,"grill":3.4}[kind]
+    send("camera",{"mode":"pan","resetZoom":true})
  if tree_slice: advance_tree_story(delta)
  if construction_review:
   var step=mini(3,int(elapsed/5.0))

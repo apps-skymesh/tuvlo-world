@@ -74,6 +74,59 @@ func run():
   check(is_equal_approx(flock[0].scale.x,young_size),"Collecting starts the next young flock")
   scene.reduced_motion=false
 
+ # Authored cooking groups must survive real scene batching and replayed jobs.
+ var grill_root=scene.presentation.nodes.grill
+ var cooking=grill_root.find_child("CookingFood",true,false)
+ var coals=grill_root.find_child("WarmCoals",true,false)
+ check(cooking!=null and coals!=null,"Imported grill retains job-driven geometry groups")
+ if cooking and coals:
+  for state in [1,2,0]:
+   var cooking_payload=animal_payload.duplicate(true)
+   cooking_payload.production[1].state=state
+   cooking_payload.production[1].remaining=20 if state==1 else 0
+   cooking_payload.production[1].progress=0.5 if state==1 else 1.0 if state==2 else 0.0
+   scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":cooking_payload}))
+   check(scene.presentation.nodes.grill==grill_root,"Cooking changes reuse the saved building")
+   check(cooking.visible==(state in [1,2]) and coals.visible==(state==1),"Working, ready and idle grill match the saved job")
+   check(not cooking.find_children("*","MeshInstance3D",true,false).is_empty(),"Batching keeps cooking meshes inside their visibility group")
+  var no_job=animal_payload.duplicate(true)
+  no_job.production=[]
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":no_job}))
+  check(not cooking.visible and not coals.visible,"Removing a job clears cooking cues without removing ownership")
+ var before_ghost=scene.presentation.sails.size()
+ var ghost_mill=scene.presentation.make_item("windmill",2,true,0)
+ check(scene.presentation.sails.size()==before_ghost,"Placement ghosts never register a working mill rotor")
+ ghost_mill.free()
+ var ghost_grill=scene.presentation.make_item("grill",1,true)
+ check(not ghost_grill.find_child("CookingFood",true,false).visible,"A placement preview never invents a cooking job")
+ ghost_grill.free()
+ # The rotated imported geometry must respect canonical placement envelopes.
+ for kind in ["windmill","barn","doghouse","grill"]:
+  for rotation in 4:
+   var holder=Node3D.new()
+   root.add_child(holder)
+   var art=HomesteadFarmBuildingArt.attach(holder,kind,rotation%2)
+   art.rotation.y=rotation*PI/2
+   var rotor=art.find_child("Rotor",true,false)
+   for angle in ([0.0,PI/4,PI/2] if rotor else [0.0]):
+    if rotor: rotor.rotation.z=angle
+    var bounds=authored_bounds(holder)
+    var size=HomesteadItems.footprint(kind,rotation)
+    check(bounds.position.x>=-size.x*0.5-0.02 and bounds.end.x<=size.x*0.5+0.02 and bounds.position.z>=-size.y*0.5-0.02 and bounds.end.z<=size.y*0.5+0.02,"Rotated authored geometry stays in the saved footprint: "+kind)
+    check(bounds.position.y>=-0.02 and bounds.end.y<=HomesteadItems.DEFINITIONS[kind].height+0.02,"Authored height stays inside its definition: "+kind)
+   for surface in art.find_children("*","MeshInstance3D",true,false):
+    check(surface.material_override.vertex_color_use_as_albedo,"Imported farm materials retain authored vertex paint")
+   holder.free()
+ var green_holder=Node3D.new()
+ var clay_holder=Node3D.new()
+ root.add_child(green_holder);root.add_child(clay_holder)
+ var green=HomesteadFarmBuildingArt.attach(green_holder,"windmill",0)
+ var roof=green.find_child("*MillRoof",true,false).material_override
+ var green_color=roof.albedo_color
+ var clay=HomesteadFarmBuildingArt.attach(clay_holder,"windmill",1)
+ check(roof.albedo_color.is_equal_approx(green_color) and not clay.find_child("*MillRoof",true,false).material_override.albedo_color.is_equal_approx(green_color),"Independent saved mill looks cannot recolor another instance")
+ green_holder.free();clay_holder.free()
+
  # Woods and quarry share the mainland turf, without becoming free building land.
  var connected=payload.duplicate(true)
  connected.edges=true
@@ -869,3 +922,18 @@ func run():
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)
  quit(0 if failures==0 else 1)
+
+func authored_bounds(parent: Node3D) -> AABB:
+ # Rotating a consolidated mesh's local AABB includes empty corners, especially
+ # around the mill's cross-shaped rotor. Measure its actual transformed vertices.
+ var result=AABB()
+ var first=true
+ for surface in parent.find_children("*","MeshInstance3D",true,false):
+  var transform=parent.global_transform.affine_inverse()*surface.global_transform
+  for index in surface.mesh.get_surface_count():
+   var vertices=surface.mesh.surface_get_arrays(index)[Mesh.ARRAY_VERTEX]
+   for vertex in vertices:
+    var point=transform*vertex
+    result=AABB(point,Vector3.ZERO) if first else result.expand(point)
+    first=false
+ return result

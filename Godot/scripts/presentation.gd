@@ -132,6 +132,10 @@ func rebuild():
 		animated.append_array(foliage)
 		animated.append_array(sails)
 		animated.append_array(pet_parts)
+		# Job-driven visibility needs its own batching boundary, like animation.
+		for group_name in ["CookingFood","WarmCoals"]:
+			var group=root.find_child(group_name,true,false)
+			if group: animated.append(group)
 		if root.has_meta("build_tool"): animated.append(root.get_meta("build_tool"))
 		HomesteadStaticBatcher.consolidate(root,animated)
 		nodes[item.id]=root
@@ -361,6 +365,8 @@ func oven_marker(id: String) -> Vector3:
 	return ovens[id].position+Vector3(0,1.15,1.85)
 
 func update_production():
+	for item in data.items:
+		if item.kind=="grill" and nodes.has(item.id): HomesteadFarmBuildingArt.set_grill_status(nodes[item.id],0)
 	var present={}
 	for status in data.production:
 		var anchor=harvest_anchor(status.placeID)
@@ -385,6 +391,8 @@ func update_production():
 		material.set_shader_parameter("progress",status.progress)
 		bubble.get_meta("label").text=countdown(int(status.remaining)) if status.state==1 else ""
 
+		if status.station=="grill" and nodes.has(status.placeID):
+			HomesteadFarmBuildingArt.set_grill_status(nodes[status.placeID],status.state)
 		if status.station=="oven":
 			var outdoor: HomesteadOutdoorOven=ovens.get(status.placeID)
 			if is_instance_valid(outdoor): outdoor.update_status(status)
@@ -1110,7 +1118,7 @@ func barn(root: Node3D):
 	HomesteadFarmBuildingArt.attach(root,"barn")
 	var sheep=Node3D.new()
 	root.add_child(sheep)
-	sheep.position=Vector3(0.25,0.02,0.98)
+	sheep.position=Vector3(-0.30,0.02,0.98)
 	sheep.scale=Vector3.ONE*0.60
 	sheep.set_meta("livestock",true)
 	farm_animal(sheep,false)
