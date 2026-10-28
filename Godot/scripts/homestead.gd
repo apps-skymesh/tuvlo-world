@@ -75,7 +75,7 @@ func _ready():
  var environment=WorldEnvironment.new()
  var settings=Environment.new()
  settings.background_mode=Environment.BG_COLOR
- settings.background_color=Color("efe6c8")
+ settings.background_color=HomesteadValley.HAZE
  settings.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR
  settings.ambient_light_color=Color("f6ead0")
  settings.ambient_light_energy=0.50
