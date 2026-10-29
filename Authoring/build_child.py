@@ -6,7 +6,7 @@ import bpy, bmesh, math, os
 from pathlib import Path
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
-PALETTE={'Skin':'e1b68f','Arm':'dfb38c','Leg':'d9af88','Top':'83a89a','Shorts':'b59562','Leather':'975f48','Canvas':'e8deca','Hair':'695440'}
+PALETTE={'Skin':'e1b68f','Arm':'dfb38c','Leg':'d9af88','Top':'83a89a','Shorts':'b59562','Skirt':'c3a36c','Leather':'975f48','Canvas':'e8deca','Hair':'695440','TopTrim':'729587','Scarf':'c58462'}
 M={}
 def xyz(p): return (p[0],-p[2],p[1])
 def srgb(v): return v/12.92 if v<.04045 else ((v+.055)/1.055)**2.4
@@ -64,9 +64,82 @@ face=smooth(rings('Sculpted cheeks',[
  (-.14,.253,.231,-.008),(-.04,.281,.252,-.014),(.065,.284,.251,-.014),
  (.17,.26,.222,-.015),(.25,.19,.16,-.02),(.294,.07,.06,-.02),(.30,.012,.012,-.02)],'Skin'))
 group('Face',[face])
+# Fit every facial feature against the final sculpt, retaining separate runtime
+# nodes for blinks, expressions and saved eye colors.
+face_anchors=bpy.data.objects.new('FaceAnchors',None)
+bpy.context.collection.objects.link(face_anchors)
+def face_anchor(name,x,y):
+ from mathutils import Vector
+ hit,location,normal,index=face.ray_cast(Vector(xyz((x,y,1))),Vector(xyz((0,0,-1))))
+ if not hit:raise RuntimeError('Face attachment missed '+name)
+ anchor=bpy.data.objects.new(name,None);bpy.context.collection.objects.link(anchor)
+ anchor.parent=face_anchors;anchor.location=location
+for side in [-1,1]:
+ suffix='L' if side<0 else 'R'
+ face_anchor('Eye'+suffix,side*.1,.008)
+ face_anchor('Brow'+suffix,side*.1,.083)
+ face_anchor('Cheek'+suffix,side*.165,-.075)
+ face_anchor('Dimple'+suffix,side*.075,-.11)
+ for i in range(3):face_anchor('Freckle'+suffix+str(i),side*(.12+i*.022),-.06+(i%2)*.017)
+face_anchor('Nose',0,-.043)
+face_anchor('Grin',0,-.118)
+for i in range(11):
+ x=-.064+i*.0128
+ face_anchor('Smile'+str(i),x,-.136+.030*(x/.064)**2)
 # Shaped fabric has shoulder slope, a fitted neckline and a lightly rolled hem.
 shirt=smooth(rings('Tailored shirt',[(.018,.216,.154,0),(.028,.229,.162,0),(.06,.23,.164,0),(.13,.24,.17,0),(.30,.229,.16,0),(.44,.243,.15,0),(.50,.24,.145,0),(.55,.19,.13,0),(.595,.115,.105,0)],'Top'))
 group('Shirt',[shirt])
+# Cloth graphics use the actual curved surface, not separate floating shapes.
+uv=shirt.data.uv_layers.new(name='Garment')
+for poly in shirt.data.polygons:
+ coords=[]
+ for loop in poly.loop_indices:
+  v=shirt.data.vertices[shirt.data.loops[loop].vertex_index].co
+  coords.append(((math.atan2(-v.y,v.x)/(2*math.pi))%1,(v.z-.018)/(.595-.018)))
+ seam=max(p[0] for p in coords)-min(p[0] for p in coords)>.5
+ for loop,(u,v) in zip(poly.loop_indices,coords):uv.data[loop].uv=(u+1 if seam and u<.5 else u,v)
+group('DressSkirt',[smooth(rings('Soft flared dress',[
+ (-.33,.309,.225,0),(-.316,.324,.237,0),(-.27,.312,.23,0),
+ (-.14,.281,.209,0),(0,.25,.181,0),(.13,.235,.17,0),(.15,.233,.168,0)],'Skirt'))])
+
+from mathutils import Vector
+def fitted_front(x,y,clearance=.004):
+ hit,location,normal,index=shirt.ray_cast(Vector(xyz((x,y,1))),Vector(xyz((0,0,-1))))
+ if not hit:raise RuntimeError('Cloth fitting missed the shirt at '+str((x,y)))
+ return (location.x,location.z,-location.y+clearance)
+
+# Neckerchief and collar surfaces are fitted against the final subdivided shirt.
+points=[];faces=[];n=10
+for r in range(n+1):
+ t=.01+.99*r/n
+ for i in range(n+1):
+  s=i/n;x=.025*(1-t)+(.19*s-.095)*t;y=.36+.15*t
+  points.append(fitted_front(x,y,.004+.003*math.sin(s*math.pi)))
+for r in range(n):
+ for i in range(n):
+  a=r*(n+1)+i;faces.append((a,a+1,a+n+2,a+n+1))
+scarf=mesh('Folded fitted neckerchief',points,faces,'Scarf')
+knot_z=fitted_front(0,.513)[2]+.013
+knot=smooth(rings('Fabric knot',[(.494,.012,.011,knot_z),(.503,.025,.019,knot_z),(.524,.024,.019,knot_z),(.535,.011,.010,knot_z)],'Scarf',24),1)
+group('Neckerchief',[scarf,knot])
+collars=[]
+for side in [-1,1]:
+ coords=[(side*.012,.55),(side*.12,.505),(side*.075,.445)]
+ points=[];faces=[];lookup={};n=8
+ for i in range(n+1):
+  for j in range(n+1-i):
+   u=i/n;v=j/n
+   x=coords[0][0]*(1-u-v)+coords[1][0]*u+coords[2][0]*v
+   y=coords[0][1]*(1-u-v)+coords[1][1]*u+coords[2][1]*v
+   lookup[i,j]=len(points);points.append(fitted_front(x,y,.006+.008*v))
+ for i in range(n):
+  for j in range(n-i):
+   tri=(lookup[i,j],lookup[i+1,j],lookup[i,j+1]);faces.append(tri if side<0 else tuple(reversed(tri)))
+   if i+j<n-1:
+    tri=(lookup[i+1,j],lookup[i+1,j+1],lookup[i,j+1]);faces.append(tri if side<0 else tuple(reversed(tri)))
+ collars.append(mesh('Folded fitted collar',points,faces,'Canvas'))
+group('PoloCollar',collars)
+group('LongForearm',[smooth(rings('Long cloth sleeve',[(.012,.068,.068,0),(-.04,.075,.072,0),(-.12,.068,.065,.002),(-.19,.056,.054,.005),(-.212,.053,.052,.006),(-.218,.048,.047,.006)],'Top'))])
 for name,length,rows,mat in [
  ('Sleeve',.27,[(0,.078,.080,0),(-.055,.092,.087,0),(-.16,.088,.081,0),(-.24,.083,.077,0),(-.262,.084,.078,0),(-.272,.077,.073,0)],'Top'),
  ('UpperLeg',.32,[(.02,.095,.10,0),(-.07,.109,.105,.003),(-.24,.097,.092,.006),(-.31,.087,.083,.004),(-.325,.08,.076,0)],'Shorts'),
@@ -81,7 +154,7 @@ for side,name in [(-1,'RightHand'),(1,'LeftHand')]:
 # Foot-shaped uppers rather than a rounded block: narrow heel, wide toe, fitted
 # cream sole, inset tongue, crossed laces and a small back pull tab.
 parts=[]
-parts.append(box('Flexible sole',(0,-.089,.045),(.194,.031,.325),'Canvas',.014))
+parts.append(smooth(rings('Fitted curved sole',[(-.105,.064,.127,.044),(-.101,.085,.15,.044),(-.084,.087,.152,.044),(-.075,.077,.138,.044)],'Canvas',40),1))
 parts.append(smooth(rings('Leather upper',[(-.082,.086,.147,.045),(-.065,.094,.154,.045),(-.028,.091,.151,.043),(.005,.078,.116,.023),(.032,.063,.073,-.021),(.038,.049,.053,-.028)],'Leather',40)))
 parts.append(box('Tongue',(0,.021,.047),(.087,.018,.13),'Canvas',.008))
 parts.append(box('Heel pull',(0,.02,-.087),(.038,.052,.021),'Canvas',.008))
@@ -91,6 +164,12 @@ for z in [.035,.068,.10]:
   lace.rotation_euler.z=side*.20
   parts.append(lace)
 group('Shoe',parts)
+for part in parts:
+ for v in part.data.vertices:
+  v.co.x*=.92
+  v.co.y*=.88
+ # Center the narrower tongue/laces/heel with the same footprint.
+ part.location.x*=.92;part.location.y*=.88
 # Hair is a fitted scalp with swept locks and continuous curtains. Style indices
 # are the existing saved catalogue IDs; no strand is a stacked sphere.
 from mathutils import Vector
@@ -190,6 +269,60 @@ for style in range(13):
    path=[(x,.22,.04),(x*.95,.31,.03),(x*.7+.035,.395,-.015)]
    locks.append(smooth(sweep('Shaped pointed tuft',path,[.065,.043,.002]),1))
  group('Hair'+str(style),locks)
+ # A cap replaces the crown volume. Preserve the saved style's fringe, sides,
+ # braids and tails below its band instead of pushing a hat through full hair.
+ fitted=[]
+ for lock in locks:
+  copy=lock.copy();copy.data=lock.data.copy();bpy.context.collection.objects.link(copy)
+  bm=bmesh.new();bm.from_mesh(copy.data)
+  bmesh.ops.bisect_plane(bm,geom=list(bm.verts)+list(bm.edges)+list(bm.faces),
+   plane_co=xyz((0,.125,0)),plane_no=xyz((0,1,0)),clear_outer=True,dist=.00001)
+  bm.to_mesh(copy.data);bm.free()
+  if not copy.data.polygons:bpy.data.objects.remove(copy,do_unlink=True);continue
+  for v in copy.data.vertices:
+   amount=max(0,min(1,(v.co.z+.02)/.145))
+   v.co.x*=1-.08*amount;v.co.y*=1-.06*amount
+  fitted.append(copy)
+ group('HatHair'+str(style),fitted)
+
+# An open crown and curved visor fit the same head datum as every hairstyle.
+for backwards in [False,True]:
+ points=[];faces=[];n=48;rows=12
+ for r in range(rows+1):
+  t=.004+(math.pi/2-.004)*r/rows
+  for i in range(n):
+   a=i*2*math.pi/n
+   points.append((.31*math.sin(t)*math.cos(a),.115+.245*math.cos(t),-.015+.288*math.sin(t)*math.sin(a)))
+ for r in range(rows):
+  for i in range(n):
+   a=r*n+i;b=r*n+(i+1)%n;faces.append((a,b,b+n,a+n))
+ crown=mesh('Six panel cap crown',points,faces,'Top')
+ bpy.context.view_layer.objects.active=crown
+ mod=crown.modifiers.new('Fabric thickness','SOLIDIFY');mod.thickness=.008
+ bpy.ops.object.modifier_apply(modifier=mod.name)
+ cap_parts=[crown]
+ for panel in range(6):
+  a=panel*2*math.pi/6
+  path=[(.312*math.sin(k*math.pi/24)*math.cos(a),.115+.247*math.cos(k*math.pi/24),-.015+.29*math.sin(k*math.pi/24)*math.sin(a)) for k in range(1,13)]
+  cap_parts.append(sweep('Crown seam',path,[.0022]*len(path),'TopTrim'))
+ points=[];faces=[];n=24
+ sign=-1 if backwards else 1
+ for r in range(5):
+  t=r/4
+  for i in range(n+1):
+   a=-1.13+i/n*2.26
+   x=(.282+.025*t)*math.sin(a)
+   z=.025+(.25+.14*t)*math.cos(a)
+   points.append((x,.115+.015*t+.018*(x/.31)**2,sign*z))
+ for r in range(4):
+  for i in range(n):
+   a=r*(n+1)+i;faces.append((a,a+1,a+n+2,a+n+1))
+ visor=mesh('Curved stitched visor',points,faces,'Top')
+ bpy.context.view_layer.objects.active=visor
+ mod=visor.modifiers.new('Visor edge','SOLIDIFY');mod.thickness=.012
+ bpy.ops.object.modifier_apply(modifier=mod.name)
+ cap_parts.append(visor)
+ group('CapBackward' if backwards else 'CapForward',cap_parts)
 
 # Combine by part and material: sculpted curls/locks stay one draw surface,
 # while each palette surface remains independently recolorable on the rig.

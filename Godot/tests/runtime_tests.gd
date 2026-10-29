@@ -56,7 +56,13 @@ func run():
   for surface in hair_surfaces:
    check(surface.material_override.albedo_color.is_equal_approx(Color(HomesteadAppearance.HAIR_COLORS[2])),"Imported hair follows saved color after switching styles")
    check(surface.material_override.vertex_color_use_as_albedo,"Recoloring preserves authored vertex paint")
-  check(child_model.outfit_details.visible==(style%6==4) and child_model.skirt.visible==(style%6==2),"All six outfits retain their saved visibility rules")
+  check(child_model.cloth_material.get_shader_parameter("outfit")==style%6 and child_model.skirt.visible==(style%6==2),"All six outfits retain their saved clothing choice")
+  for cap in [1,2]:
+   child_model.apply_appearance({"hair":style,"hat":cap,"outfit":style%6,"pattern":style%5,"skin":4,"hair_color":2})
+   var fitted_hair=authored_bounds(child_model.hair_root)
+   check(fitted_hair.size.length()>0 and fitted_hair.end.y<.127,"Every cap retains lower saved hair without intersecting its crown")
+   check(child_model.headwear.get_child_count()>0,"Both cap directions have authored surfaces")
+   check(child_model.cloth_material.get_shader_parameter("pattern")==style%5,"Saved prints survive cap and hairstyle changes")
  var guest_model=HomesteadResidentModel.new()
  root.add_child(guest_model)
  guest_model.apply_appearance({"hair":12,"hair_color":0,"skin":0})
@@ -561,6 +567,7 @@ func run():
  before=walker.position
  walker._physics_process(1.0/60.0)
  check(walker.position==before,"Resident must turn before walking in the opposite direction")
+ check(walker.model.mode in ["turn","carry_turn"],"A stationary turn steps rather than spinning on idle feet")
  # A starter world has no bench or pond to visit; choose the next owned destination.
  var complete_items=scene.data.items.duplicate(true)
  scene.data.items=scene.data.items.filter(func(item): return item.kind in ["garden","cottage"])
@@ -576,11 +583,11 @@ func run():
  model.animator.advance(0.3)
  for sample in 13:
   model.animator.seek(float(sample)*0.04,true)
-  var sole=model.left_ankle.to_global(Vector3(0,-0.105,0)).y
+  var sole=minf(model.left_ankle.to_global(Vector3(0,-.105,-.09)).y,model.left_ankle.to_global(Vector3(0,-.105,.17)).y)
   check(absf(sole-walker.position.y)<0.015,"Planted sole must remain on the ground throughout stance")
  model.animator.seek(0.2,true)
- var left_sole=model.left_ankle.to_global(Vector3(0,-0.105,0)).y
- var right_sole=model.right_ankle.to_global(Vector3(0,-0.105,0)).y
+ var left_sole=minf(model.left_ankle.to_global(Vector3(0,-.105,-.09)).y,model.left_ankle.to_global(Vector3(0,-.105,.17)).y)
+ var right_sole=minf(model.right_ankle.to_global(Vector3(0,-.105,-.09)).y,model.right_ankle.to_global(Vector3(0,-.105,.17)).y)
  check(right_sole-left_sole>0.04,"Swing foot must clear the ground while the other foot stays planted")
  # Camera safety is independent of zoom and angle: all modes keep the lens
  # outside the entire scene envelope, including intermediate opposite turns.

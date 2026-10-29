@@ -341,6 +341,7 @@ func _physics_process(delta):
 			anticipation=anticipation.move_toward(route[1],0.28-position.distance_to(anticipation))
 		var look_direction=(anticipation-position).normalized()
 		desired_facing=atan2(look_direction.x,look_direction.z)
+		var previous_facing=facing
 		facing=rotate_toward(facing,desired_facing,delta*4.5)
 		# Turn toward the route before stepping. A sharp corner slows the body
 		# rather than sliding it sideways while its feet still face the old path.
@@ -378,6 +379,8 @@ func _physics_process(delta):
 		distance_walked+=moved
 		if route.is_empty(): arrive()
 		elif moved>0.0001: model.set_motion("walk",moved/maxf(delta,0.0001))
+		elif absf(angle_difference(previous_facing,facing))>.002:
+			model.set_motion("turn",absf(angle_difference(previous_facing,facing))/maxf(delta,.0001))
 		else: model.set_motion("idle")
 	elif state=="align":
 		timer-=delta

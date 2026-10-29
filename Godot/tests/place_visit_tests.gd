@@ -115,7 +115,8 @@ static func run(scene,expect: Callable):
  for i in 20: tick(actor)
  actor.reduced_motion=true
  expect.call(until(actor,"pause") and is_zero_approx(actor.position.y),"Reduce Motion enabled during ascent returns to ground")
- # Every saved height/build/outfit keeps the reading pose rather than a flat skirt.
+ # Every saved height/build keeps a seated drape with its waist attached.
+ # Cloth now deforms on its surface; rotating the whole skirt detaches the waist.
  fixture(scene)
  for height in 3:
   for build in 3:
@@ -124,5 +125,5 @@ static func run(scene,expect: Callable):
    for i in 20:
     actor.model.animator.advance(.05)
     actor.model._process(.05)
-   expect.call(actor.model.skirt.rotation.x<-.8,"Seated reading bends saved skirts clear of thighs")
+   expect.call(actor.model.skirt.position.is_zero_approx() and actor.model.skirt.rotation.is_zero_approx() and actor.model.skirt_material.get_shader_parameter("seated")>.95,"Seated reading drapes the cloth while keeping its waist attached")
  scene.clear_host_session()
