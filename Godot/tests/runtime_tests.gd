@@ -1042,6 +1042,16 @@ func run():
  painted.free()
  preload("res://tests/landscape_tests.gd").run(scene,check,authored_bounds)
  preload("res://tests/place_visit_tests.gd").run(scene,check)
+ var bench=scene.workbench
+ bench.open({"id":"bench-test","output":"flour","tokens":[{"key":"wheat-0","good":"wheat","loaded":true,"available":true}]})
+ bench.celebrate(); bench.advance(0.1)
+ check(bench.needs_frames() and bench.heat.visible,"A committed press renders its short heat effect")
+ check(bench.sparks.all(func(spark): return spark.visible and spark.scale.x<0.04),"Sparks retain their small authored size throughout the burst")
+ bench.open({"id":"bench-test","output":"flour","reducedMotion":true,"tokens":[]})
+ bench.celebrate(); bench.advance(0.016)
+ check(not bench.needs_frames() and not bench.heat.visible and bench.sparks.all(func(spark): return not spark.visible),"Reduce Motion suppresses sparks, shimmer and automatic press movement")
+ bench.close()
+ check(not bench.visible and not bench.needs_frames(),"Closing releases the transient workbench animation")
  scene.queue_free()
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)

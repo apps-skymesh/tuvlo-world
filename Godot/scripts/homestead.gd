@@ -8,6 +8,7 @@ var resident=HomesteadResident.new()
 var guests: Array[HomesteadResident]=[]
 var creature: HomesteadCreature
 var camera=Camera3D.new()
+var workbench=HomesteadWorkbench.new()
 var session=""
 var layout_signature=""
 var navigation_signature=""
@@ -81,6 +82,8 @@ var calm_timer=0.0
 
 func _ready():
  Engine.max_fps=ACTIVE_FPS
+ add_child(workbench)
+ workbench.layout_ready.connect(func(payload): emit_message("workbenchLayout",payload))
  var environment=WorldEnvironment.new()
  var settings=Environment.new()
  settings.background_mode=Environment.BG_COLOR
@@ -271,6 +274,24 @@ func receive_host_json(json: String):
   return
  if packet.get("session")!=session or session=="": return
  match type:
+  "workbench":
+   workbench.open(payload)
+   wake_workbench()
+  "workbenchClose":
+   if str(payload.get("id",""))==workbench.identity:
+    workbench.close(); wake_workbench()
+  "workbenchCancel":
+   if str(payload.get("id",""))==workbench.identity:
+    workbench.cancel_motion(); wake_workbench()
+  "workbenchDrag":
+   if str(payload.get("id",""))==workbench.identity:
+    workbench.drag(payload); wake_workbench()
+  "workbenchPull":
+   if str(payload.get("id",""))==workbench.identity:
+    workbench.set_pull(float(payload.get("pull",0))); wake_workbench()
+  "workbenchCelebrate":
+   if str(payload.get("id",""))==workbench.identity and absf(Time.get_unix_time_from_system()-float(payload.get("at",0)))<1.0:
+    workbench.celebrate(); wake_workbench()
   "landPreview":
    var side=str(payload.get("side","west" if payload.get("west",false)==true else ""))
    var show=side in ["west","east"]
@@ -376,6 +397,7 @@ func set_paused(value: bool, previewing: bool=false):
  var was_paused=paused
  paused=value
  panel_preview=value and previewing
+ if value and not previewing: workbench.cancel_motion()
  if value and not was_paused: hold_menu_camera=true
  camera_preview_frames=(1 if reduced_motion or hold_menu_camera else 90) if panel_preview else 0
  if value:
@@ -404,6 +426,7 @@ func set_paused(value: bool, previewing: bool=false):
 
 # The native app retains one engine but releases all child-specific scene state.
 func clear_host_session():
+ workbench.close()
  presentation_generation+=1
  _cancel_presented_frame()
  resident.cancel_place_visit()
@@ -605,8 +628,15 @@ func update_frame_rate(delta: float):
  var target=ACTIVE_FPS if calm_timer<CALM_AFTER else CALM_FPS
  if Engine.max_fps!=target: Engine.max_fps=target
 
+func wake_workbench():
+ if paused and not panel_preview: return
+ camera_preview_frames=maxi(camera_preview_frames,2)
+ process_mode=Node.PROCESS_MODE_INHERIT
+ RenderingServer.render_loop_enabled=true
+ wake_frame_rate()
+
 func _input(event):
- if paused or session=="": return
+ if paused or workbench.visible or session=="": return
  wake_frame_rate()
  if event is InputEventScreenTouch:
   if not event.pressed:
@@ -703,6 +733,7 @@ func production_at_screen(point: Vector2) -> Dictionary:
  return {}
 
 func production_preview_active() -> bool:
+ if panel_preview and workbench.visible: return workbench.needs_frames()
  if not panel_preview or reduced_motion: return false
  if not data.construction.is_empty(): return true
  for status in data.production:
@@ -758,6 +789,9 @@ func unowned_land_at(cell: Vector2i) -> String:
  return ""
 
 func _process(delta):
+ var bench_was_moving=workbench.needs_frames()
+ workbench.advance(delta)
+ if bench_was_moving and not workbench.needs_frames(): camera_preview_frames=maxi(camera_preview_frames,2)
  if presentation.nodes.has(data.growth_tree_id):
   var tree=presentation.nodes[data.growth_tree_id].get_child(0).get_node_or_null("MissionTree")
   if tree is HomesteadMissionTree:
