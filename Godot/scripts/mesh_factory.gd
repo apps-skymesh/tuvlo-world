@@ -120,7 +120,7 @@ static func rounded_box(size: Vector3,radius: float) -> ArrayMesh:
 	var mesh=ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 	return mesh
-static func polygon_slab(parent: Node3D,outline: PackedVector2Array,top: float,bottom: float,color: String) -> MeshInstance3D:
+static func polygon_slab(parent: Node3D,outline: PackedVector2Array,top: float,bottom: float,color: String,sides=true) -> MeshInstance3D:
 	var vertices=PackedVector3Array()
 	var normals=PackedVector3Array()
 	var triangulation=Geometry2D.triangulate_polygon(outline)
@@ -129,13 +129,14 @@ static func polygon_slab(parent: Node3D,outline: PackedVector2Array,top: float,b
 			var p=outline[triangulation[i+k]]
 			vertices.append(Vector3(p.x,top,p.y))
 			normals.append(Vector3.UP)
-	for i in outline.size():
-		var a=outline[i]
-		var b=outline[(i+1)%outline.size()]
-		var normal=Vector3(b.y-a.y,0,a.x-b.x).normalized()
-		for p in [Vector3(a.x,top,a.y),Vector3(a.x,bottom,a.y),Vector3(b.x,top,b.y),Vector3(b.x,top,b.y),Vector3(a.x,bottom,a.y),Vector3(b.x,bottom,b.y)]:
-			vertices.append(p)
-			normals.append(normal)
+	if sides:
+		for i in outline.size():
+			var a=outline[i]
+			var b=outline[(i+1)%outline.size()]
+			var normal=Vector3(b.y-a.y,0,a.x-b.x).normalized()
+			for p in [Vector3(a.x,top,a.y),Vector3(a.x,bottom,a.y),Vector3(b.x,top,b.y),Vector3(b.x,top,b.y),Vector3(a.x,bottom,a.y),Vector3(b.x,bottom,b.y)]:
+				vertices.append(p)
+				normals.append(normal)
 	var arrays=[]
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX]=vertices

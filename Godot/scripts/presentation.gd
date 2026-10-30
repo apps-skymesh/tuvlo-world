@@ -175,11 +175,12 @@ func land_outline(bounds: Rect2i) -> PackedVector2Array:
 	return PackedVector2Array([Vector2(corner.x,corner.z),Vector2(corner.x+bounds.size.x,corner.z),Vector2(corner.x+bounds.size.x,corner.z+bounds.size.y),Vector2(corner.x,corner.z+bounds.size.y)])
 
 func terrain_surface(parent: Node3D, outline: PackedVector2Array, dormant=false):
-	var soil=Geometry2D.offset_polygon(outline,0.3,Geometry2D.JOIN_ROUND)
-	var rim=Geometry2D.offset_polygon(outline,0.12,Geometry2D.JOIN_ROUND)
-	for shape in soil: HomesteadMesh.polygon_slab(parent,shape,-0.12,-0.9,"bda782")
-	for shape in rim: HomesteadMesh.polygon_slab(parent,shape,-0.025,-0.25,"c8bc95")
-	var lawn=HomesteadMesh.polygon_slab(parent,outline,0.018,-0.06,"a9ba89")
+	# The valley already supplies the ground beneath every region. Extra soil
+	# slabs formed beige outlines that made the mainland look like cut-out tiles.
+	var lawn=HomesteadMesh.polygon_slab(parent,outline,0.018,-0.06,"a9ba89",false)
+	# A top-only turf surface receives building shadows without casting an
+	# artificial platform edge onto the surrounding valley.
+	lawn.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var grass=ShaderMaterial.new()
 	grass.shader=preload("res://scripts/meadow.gdshader")
 	grass.set_shader_parameter("dormant",1.0 if dormant else 0.0)
