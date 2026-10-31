@@ -1054,6 +1054,21 @@ func run():
  root.size=Vector2i(900,500)
  await process_frame
  check(bench.last_size==Vector2i(root.get_visible_rect().size),"An idle workbench refits its projected targets when the window changes")
+ bench.open({"id":"bundle-test","output":"plan","tokens":[
+  {"key":"material-wood-0","good":"wood","loaded":false,"available":true},
+  {"key":"material-stone-0","good":"stone","loaded":false,"available":true},
+  {"key":"material-food-0","good":"food","loaded":false,"available":true}]})
+ root.size=Vector2i(579,338) # Usable canvas inside a small landscape phone.
+ await process_frame
+ var back_token=bench.anchor(bench.token_position(0,false),Vector2(0.68,0.68))
+ var front_token=bench.anchor(bench.token_position(2,false),Vector2(0.68,0.68))
+ check(absf(front_token.y-back_token.y)*bench.viewport.size.y>=48,"Satchel rows leave a complete native touch target on small phones")
+ var compact=bench.anchor(Vector3(0,1.245,0),Vector2(9.35,4.85))
+ check(compact.w*bench.viewport.size.x<=minf(579*0.52,480)+1,"Workbench furniture stays compact instead of filling the landscape canvas")
+ root.size=Vector2i(1180,820)
+ await process_frame
+ compact=bench.anchor(Vector3(0,1.245,0),Vector2(9.35,4.85))
+ check(compact.w*bench.viewport.size.x<=481,"A wider iPad does not enlarge the workbench beyond its point cap")
  root.size=original_window
  await process_frame
  bench.close()

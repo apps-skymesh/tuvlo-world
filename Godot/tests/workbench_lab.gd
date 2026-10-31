@@ -5,24 +5,26 @@ var pointer_key=""
 var start_point=Vector2.ZERO
 var lab_id="mac-workbench"
 var lab_quiet=false
+var resource_keys=["flour-0","fruit-0","fruit-1"]
 func run():
  await super.run()
  capture_times=[]; duration=0.0
  root.always_on_top=true; root.grab_focus()
  root.window_input.connect(_lab_input)
- if "--loaded" in OS.get_cmdline_user_args(): loaded=["flour-0","fruit-0","fruit-1"]
+ if "--building" in OS.get_cmdline_user_args(): resource_keys=["material-wood-0","material-stone-0","material-food-0"]
+ if "--loaded" in OS.get_cmdline_user_args(): loaded=resource_keys.duplicate()
  send("lifecycle",{"paused":true,"previewing":true})
  bench_state()
  var layer=CanvasLayer.new(); layer.layer=10; root.add_child(layer)
  var bar=HBoxContainer.new(); bar.position=Vector2(16,62); layer.add_child(bar)
- button(bar,"Load",func(): loaded=["flour-0","fruit-0","fruit-1"]; bench_state())
+ button(bar,"Load",func(): loaded=resource_keys.duplicate(); bench_state())
  button(bar,"Pull",preview_craft)
  button(bar,"Reset",func(): loaded=[]; bench_state())
  button(bar,"Capture",func(): save_bench())
  if "--review" in OS.get_cmdline_user_args():
   await create_timer(1.0).timeout
   await save_bench("satchel")
-  loaded=["flour-0","fruit-0","fruit-1"]; bench_state()
+  loaded=resource_keys.duplicate(); bench_state()
   await create_timer(1.0).timeout
   await save_bench("loaded")
   preview_craft()
@@ -48,8 +50,8 @@ func run():
 
 func bench_state():
  var ingredients=[]
- for key in ["flour-0","fruit-0","fruit-1"]:
-  ingredients.append({"key":key,"good":key.get_slice("-",0),"loaded":key in loaded,"available":true})
+ for key in resource_keys:
+  ingredients.append({"key":key,"good":key.trim_prefix("material-").get_slice("-",0),"loaded":key in loaded,"available":true})
  send("workbench",{"id":lab_id,"recipe":"tart","output":"tart","state":0,"tokens":ingredients,"reducedMotion":lab_quiet})
 func preview_craft():
  if loaded.size()!=3: return
