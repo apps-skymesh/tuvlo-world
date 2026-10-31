@@ -124,7 +124,7 @@ func reset(equipped: bool):
   {"id":"garden","kind":"garden","cell":{"x":3,"z":7},"rotation":0},
   {"id":"tree","kind":"tree","cell":{"x":11,"z":3},"rotation":0}],
   "land":[],"appearance":{"hair":3,"outfit":0},"approvedWins":21,"growthTreeID":"tree",
-  "edges":true,"harvest":{"woods":"wood","quarry":"stone","garden":"food"}}
+  "edges":true,"harvest":{"garden":"food"}}
  for z in range(5,10): payload.items.append({"id":"path-%d"%z,"kind":"path","cell":{"x":7,"z":z},"rotation":0})
  if cottage_slice:
   payload.items=[
@@ -256,7 +256,7 @@ func cycle_production():
  if not has_mill: payload.items.append({"id":"windmill","kind":"windmill","cell":{"x":10,"z":10},"rotation":0})
  if not has_orchard: payload.items.append({"id":"orchard","kind":"orchard","cell":{"x":-4,"z":6},"rotation":0})
  if "west" not in payload.land: payload.land.append("west")
- payload.harvest={"woods":"wood","quarry":"stone"}
+ payload.harvest={}
  payload.farmStages=[0,0] if production_phase==0 else [2,3] if production_phase==1 else [4,4]
  payload.farmFruitStage=production_phase
  payload.production=[]

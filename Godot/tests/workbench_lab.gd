@@ -5,13 +5,17 @@ var pointer_key=""
 var start_point=Vector2.ZERO
 var lab_id="mac-workbench"
 var lab_quiet=false
+var building_lab=false
 var resource_keys=["flour-0","fruit-0","fruit-1"]
 func run():
  await super.run()
  capture_times=[]; duration=0.0
  root.always_on_top=true; root.grab_focus()
  root.window_input.connect(_lab_input)
- if "--building" in OS.get_cmdline_user_args(): resource_keys=["material-wood-0","material-stone-0","material-food-0"]
+ if "--building" in OS.get_cmdline_user_args():
+  building_lab=true; resource_keys=["material-food-0"]
+ if "--empty-building" in OS.get_cmdline_user_args():
+  building_lab=true; resource_keys=[]
  if "--loaded" in OS.get_cmdline_user_args(): loaded=resource_keys.duplicate()
  send("lifecycle",{"paused":true,"previewing":true})
  bench_state()
@@ -51,10 +55,10 @@ func run():
 func bench_state():
  var ingredients=[]
  for key in resource_keys:
-  ingredients.append({"key":key,"good":key.trim_prefix("material-").get_slice("-",0),"loaded":key in loaded,"available":true})
- send("workbench",{"id":lab_id,"recipe":"tart","output":"tart","state":0,"tokens":ingredients,"reducedMotion":lab_quiet})
+  ingredients.append({"key":key,"good":key.trim_prefix("material-").get_slice("-",0),"loaded":key in loaded,"available":true,"quantity":3 if building_lab else 1})
+ send("workbench",{"id":lab_id,"recipe":"nook" if building_lab else "tart","output":"plan" if building_lab else "tart","state":0,"tokens":ingredients,"reducedMotion":lab_quiet})
 func preview_craft():
- if loaded.size()!=3: return
+ if loaded.size()!=resource_keys.size(): return
  send("workbenchCelebrate",{"id":lab_id,"at":Time.get_unix_time_from_system()})
 func save_bench(label="workbench"):
  if output=="": return

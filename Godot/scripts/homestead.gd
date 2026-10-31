@@ -718,7 +718,9 @@ func producer_at_screen(point: Vector2) -> String:
  var query=PhysicsRayQueryParameters3D.create(from,from+camera.project_ray_normal(point)*100,1)
  var result=get_world_3d().direct_space_state.intersect_ray(query)
  if result.is_empty(): return ""
- return str(result.collider.get_meta("producer_id",""))
+ var producer=str(result.collider.get_meta("producer_id",""))
+ # Woods and quarry are scenery; old host payloads must not revive collection.
+ return "" if producer in ["woods","quarry","waterside"] else producer
 
 func production_at_screen(point: Vector2) -> Dictionary:
  var from=camera.project_ray_origin(point)
