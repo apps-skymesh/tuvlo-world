@@ -34,8 +34,13 @@ func run():
   for spark in world.workbench.sparks: quiet=quiet and not spark.visible
   print("WORKBENCH_REVIEW reduceMotionQuiet=",quiet)
   await save_bench("reduce-motion")
-  await create_timer(15.0).timeout
-  quit(0 if quiet else 1)
+  root.size=Vector2i(900,500)
+  await create_timer(0.5).timeout
+  var refitted=world.workbench.last_size==Vector2i(root.get_visible_rect().size)
+  print("WORKBENCH_REVIEW resized=",refitted)
+  await save_bench("window")
+  await create_timer(14.5).timeout
+  quit(0 if quiet and refitted else 1)
   return
  if output!="":
   await create_timer(1.0).timeout

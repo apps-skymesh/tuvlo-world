@@ -2,6 +2,7 @@ class_name HomesteadWorkbench
 extends CanvasLayer
 # Foreground furniture only. Native Tuvlo stages ingredients and commits jobs.
 signal layout_ready(payload: Dictionary)
+signal redraw_requested
 var identity=""
 var viewport=SubViewport.new()
 var container=SubViewportContainer.new()
@@ -30,7 +31,10 @@ func _ready():
  shade.color=Color(0.035,0.045,0.035,0.38)
  shade.mouse_filter=Control.MOUSE_FILTER_IGNORE
  add_child(shade)
- get_viewport().size_changed.connect(func(): shade.size=get_viewport().get_visible_rect().size)
+ get_viewport().size_changed.connect(func():
+  shade.size=get_viewport().get_visible_rect().size
+  resize()
+  if visible: redraw_requested.emit())
  shade.size=get_viewport().get_visible_rect().size
  container.mouse_filter=Control.MOUSE_FILTER_IGNORE
  container.stretch=true

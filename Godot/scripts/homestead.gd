@@ -84,6 +84,7 @@ func _ready():
  Engine.max_fps=ACTIVE_FPS
  add_child(workbench)
  workbench.layout_ready.connect(func(payload): emit_message("workbenchLayout",payload))
+ workbench.redraw_requested.connect(wake_workbench)
  var environment=WorldEnvironment.new()
  var settings=Environment.new()
  settings.background_mode=Environment.BG_COLOR

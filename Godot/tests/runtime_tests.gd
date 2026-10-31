@@ -1050,6 +1050,12 @@ func run():
  bench.open({"id":"bench-test","output":"flour","reducedMotion":true,"tokens":[]})
  bench.celebrate(); bench.advance(0.016)
  check(not bench.needs_frames() and not bench.heat.visible and bench.sparks.all(func(spark): return not spark.visible),"Reduce Motion suppresses sparks, shimmer and automatic press movement")
+ var original_window=root.size
+ root.size=Vector2i(900,500)
+ await process_frame
+ check(bench.last_size==Vector2i(root.get_visible_rect().size),"An idle workbench refits its projected targets when the window changes")
+ root.size=original_window
+ await process_frame
  bench.close()
  check(not bench.visible and not bench.needs_frames(),"Closing releases the transient workbench animation")
  scene.queue_free()
