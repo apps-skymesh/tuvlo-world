@@ -47,6 +47,7 @@ var presentation_generation=0
 var presentation_callback=Callable()
 var web_callback
 var land_preview=false
+var land_preview_side=""
 var selected_id=""
 var preview_cell=Vector2i.ZERO
 var preview_rotation=0
@@ -183,6 +184,9 @@ func receive_host_json(json: String):
   var first_snapshot=session==""
   var changing_child=session!="" and session!=packet.session
   if changing_child:
+   land_preview=false
+   land_preview_side=""
+   presentation.clear_preview()
    # All living-tree animation belongs to the previous child session.
    for root in presentation.nodes.values():
     presentation.prop_root.remove_child(root)
@@ -264,6 +268,7 @@ func receive_host_json(json: String):
    creature.queue_free()
    creature=null
   if selected_id!="": update_preview()
+  elif land_preview: refresh_land_preview()
   if first_snapshot or changing_child:
    _cancel_presented_frame()
    presentation_generation+=1
@@ -295,13 +300,10 @@ func receive_host_json(json: String):
     workbench.celebrate(); wake_workbench()
   "landPreview":
    var side=str(payload.get("side","west" if payload.get("west",false)==true else ""))
-   var show=side in ["west","east"]
-   if show:
-    var bounds: Rect2i=HomesteadItems.LAND_BOUNDS[side]
-    presentation.highlight(bounds.position,bounds.size,true)
-   elif land_preview:
-    presentation.clear_preview()
-   land_preview=show
+   land_preview_side=side if side in ["west","east","north"] else ""
+   land_preview=land_preview_side!=""
+   refresh_land_preview()
+   wake_workbench() # A paused native menu may have exhausted its draw budget.
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "sunrise": begin_sunrise()
   "waterTree": begin_tree_watering(maxi(0,int(payload.get("count",0))))
@@ -440,6 +442,8 @@ func clear_host_session():
  resident.model.carrying_water=false
  navigation.well_cell=Vector2i(10000,10000)
  session=""
+ land_preview=false
+ land_preview_side=""
  reset_press()
  selected_id=""
  pending_intent=""
@@ -513,7 +517,17 @@ func reset_press(release=true):
   pointer_down=false
   pointer_index=-1
   dragging=false
- if selected_id=="": presentation.clear_preview()
+ if selected_id=="": refresh_land_preview()
+
+# A survey is host-selected UI, not a transient pointer verdict. Lifecycle and
+# pointer cancellation must preserve it until the host closes/changes the page.
+func refresh_land_preview():
+ if selected_id!="": return
+ if land_preview and HomesteadItems.LAND_BOUNDS.has(land_preview_side):
+  var bounds: Rect2i=HomesteadItems.LAND_BOUNDS[land_preview_side]
+  presentation.highlight(bounds.position,bounds.size,true,true)
+ else:
+  presentation.clear_preview()
 
 func ground_cell(point: Vector2):
  var hit=Plane(Vector3.UP,0).intersects_ray(camera.project_ray_origin(point),camera.project_ray_normal(point))
@@ -592,7 +606,7 @@ func end_press(point: Vector2,cancelled=false):
  dragging=false
  moving_selection=false
  pending_pick=null
- if selected_id=="": presentation.clear_preview()
+ if selected_id=="": refresh_land_preview()
 
 # Absolute bounds work for the full expanded map as well as a close Follow view.
 # Zooming Overview starts a free view; Overview itself always fits every plot.

@@ -416,6 +416,24 @@ func run():
  check(scene.data.placement_error("flowers",Vector2i(21,7),0)=="outside-land","Preview must never grant placement")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"landPreview","payload":{"side":""}}))
  check(not scene.land_preview,"Closing preview clears its highlight")
+ var survey_camera=scene.camera.global_transform
+ var survey_land=scene.data.land_sides.duplicate()
+ for side in ["west","east","north"]:
+  scene.camera_preview_frames=0
+  scene.process_mode=Node.PROCESS_MODE_DISABLED
+  RenderingServer.render_loop_enabled=false
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"landPreview","payload":{"side":side}}))
+  check(scene.land_preview,"Survey highlights every region including future north")
+  check(RenderingServer.render_loop_enabled and scene.camera_preview_frames>=2 and scene.process_mode==Node.PROCESS_MODE_INHERIT,"Survey changes redraw an already sleeping menu renderer")
+  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"lifecycle","payload":{"paused":true,"previewing":true}}))
+  scene.reset_press()
+  check(is_instance_valid(scene.presentation.preview_node),"Survey marker survives menu lifecycle and pointer cancellation")
+  check(scene.presentation.highlight_size==HomesteadItems.LAND_BOUNDS[side].size,"Survey marker matches the actual region footprint")
+  check(scene.camera.global_transform==survey_camera,"Survey must never move the camera")
+  check(scene.data.land_sides==survey_land,"Survey grants no ownership")
+  var survey_cell: Vector2i=HomesteadItems.LAND_BOUNDS[side].position+Vector2i(1,1)
+  check(scene.data.placement_error("flowers",survey_cell,0)=="outside-land","Survey grants no placement")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"landPreview","payload":{"side":""}}))
  scene.data.land_sides.append("east")
  scene.presentation.rebuild()
  scene.navigation.rebuild(scene.data)
