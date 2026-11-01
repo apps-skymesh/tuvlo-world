@@ -6,6 +6,14 @@ uniform int kind = 0;
 // -1 preserves family material bubbles; prototype states: idle/work/ready.
 uniform int production_state = -1;
 uniform float progress = 0.0;
+// Shared plates with SwiftUI; only the arc is procedural. No CPU frame loop.
+uniform sampler2D sun_track : source_color, filter_linear;
+uniform sampler2D sun_waiting : source_color, filter_linear;
+uniform sampler2D sun_bloom : source_color, filter_linear;
+uniform float sample_time = 0.0;
+uniform float progress_rate = 0.0;
+uniform bool smooth_progress = true;
+
 // Collect flight fades the token out.
 uniform float fade = 1.0;
 
@@ -32,6 +40,18 @@ void vertex() {
 
 void fragment() {
 	vec2 p = vec2(UV.x * 2.0 - 1.0, 1.0 - UV.y * 2.0);
+	if (production_state >= 0) {
+        vec4 plate = production_state == 2 ? texture(sun_bloom, UV) : production_state == 0 ? texture(sun_waiting, UV) : texture(sun_track, UV);
+        if (production_state == 1) {
+            float elapsed = min(1.0, mod(TIME - sample_time + 3600.0, 3600.0));
+            float shown = min(0.999, progress + (smooth_progress ? elapsed * progress_rate : 0.0));
+            float angle = mod(atan(p.x, p.y) + 6.2831853, 6.2831853) / 6.2831853;
+            float stroke = 1.0 - smoothstep(0.051, 0.059, abs(length(p) - 0.72));
+            if (angle <= shown) plate.rgb = mix(plate.rgb, vec3(0.646, 0.376, 0.070), stroke);
+        }
+        ALBEDO = plate.rgb;
+        ALPHA = plate.a * fade;
+    } else {
 	float face = token_shape(p);
 	if (face > 0.0) discard;
 
@@ -120,4 +140,6 @@ void fragment() {
 	}
 	ALBEDO = col;
 	ALPHA = alpha * fade;
+
+    }
 }
