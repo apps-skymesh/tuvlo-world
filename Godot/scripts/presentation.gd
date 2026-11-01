@@ -1018,9 +1018,9 @@ func blocks_view(camera: Camera3D,target: Vector3,center: Vector3,radius: float)
 	var segment=target-camera.global_position
 	var amount=(center-camera.global_position).dot(segment)/maxf(0.01,segment.length_squared())
 	return amount>0 and amount<1 and (camera.global_position+segment*amount).distance_to(center)<radius
-func update_character_visibility(camera: Camera3D,feet: Vector3,enabled: bool):
-	var face=feet+Vector3(0,1.65,0)
-	var chest=feet+Vector3(0,1.0,0)
+func update_character_visibility(camera: Camera3D,feet: Vector3,enabled: bool,inspected_id: String="",subject_height: float=1.65):
+	var face=feet+Vector3(0,subject_height,0)
+	var chest=feet+Vector3(0,1.0 if inspected_id=="" else 0.35,0)
 	for item in data.items:
 		if not HomesteadItems.DEFINITIONS[item.kind].blocks or HomesteadItems.DEFINITIONS[item.kind].height<0.9: continue
 		var root: Node3D=nodes.get(item.id)
@@ -1033,8 +1033,8 @@ func update_character_visibility(camera: Camera3D,feet: Vector3,enabled: bool):
 		if tree_stage in [0,1]:
 			center=HomesteadItems.item_center(item)+Vector3(0,0.55 if tree_stage==0 else 1.25,0)
 			radius=0.35 if tree_stage==0 else 0.8
-		var mode=2 if enabled and (blocks_view(camera,face,center,radius) or blocks_view(camera,chest,center,radius)) else 0
-		if enabled and mode==0 and item.kind=="tree" and tree_stage>=1:
+		var mode=2 if enabled and item.id!=inspected_id and (blocks_view(camera,face,center,radius) or blocks_view(camera,chest,center,radius)) else 0
+		if enabled and mode==0 and item.id!=inspected_id and inspected_id=="" and item.kind=="tree" and tree_stage>=1:
 			for cottage_item in data.items:
 				if cottage_item.kind!="cottage": continue
 				var door=HomesteadItems.item_center(cottage_item)+Vector3(0,1.35,1.5).rotated(Vector3.UP,cottage_item.rotation*PI/2)

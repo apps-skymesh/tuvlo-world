@@ -1063,37 +1063,22 @@ func run():
  painted.free()
  preload("res://tests/landscape_tests.gd").run(scene,check,authored_bounds)
  preload("res://tests/place_visit_tests.gd").run(scene,check)
- var bench=scene.workbench
- bench.open({"id":"bench-test","output":"flour","tokens":[{"key":"wheat-0","good":"wheat","loaded":true,"available":true}]})
- bench.celebrate(); bench.advance(0.1)
- check(bench.needs_frames() and bench.heat.visible,"A committed press renders its short heat effect")
- check(bench.sparks.all(func(spark): return spark.visible and spark.scale.x<0.04),"Sparks retain their small authored size throughout the burst")
- bench.open({"id":"bench-test","output":"flour","reducedMotion":true,"tokens":[]})
- bench.celebrate(); bench.advance(0.016)
- check(not bench.needs_frames() and not bench.heat.visible and bench.sparks.all(func(spark): return not spark.visible),"Reduce Motion suppresses sparks, shimmer and automatic press movement")
- var original_window=root.size
- root.size=Vector2i(900,500)
- await process_frame
- check(bench.last_size==Vector2i(root.get_visible_rect().size),"An idle workbench refits its projected targets when the window changes")
- bench.open({"id":"bundle-test","output":"plan","tokens":[
-  {"key":"material-wood-0","good":"wood","loaded":false,"available":true},
-  {"key":"material-stone-0","good":"stone","loaded":false,"available":true},
-  {"key":"material-food-0","good":"food","loaded":false,"available":true}]})
- root.size=Vector2i(579,338) # Usable canvas inside a small landscape phone.
- await process_frame
- var back_token=bench.anchor(bench.token_position(0,false),Vector2(0.68,0.68))
- var front_token=bench.anchor(bench.token_position(2,false),Vector2(0.68,0.68))
- check(absf(front_token.y-back_token.y)*bench.viewport.size.y>=48,"Satchel rows leave a complete native touch target on small phones")
- var compact=bench.anchor(Vector3(0,1.245,0),Vector2(9.35,4.85))
- check(compact.w*bench.viewport.size.x<=minf(579*0.52,480)+1,"Workbench furniture stays compact instead of filling the landscape canvas")
- root.size=Vector2i(1180,820)
- await process_frame
- compact=bench.anchor(Vector3(0,1.245,0),Vector2(9.35,4.85))
- check(compact.w*bench.viewport.size.x<=481,"A wider iPad does not enlarge the workbench beyond its point cap")
- root.size=original_window
- await process_frame
- bench.close()
- check(not bench.visible and not bench.needs_frames(),"Closing releases the transient workbench animation")
+ # Inspector framing and feedback use only transient camera/screen coordinates.
+ var feedback=[]
+ scene.host_message.connect(func(json):
+  var inspector_packet=JSON.parse_string(json)
+  if inspector_packet.type=="feedbackAnchor": feedback.append(inspector_packet.payload))
+ var inspector_items=[{"id":"inspect-cottage","kind":"cottage","cell":{"x":7,"z":7},"rotation":0,"style":0}]
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"inspector-review","type":"snapshot","payload":{"items":inspector_items,"land":[]}}))
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"inspector-review","type":"camera","payload":{"mode":"place","id":"inspect-cottage","framing":0,"inspectionTop":0.3,"inspectionBottom":0.18}}))
+ scene._process(1)
+ check(int(scene.presentation.nodes["inspect-cottage"].get_meta("visibility_mode",0))==0,"Inspection keeps its own building opaque while reusing obstruction clearance")
+ check(scene.camera.v_offset>0,"An inspector reserves the HUD/header and bottom dock without moving saved land")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"inspector-review","type":"feedbackAnchor","payload":{"id":"inspect-cottage","event":"saved-once"}}))
+ check(feedback.size()==1 and feedback[0].event=="saved-once" and feedback[0].x>=0 and feedback[0].x<=1 and feedback[0].y>=0 and feedback[0].y<=1,"A saved item has one bounded screen-space destination")
+ check(scene.data.find("inspect-cottage").cell==Vector2i(7,7) and scene.data.land_sides.is_empty(),"Inspector motion cannot alter coordinates or grant land")
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"inspector-review","type":"feedbackAnchor","payload":{"id":"unowned","event":"unknown"}}))
+ check(feedback.size()==1,"Unknown items never invent a saved destination")
  scene.queue_free()
  await process_frame
  print("HOMESTEAD_RUNTIME_TESTS failures=",failures)

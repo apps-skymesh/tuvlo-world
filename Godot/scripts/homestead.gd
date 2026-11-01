@@ -8,7 +8,6 @@ var resident=HomesteadResident.new()
 var guests: Array[HomesteadResident]=[]
 var creature: HomesteadCreature
 var camera=Camera3D.new()
-var workbench=HomesteadWorkbench.new()
 var session=""
 var layout_signature=""
 var navigation_signature=""
@@ -16,6 +15,8 @@ var camera_mode="overview"
 var focus_item_id=""
 var focus_station=""
 var panel_framing=0.0
+var inspection_top=0.0
+var inspection_bottom=0.0
 var camera_preview_frames=0
 var panel_preview=false
 var hold_menu_camera=true
@@ -83,9 +84,6 @@ var calm_timer=0.0
 
 func _ready():
  Engine.max_fps=ACTIVE_FPS
- add_child(workbench)
- workbench.layout_ready.connect(func(payload): emit_message("workbenchLayout",payload))
- workbench.redraw_requested.connect(wake_workbench)
  var environment=WorldEnvironment.new()
  var settings=Environment.new()
  settings.background_mode=Environment.BG_COLOR
@@ -159,6 +157,10 @@ static func grade_curve() -> GradientTexture1D:
 
 func _web_receive(arguments):
  if arguments.size()==1 and arguments[0] is String: receive_host_json(arguments[0])
+
+func menu_origin(point: Vector2) -> Dictionary:
+ var extent=get_viewport().get_visible_rect().size
+ return {"x":clampf(point.x/maxf(1,extent.x),0,1),"y":clampf(point.y/maxf(1,extent.y),0,1)}
 
 func emit_message(type: String,payload: Dictionary):
  var json=JSON.stringify({"version":1,"session":session,"type":type,"payload":payload})
@@ -280,30 +282,23 @@ func receive_host_json(json: String):
   return
  if packet.get("session")!=session or session=="": return
  match type:
-  "workbench":
-   workbench.open(payload)
-   wake_workbench()
-  "workbenchClose":
-   if str(payload.get("id",""))==workbench.identity:
-    workbench.close(); wake_workbench()
-  "workbenchCancel":
-   if str(payload.get("id",""))==workbench.identity:
-    workbench.cancel_motion(); wake_workbench()
-  "workbenchDrag":
-   if str(payload.get("id",""))==workbench.identity:
-    workbench.drag(payload); wake_workbench()
-  "workbenchPull":
-   if str(payload.get("id",""))==workbench.identity:
-    workbench.set_pull(float(payload.get("pull",0))); wake_workbench()
-  "workbenchCelebrate":
-   if str(payload.get("id",""))==workbench.identity and absf(Time.get_unix_time_from_system()-float(payload.get("at",0)))<1.0:
-    workbench.celebrate(); wake_workbench()
+  "feedbackAnchor":
+   var item_id=str(payload.get("id",""))
+   var event=str(payload.get("event",""))
+   var item=data.find(item_id)
+   if event.is_empty() or event.length()>160 or (item_id!="resident" and item.is_empty()): return
+   var point=resident.position+Vector3(0,1,0) if item_id=="resident" else HomesteadItems.item_center(item)+Vector3(0,0.7,0)
+   if item_id!="resident" and payload.get("station","")=="oven" and presentation.ovens.has(item_id): point=presentation.ovens[item_id].position+Vector3(0,1,0)
+   if camera.is_position_behind(point): return
+   var screen=camera.unproject_position(point)
+   var extent=get_viewport().get_visible_rect().size
+   emit_message("feedbackAnchor",{"event":event,"x":clampf(screen.x/maxf(1,extent.x),0,1),"y":clampf(screen.y/maxf(1,extent.y),0,1)})
   "landPreview":
    var side=str(payload.get("side","west" if payload.get("west",false)==true else ""))
    land_preview_side=side if side in ["west","east","north"] else ""
    land_preview=land_preview_side!=""
    refresh_land_preview()
-   wake_workbench() # A paused native menu may have exhausted its draw budget.
+   wake_menu_preview() # A paused native menu may have exhausted its draw budget.
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "sunrise": begin_sunrise()
   "waterTree": begin_tree_watering(maxi(0,int(payload.get("count",0))))
@@ -325,6 +320,8 @@ func receive_host_json(json: String):
    if payload.has("id"): focus_item_id=str(payload.id)
    if payload.has("id") or payload.has("mode"): focus_station=str(payload.get("station",""))
    if payload.has("framing"): panel_framing=clampf(float(payload.framing),0,0.65)
+   if payload.has("inspectionTop"): inspection_top=clampf(float(payload.inspectionTop),0,0.45)
+   if payload.has("inspectionBottom"): inspection_bottom=clampf(float(payload.inspectionBottom),0,0.35)
    if payload.get("resetZoom",false)==true: zoom=1.0
    if payload.has("zoom"): zoom_camera(float(payload.zoom))
    # Camera rotation is deliberately fixed, including legacy host commands.
@@ -400,7 +397,6 @@ func set_paused(value: bool, previewing: bool=false):
  var was_paused=paused
  paused=value
  panel_preview=value and previewing
- if value and not previewing: workbench.cancel_motion()
  if value and not was_paused: hold_menu_camera=true
  camera_preview_frames=(1 if reduced_motion or hold_menu_camera else 90) if panel_preview else 0
  if value:
@@ -429,7 +425,6 @@ func set_paused(value: bool, previewing: bool=false):
 
 # The native app retains one engine but releases all child-specific scene state.
 func clear_host_session():
- workbench.close()
  presentation_generation+=1
  _cancel_presented_frame()
  resident.cancel_place_visit()
@@ -487,6 +482,7 @@ func clear_host_session():
  focus_item_id=""
  focus_station=""
  panel_framing=0.0
+ inspection_top=0.0; inspection_bottom=0.0
  yaw=FIXED_YAW
  zoom=1.0
  camera_initialized=false
@@ -643,7 +639,7 @@ func update_frame_rate(delta: float):
  var target=ACTIVE_FPS if calm_timer<CALM_AFTER else CALM_FPS
  if Engine.max_fps!=target: Engine.max_fps=target
 
-func wake_workbench():
+func wake_menu_preview():
  if paused and not panel_preview: return
  camera_preview_frames=maxi(camera_preview_frames,2)
  process_mode=Node.PROCESS_MODE_INHERIT
@@ -651,7 +647,7 @@ func wake_workbench():
  wake_frame_rate()
 
 func _input(event):
- if paused or workbench.visible or session=="": return
+ if paused or session=="": return
  wake_frame_rate()
  if event is InputEventScreenTouch:
   if not event.pressed:
@@ -750,7 +746,6 @@ func production_at_screen(point: Vector2) -> Dictionary:
  return {}
 
 func production_preview_active() -> bool:
- if panel_preview and workbench.visible: return workbench.needs_frames()
  if not panel_preview or reduced_motion: return false
  if not data.construction.is_empty(): return true
  for status in data.production:
@@ -769,7 +764,7 @@ func advance_hold(delta: float):
   presentation.highlight(item.cell,HomesteadItems.footprint(item.kind,item.rotation),true,true)
  if press_elapsed>=HOLD_SECONDS:
   hold_emitted=true
-  emit_message("selected",{"id":hold_candidate,"gesture":"hold"})
+  emit_message("selected",{"id":hold_candidate,"gesture":"hold","origin":menu_origin(press_origin)})
 
 func _physics_process(delta):
  if paused: return
@@ -784,18 +779,18 @@ func _physics_process(delta):
   var production_status=production_at_screen(point)
   var producer=producer_at_screen(point)
   var item={} if producer!="" else object_at_screen(point)
-  if not production_status.is_empty(): emit_message("productionRequested",{"station":production_status.station,"id":production_status.placeID})
+  if not production_status.is_empty(): emit_message("productionRequested",{"station":production_status.station,"id":production_status.placeID,"origin":menu_origin(point)})
   elif producer!="":
    presentation.mark_collecting(producer)
    emit_message("gather",{"producer":producer})
   elif not item.is_empty():
    if data.harvest.has(item.id): presentation.mark_collecting(item.id)
-   emit_message("visited",{"id":item.id})
+   emit_message("visited",{"id":item.id,"origin":menu_origin(point)})
   else:
    var cell=ground_cell(point)
    if cell!=null:
     var side=unowned_land_at(cell)
-    if side!="": emit_message("landRequested",{"side":side})
+    if side!="": emit_message("landRequested",{"side":side,"origin":menu_origin(point)})
     elif selected_id=="" and resident.walk_to(HomesteadItems.cell_center(cell)):
      presentation.show_tap(HomesteadItems.cell_center(cell))
  advance_hold(delta)
@@ -806,9 +801,6 @@ func unowned_land_at(cell: Vector2i) -> String:
  return ""
 
 func _process(delta):
- var bench_was_moving=workbench.needs_frames()
- workbench.advance(delta)
- if bench_was_moving and not workbench.needs_frames(): camera_preview_frames=maxi(camera_preview_frames,2)
  if presentation.nodes.has(data.growth_tree_id):
   var tree=presentation.nodes[data.growth_tree_id].get_child(0).get_node_or_null("MissionTree")
   if tree is HomesteadMissionTree:
@@ -898,14 +890,19 @@ func _process(delta):
  var radius=maxf(32.0,scenery_radius+Vector2(orbit_focus.x,orbit_focus.z).length()+8.0)
  camera.position=orbit_focus+Vector3(sin(orbit_yaw)*radius,radius*tan(orbit_pitch),cos(orbit_yaw)*radius)
  # Reserve the bottom menu area, keeping the subject in the exposed map.
- size/=1.0-panel_framing
+ size/=maxf(0.2,1.0-panel_framing-inspection_top-inspection_bottom)
  camera.size=size if immediate else lerpf(camera.size,size,blend)
  if camera_mode=="overview": camera.size=maxf(size,camera.size)
  camera.h_offset=0.0
- camera.v_offset=-camera.size*panel_framing*0.5
+ camera.v_offset=camera.size*(inspection_top-inspection_bottom-panel_framing)*0.5
  camera.look_at(orbit_focus)
  camera_initialized=true
- presentation.update_character_visibility(camera,resident.position,true)
+ var inspected=data.find(focus_item_id) if inspection_top>0 and camera_mode=="place" else {}
+ if inspected.is_empty(): presentation.update_character_visibility(camera,resident.position,true)
+ else:
+  # Reuse the existing obstruction pass for the inspected place. Its own art
+  # stays solid; foreground roofs/trees clear the view without moving records.
+  presentation.update_character_visibility(camera,HomesteadItems.item_center(inspected),true,focus_item_id,maxf(1.0,HomesteadItems.DEFINITIONS[inspected.kind].height*0.8))
  presentation.layout_markers()
 
 func overview_points() -> Array[Vector3]:
