@@ -405,6 +405,9 @@ func update_production():
 		material.set_shader_parameter("kind",(9 if status.good=="meat" else ["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good)))
 		material.set_shader_parameter("production_state",status.state)
 		material.set_shader_parameter("progress",status.progress)
+		material.set_shader_parameter("sample_time",fmod(Time.get_ticks_msec()/1000.0,3600.0))
+		material.set_shader_parameter("progress_rate",(1.0-status.progress)/maxf(1.0,status.remaining))
+		material.set_shader_parameter("smooth_progress",not reduced_motion)
 		bubble.get_meta("label").text=countdown(int(status.remaining)) if status.state==1 else ""
 
 		if status.station=="grill" and nodes.has(status.placeID):
@@ -481,7 +484,7 @@ func update_livestock_growth():
 			part.scale=Vector3.ONE*lerpf(0.60,0.90,clampf(growth,0.0,1.0))
 
 func countdown(seconds: int) -> String:
-	return "%d:%02d" % [seconds/60,seconds%60] if seconds>=60 else str(seconds)+"s"
+	return "%d:%02d" % [maxi(0,seconds)/60,maxi(0,seconds)%60]
 
 func make_status_bubble() -> Node3D:
 	var bubble=Node3D.new()
@@ -493,6 +496,9 @@ func make_status_bubble() -> Node3D:
 	face.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var material=ShaderMaterial.new()
 	material.shader=BUBBLE_SHADER
+	material.set_shader_parameter("sun_track",preload("res://assets/time/WorldTimeRing.png"))
+	material.set_shader_parameter("sun_waiting",preload("res://assets/time/WorldTimeWaiting.png"))
+	material.set_shader_parameter("sun_bloom",preload("res://assets/time/WorldTimeBloom.png"))
 	face.material_override=material
 	bubble.add_child(face)
 	bubble.set_meta("material",material)
@@ -508,12 +514,17 @@ func make_status_bubble() -> Node3D:
 	bubble.set_meta("body",body)
 	var label=Label3D.new()
 	label.billboard=BaseMaterial3D.BILLBOARD_ENABLED
-	label.font_size=44
-	label.pixel_size=0.012
+	label.font_size=40
+	label.pixel_size=0.0046
 	label.modulate=Color("263e32")
 	label.outline_modulate=Color("fff3d9")
-	label.outline_size=5
-	label.position.y=-0.63
+	label.outline_size=0
+	# Badge text is a world-space annotation, above its transparent plate.
+	# A global Z offset alone can lose the depth comparison at gameplay pitch.
+	label.no_depth_test=true
+	label.render_priority=1
+	label.position.y=0.0
+	label.position.z=0.015
 	bubble.add_child(label)
 	bubble.set_meta("label",label)
 	return bubble
@@ -537,9 +548,12 @@ func update_construction():
 		if not bubble.has_meta("marker_placed"): bubble.position=anchor
 		var material: ShaderMaterial=bubble.get_meta("material")
 		material.set_shader_parameter("kind",8)
-		material.set_shader_parameter("production_state",1)
+		material.set_shader_parameter("production_state",2 if build.remaining<=0 else 1)
 		material.set_shader_parameter("progress",build.progress)
-		bubble.get_meta("label").text=countdown(build.remaining)
+		material.set_shader_parameter("sample_time",fmod(Time.get_ticks_msec()/1000.0,3600.0))
+		material.set_shader_parameter("progress_rate",(1.0-build.progress)/maxf(1.0,build.remaining))
+		material.set_shader_parameter("smooth_progress",not reduced_motion)
+		bubble.get_meta("label").text=countdown(build.remaining) if build.remaining>0 else ""
 	for id in construction_nodes.keys():
 		if not present.has(id):
 			production_root.remove_child(construction_nodes[id])

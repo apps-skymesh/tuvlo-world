@@ -283,7 +283,10 @@ func run():
  var mill_badge=scene.presentation.production_nodes.mill
  var timer_navigation_revision=scene.navigation.revision
  var mill_art=scene.presentation.nodes.mill
- check(mill_badge.get_meta("label").text=="45s","Production countdown omits repeated product names")
+ check(mill_badge.get_meta("label").text=="0:45","Production countdown omits repeated product names")
+ check(mill_badge.get_meta("label").position.y==0.0,"The remaining time stays inside the sun ring")
+ check(mill_badge.get_meta("label").no_depth_test and mill_badge.get_meta("label").render_priority>0,"Countdown text draws above its plate at the gameplay camera pitch")
+ check(mill_badge.get_meta("material").get_shader_parameter("sun_bloom").resource_path=="res://assets/time/WorldTimeBloom.png","Map and native ready states share the canonical bloom artwork")
  var sail=scene.presentation.sails[0]
  scene.camera.global_position=scene.presentation.nodes.mill.global_position+Vector3(0,10,15)
  scene.camera.look_at(sail.global_position)
@@ -340,7 +343,7 @@ func run():
  var foundation=scene.presentation.nodes.mill
  var build_badge=scene.presentation.construction_nodes.mill
  check(foundation.get_meta("building",false),"New construction renders a foundation, not an idle finished mill")
- check(build_badge.get_meta("label").text=="40s","Construction clock has no repeated title")
+ check(build_badge.get_meta("label").text=="0:40","Construction clock has no repeated title")
  building_payload.construction[0].remaining=39
  building_payload.construction[0].progress=0.12
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"snapshot","payload":building_payload}))

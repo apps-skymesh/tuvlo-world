@@ -296,9 +296,13 @@ func resize():
  # Large iPads retain map context; small phones retain usable manipulation.
  var display=logical_size if logical_size.x>0 else Vector2(size)
  var width_limit=minf(display.x*0.52,480.0)
- point_scale=maxf(12.0,minf(width_limit/9.35,maxf(1.0,display.y-192.0)/4.85))
+ # The fixed toolbelt plus the tallest journal content reserve 194 points.
+ # Keep the furniture between the 64-point HUD and that journal boundary.
+ var top=64.0
+ var bottom=194.0
+ point_scale=maxf(12.0,minf(width_limit/9.35,maxf(1.0,display.y-top-bottom)/4.85))
  camera.size=display.x/point_scale
- camera.v_offset=0.375-32.0/point_scale
+ camera.v_offset=0.375-(bottom-top)*0.5/point_scale
  slot_spacing=maxf(1.25,50.0/point_scale)
  back_lift=maxf(0,(50.0/point_scale-2.2*0.536)/0.844)
  var left_slot=-(maxi(1,token_data.size())-1)*slot_spacing*0.5

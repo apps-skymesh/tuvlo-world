@@ -1,0 +1,14 @@
+{
+  "ring_radius": 0.72,
+  "stroke_width": 0.055,
+  "palette": {
+    "ink": "#305540",
+    "gold": "#D2A54B"
+  },
+  "assets_sha256": {
+    "WorldTimeRing": "26abe988a20320a28671f8e1203ba70a7151913424d06bcb715cc88c3e934e3a",
+    "WorldTimeWaiting": "bad9623ba13de9e3d6b30c1b9148c4749f0645faea7f78d09058e4ef711cc354",
+    "WorldTimeBloom": "c6e63066f7a8614e5ca8f10d673e72d157bcf5ba5feec94f102643365aed80a4"
+  },
+  "check": "unchanged Shared/BrandAssets LaunchLogoCheck"
+}
