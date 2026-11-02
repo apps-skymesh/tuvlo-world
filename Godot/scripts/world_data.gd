@@ -12,6 +12,7 @@ var growth_tree_id=""
 # Ready materials by scene key (piece ID or edge producer). Display only.
 var harvest: Dictionary = {}
 var edges := false
+var oven_revealed := true
 var visitor := ""
 var visitors: Array[String] = []
 var wheat_garden := false
@@ -119,6 +120,7 @@ func apply_snapshot(raw: Dictionary) -> bool:
  wheat_garden=raw.get("wheatGarden",false)==true
  items = next
  harvest = ready
+ oven_revealed = raw.get("ovenRevealed",true)!=false or next_production.any(func(status): return status.state>0 and status.station in ["oven","pantry"])
  edges = raw.get("edges", false) == true
  inventory = unplaced
  land_sides = lands

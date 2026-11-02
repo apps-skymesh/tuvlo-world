@@ -82,6 +82,7 @@ func place_baking_ovens(occupied: Dictionary):
 	var previous=oven_cells.duplicate()
 	oven_centers.clear()
 	oven_cells.clear()
+	if not data.oven_revealed: return
 	var silhouettes=[]
 	for item in data.items:
 		if item.kind not in ["path","flowers","rocks"]: silhouettes.append(HomesteadVisibility.item_bounds(item,view_direction))

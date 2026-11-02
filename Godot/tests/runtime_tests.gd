@@ -36,6 +36,8 @@ func run():
  scene.host_message.disconnect(capture_entry)
  scene.set_paused(false)
  check(scene.data.items.size()==4,"Host snapshot must replace empty scene")
+ check(scene.camera_mode=="arrival","Entry starts on the home area, leaving full Overview explicit")
+ check(scene.arrival_size()<scene.overview_size(1.78),"Arrival makes the first home readable instead of fitting distant future plots")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"bench","cell":{"x":16,"z":14}}}))
  scene._process(0.016)
  check(scene.camera_mode=="place" and scene.focus_item_id=="bench","Catalogue selection immediately frames its draft")
@@ -979,6 +981,18 @@ func run():
  for badge in [badge_one,badge_two]:
   check(badge.get_meta("body").global_position.is_equal_approx(badge.global_position) and badge.get_meta("body").get_meta("production_station")=="field","The fixed badge preserves its original tap action")
  check(material_slot.distance_to(product_slot)>1.2,"The fixed material and product slots retain separate hit areas")
+ # A new cottage does not build its first-loaf utility at the same time.
+ var early_home={"items":items,"land":[],"ovenRevealed":false}
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"early-home","type":"snapshot","payload":early_home}))
+ var original_home_cells=scene.data.items.map(func(item): return item.cell)
+ check(scene.presentation.ovens.is_empty() and scene.navigation.oven_cells.is_empty(),"Before flour there is no oven art or invisible reserved obstacle")
+ early_home.ovenRevealed=true
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"early-home","type":"snapshot","payload":early_home}))
+ check(scene.presentation.ovens.has("cottage") and scene.data.items.map(func(item): return item.cell)==original_home_cells,"Flour introduces an oven around the existing saved arrangement")
+ early_home.ovenRevealed=false
+ early_home.production=[{"placeID":"cottage","station":"oven","good":"bread","state":1,"remaining":12,"progress":0.4}]
+ scene.receive_host_json(JSON.stringify({"version":1,"session":"early-home","type":"snapshot","payload":early_home}))
+ check(scene.presentation.ovens.has("cottage"),"An existing baking job always preserves its oven")
  # Baking keeps its saved cottage identity while using the derived outdoor oven.
  var bake={"items":items,"land":[],"appearance":{"hair":3}}
  bake.production=[{"placeID":"cottage","station":"oven","good":"bread","state":1,"remaining":12,"progress":0.4}]

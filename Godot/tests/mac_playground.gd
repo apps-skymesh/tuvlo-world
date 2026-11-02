@@ -16,7 +16,7 @@ var busy_capture=false
 var motion_samples=[]
 var next_sample=0.0
 var started_ms=0
-var initial_camera="overview"
+var initial_camera="arrival"
 var landscape_craft=false
 var landscape_step=-1
 var pond_polish=false
@@ -124,7 +124,7 @@ func reset(equipped: bool):
   {"id":"garden","kind":"garden","cell":{"x":3,"z":7},"rotation":0},
   {"id":"tree","kind":"tree","cell":{"x":11,"z":3},"rotation":0}],
   "land":[],"appearance":{"hair":3,"outfit":0},"approvedWins":21,"growthTreeID":"tree",
-  "edges":true,"harvest":{"garden":"food"}}
+  "edges":true,"ovenRevealed":equipped,"harvest":{"garden":"food"}}
  for z in range(5,10): payload.items.append({"id":"path-%d"%z,"kind":"path","cell":{"x":7,"z":z},"rotation":0})
  if cottage_slice:
   payload.items=[
@@ -212,7 +212,7 @@ func build_controls():
   activity_label.position=Vector2(18,root.size.y-40)
   layer.add_child(activity_label)
   return
- for mode in ["home","overview","follow"]: button(toolbar,mode.capitalize(),func(): camera(mode))
+ for mode in ["arrival","home","overview","follow"]: button(toolbar,mode.capitalize(),func(): camera(mode))
  var options=MenuButton.new()
  options.text="Camera options"
  toolbar.add_child(options)
@@ -247,6 +247,7 @@ func build_controls():
  footer.add_child(hint)
 # Manual visual states, not a replacement for the native farm/inventory host.
 func cycle_production():
+ payload.ovenRevealed=true
  production_phase=(production_phase+1)%3
  var has_mill=false
  var has_orchard=false

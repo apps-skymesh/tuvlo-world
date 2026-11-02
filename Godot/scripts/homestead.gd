@@ -11,7 +11,7 @@ var camera=Camera3D.new()
 var session=""
 var layout_signature=""
 var navigation_signature=""
-var camera_mode="overview"
+var camera_mode="arrival"
 var focus_item_id=""
 var focus_station=""
 var panel_framing=0.0
@@ -207,7 +207,7 @@ func receive_host_json(json: String):
   session=packet.session
   var wins=int(payload.get("approvedWins",0))
   # Crop art and building phases do not change walkable footprints.
-  var next_navigation=JSON.stringify([next_data.items,next_data.land_sides,next_data.construction.filter(func(build): return next_data.find(build.placeID).get("kind","")=="cottage").map(func(build): return build.placeID)])
+  var next_navigation=JSON.stringify([next_data.items,next_data.land_sides,next_data.oven_revealed,next_data.construction.filter(func(build): return next_data.find(build.placeID).get("kind","")=="cottage").map(func(build): return build.placeID)])
   var signature=JSON.stringify([payload.get("items",[]),payload.get("land",[]),wins,next_data.growth_tree_id,payload.get("reducedMotion",false)==true,wins>=34,wins>=55,next_data.edges,next_data.wheat_garden,next_data.harvest.values().has("wheat"),next_data.farm_stages,next_data.farm_fruit_stage,next_data.construction.map(func(build): return [build.placeID,int(floor(clampf(build.progress,0.0,0.999)*5.0))])])
   data.items=next_data.items
   data.inventory=next_data.inventory
@@ -220,6 +220,7 @@ func receive_host_json(json: String):
   data.visitor=next_data.visitor
   data.visitors=next_data.visitors.duplicate()
   data.wheat_garden=next_data.wheat_garden
+  data.oven_revealed=next_data.oven_revealed
   data.production=next_data.production
   data.construction=next_data.construction
   data.farm_stages=next_data.farm_stages
@@ -254,6 +255,9 @@ func receive_host_json(json: String):
   if resident.place_visit!=null and not data.building(resident.target_id).is_empty():
    resident.cancel_place_visit()
   if changing_child:
+   camera_mode="arrival"
+   zoom=1.0
+   camera_initialized=false
    resident.cancel_place_visit()
    resident.route.clear()
    resident.state="pause"
@@ -314,7 +318,7 @@ func receive_host_json(json: String):
    if paused and panel_preview:
     process_mode=Node.PROCESS_MODE_INHERIT
     RenderingServer.render_loop_enabled=true
-   if payload.get("mode") in ["overview","home","follow","detail","place","pan"]:
+   if payload.get("mode") in ["arrival","overview","home","follow","detail","place","pan"]:
     if camera_mode!=payload.mode: zoom=1.0
     camera_mode=payload.mode
    if payload.has("id"): focus_item_id=str(payload.id)
@@ -478,7 +482,7 @@ func clear_host_session():
  if is_instance_valid(creature):
   creature.queue_free()
   creature=null
- camera_mode="overview"
+ camera_mode="arrival"
  focus_item_id=""
  focus_station=""
  panel_framing=0.0
@@ -606,9 +610,16 @@ func end_press(point: Vector2,cancelled=false):
 
 # Absolute bounds work for the full expanded map as well as a close Follow view.
 # Zooming Overview starts a free view; Overview itself always fits every plot.
+# Arrival frames the child's home, not unopened mountains and future plots.
+# Overview remains the explicit, fully fitted all-land view.
+func arrival_size() -> float:
+ var viewport=get_viewport().get_visible_rect().size
+ return maxf(13.5,19.0/maxf(1.0,viewport.x/maxf(1,viewport.y)))
+
 func camera_base_size() -> float:
  match camera_mode:
   "pan": return pan_size
+  "arrival": return arrival_size()
   "follow": return 7.0
   "detail": return 3.8
   "home", "place": return 9.0
@@ -617,7 +628,7 @@ func camera_base_size() -> float:
 
 func zoom_camera(factor: float):
  if not is_finite(factor) or factor<=0 or is_equal_approx(factor,1.0): return
- if camera_mode=="overview":
+ if camera_mode in ["overview","arrival"]:
   pan_focus=orbit_focus
   pan_size=camera.size*(1.0-panel_framing)
   zoom=1.0
@@ -869,6 +880,13 @@ func _process(delta):
   elif focus_item_id.begins_with("edge:") and HomesteadItems.EDGE_CENTERS.has(focus_item_id.substr(5)):
    focus=HomesteadItems.EDGE_CENTERS[focus_item_id.substr(5)]+Vector3(0,0.7,0)
    size=10.0*zoom
+ elif camera_mode=="arrival":
+  focus=HomesteadItems.BASE_LAND_CENTER+Vector3(0,0.8,0)
+  size=arrival_size()*zoom
+  for item in data.items:
+   if item.kind=="cottage":
+    focus=HomesteadItems.item_center(item)+Vector3(1.2,0.8,2.4)
+    break
  elif camera_mode=="home":
   for item in data.items:
    if item.kind=="cottage":
