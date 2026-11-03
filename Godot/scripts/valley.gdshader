@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode specular_disabled, shadows_disabled;
+render_mode specular_disabled;
 // Scenery around the homestead: soft countryside that fades into haze, with a
 // calm sea beyond the east cove. Display only; nothing here is buildable.
 uniform vec4 grass_color : source_color = vec4(0.56, 0.64, 0.45, 1.0);
