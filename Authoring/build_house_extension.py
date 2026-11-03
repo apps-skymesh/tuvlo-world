@@ -1,7 +1,7 @@
 """Original Tuvlo house extension (A70 step 2): the outdoor kitchen bench and the
 front porch. Blender --background --python this_file. Godot X/Y-up/Z-front
 helpers, converted for glTF. No external models, textures or network access.
-Kitchen envelope: 2 x 2 squares, 2.45 high. Porch: 2.4 wide, 1.1 deep, 2.5 high.
+Kitchen envelope: 2 x 2 squares, 2.62 high. Porch: 2.4 wide, 1.1 deep, 2.5 high.
 """
 import bpy, bmesh, math, random
 from pathlib import Path
@@ -83,68 +83,110 @@ def reset():
  return build_materials()
 
 # ---------- Kitchen bench ----------
+# A covered summer kitchen built like the cottage: stone plinth and lower wall,
+# cream plaster above with a shuttered window, and a terracotta lean-to roof.
 M=reset()
-box('Stone plinth',(0,.06,0),(1.86,.12,1.62),'stone',.05)
+box('Stone plinth',(0,.06,0),(1.92,.12,1.74),'stone',.05)
 for i in range(7):
- box('Plinth edge stone',(-.80+i*.267,.135,.79),(.25,.05,.09),'stoneLight' if i%2 else 'stoneDark',.015)
-for sx in (-1,1):
- for sz in (-1,1):
-  box('Bench leg',(sx*.78,.52,sz*.34+.12),(.11,.78,.11),'woodDark',.02)
-box('Lower shelf',(0,.34,.12),(1.62,.05,.72),'wood',.012)
-box('Apron',(0,.82,.50),(1.62,.10,.05),'woodLight',.012)
-# Butcher-block worktop: alternating staves with end grain.
-for i in range(12):
- box('Worktop stave',(-.825+i*.15,.93,.12),(.148,.10,.90),'woodPale' if i%2 else 'woodLight',.01)
-box('Worktop front edge',(0,.93,.575),(1.80,.10,.02),'endGrain',.006)
-# Back splash and shelf.
-for i in range(6): box('Back plank',(-.75+i*.30,1.42,-.36),(.29,.90,.05),'wood' if i%2 else 'woodLight',.01)
-box('Spice shelf',(0,1.55,-.27),(1.70,.04,.20),'woodDark',.01)
-box('Top shelf',(0,1.88,-.27),(1.70,.04,.20),'woodDark',.01)
-for sx in (-.70,0,.70): box('Shelf bracket',(sx,1.50,-.30),(.04,.10,.14),'woodDark',.01)
-# Jars on the spice shelf.
-for i,(fill) in enumerate(['jam','honey','flour','jam','honey','flour','jam']):
- x=-.66+i*.22;rod('Glass jar',(x,1.57,-.27),(x,1.74,-.27),.055,'jar',16);rod('Jar filling',(x,1.575,-.27),(x,1.69,-.27),.048,fill,16)
- rod('Jar lid',(x,1.74,-.27),(x,1.765,-.27),.058,'clothCheck' if i%2 else 'cloth',16)
-# Herb pots on the top shelf.
-for i in range(4):
- x=-.60+i*.40;cone('Terracotta pot',(x,1.90,-.27),.075,.10,.13,'clay');ball('Herbs',(x,2.10,-.27),(.13,.11,.12),'leafLight' if i%2 else 'leaf',14)
-# Rail with hanging copper pans and ladles.
-rod('Hanging rail',(-.78,1.32,-.30),(.78,1.32,-.30),.012,'brass')
-for i,x in enumerate([-.55,-.20,.20,.55]):
- rod('Hook',(x,1.32,-.29),(x,1.22,-.27),.006,'iron',8)
- if i%2==0:
-  rod('Copper pan',(x,1.10,-.25),(x,1.13,-.25),.11,'copper',22);rod('Pan rim',(x,1.13,-.25),(x,1.14,-.25),.115,'copperLight',22)
+ box('Plinth edge stone',(-.82+i*.273,.135,.84),(.25,.05,.09),'stoneLight' if i%2 else 'stoneDark',.015)
+# Back wall: three courses of dressed stone under plaster, with corner quoins.
+wall_z=-.74
+for row in range(3):
+ n=6;w=1.86/n
+ for i in range(n+1):
+  x0=-.93+i*w-(w/2 if row%2 else 0);x1=x0+w-.02
+  x0=max(x0,-.93);x1=min(x1,.93)
+  if x1-x0<.05: continue
+  box('Wall stone',((x0+x1)/2,.24+row*.22,wall_z),(x1-x0,.20,.22),['stone','stoneLight','stoneDark'][(i+row)%3],.025)
+box('Plaster wall',(0,1.62,wall_z),(1.86,1.36,.18),'plaster',.03)
+for k in range(5):
+ for sx in (-1,1): box('Corner quoin',(sx*.86,.82+k*.28+(.07 if k%2 else 0),wall_z+.01),(.16 if k%2 else .22,.24,.22),'stoneLight',.02)
+# Side wall on the left, a little lower, so the kitchen reads as a room.
+box('Side wall stone',(-.88,.46,-.30),(.18,.68,.88),'stoneDark',.03)
+box('Side wall plaster',(-.88,1.30,-.36),(.16,1.00,.76),'plaster',.03)
+# Window with reveal, frame, mullions, slatted shutters, sill and flower box.
+wx,wy=.42,1.62
+box('Window reveal',(wx,wy,wall_z+.06),(.62,.66,.08),'wood',.02)
+box('Window frame',(wx,wy,wall_z+.10),(.56,.60,.04),'trim',.015)
+box('Window glazing',(wx,wy,wall_z+.115),(.46,.50,.01),'glass',.004)
+box('Mullion',(wx,wy,wall_z+.125),(.03,.50,.02),'trim',.004);box('Transom',(wx,wy,wall_z+.125),(.46,.03,.02),'trim',.004)
+for side in (-1,1):
+ box('Painted shutter',(wx+side*.42,wy,wall_z+.12),(.20,.62,.05),'teal',.014)
+ for k in range(6): box('Shutter slat',(wx+side*.42,wy-.24+k*.095,wall_z+.15),(.16,.02,.012),'tealLight',.003)
+box('Stone window sill',(wx,wy-.37,wall_z+.15),(.66,.06,.16),'stoneLight',.018)
+box('Flower box',(wx,wy-.48,wall_z+.20),(.58,.15,.16),'woodLight',.02);box('Box soil',(wx,wy-.41,wall_z+.20),(.54,.02,.12),'soil',.004)
+for k in range(6):
+ x=wx-.22+k*.088;ball('Leaf',(x,wy-.37,wall_z+.20),(.05,.035,.055),'leaf',10);ball('Petal cluster',(x,wy-.32,wall_z+.21+(k%2-.5)*.04),(.032,.028,.032),'petal' if k%2 else 'petalLight',10)
+# Shelf with jars and a pan rail on the plaster beside the window.
+box('Wall shelf',(-.42,1.86,wall_z+.17),(.80,.04,.18),'woodDark',.01)
+for sx in (-.72,-.12): box('Shelf bracket',(sx,1.80,wall_z+.14),(.04,.10,.12),'woodDark',.01)
+for i,fill in enumerate(['jam','honey','flour','jam']):
+ x=-.70+i*.19;rod('Glass jar',(x,1.88,wall_z+.17),(x,2.05,wall_z+.17),.055,'jar',16);rod('Jar filling',(x,1.885,wall_z+.17),(x,2.0,wall_z+.17),.048,fill,16)
+ rod('Jar lid',(x,2.05,wall_z+.17),(x,2.075,wall_z+.17),.058,'clothCheck' if i%2 else 'cloth',16)
+rod('Pan rail',(-.80,1.50,wall_z+.14),(-.04,1.50,wall_z+.14),.012,'brass')
+for i,x in enumerate([-.66,-.42,-.18]):
+ rod('Hook',(x,1.50,wall_z+.15),(x,1.40,wall_z+.17),.006,'iron',8)
+ if i!=1:
+  rod('Copper pan',(x,1.28,wall_z+.20),(x,1.31,wall_z+.20),.10,'copper',22);rod('Pan rim',(x,1.31,wall_z+.20),(x,1.32,wall_z+.20),.105,'copperLight',22)
  else:
-  rod('Ladle handle',(x,1.22,-.27),(x,1.02,-.25),.01,'copper',8);ball('Ladle bowl',(x,1.0,-.24),(.05,.03,.05),'copperLight',12)
-# Worktop dressing: board, loaf, rolling pin, flour bowl, knife.
-box('Cutting board',(-.42,1.0,.18),(.55,.035,.34),'endGrain',.012)
-ball('Loaf',(-.45,1.07,.18),(.16,.07,.09),'bread',18);ball('Loaf crust',(-.45,1.10,.18),(.13,.035,.075),'breadLight',14)
-for k in range(3): box('Loaf score',(-.52+k*.07,1.13,.18),(.012,.008,.08),'bread',.002)
-rod('Rolling pin',(.05,1.02,.32),(.48,1.02,.32),.03,'woodLight',16);rod('Pin handle',(-.03,1.02,.32),(.05,1.02,.32),.015,'woodDark');rod('Pin handle',(.48,1.02,.32),(.56,1.02,.32),.015,'woodDark')
-cone('Mixing bowl',(.45,.98,.02),.09,.17,.11,'tealLight',24);ball('Flour in bowl',(.45,1.09,.02),(.15,.03,.15),'flour',16)
-ball('Apple',(.18,1.03,-.05),(.045,.045,.045),'apple',12);ball('Apple',(.25,1.03,.02),(.045,.045,.045),'apple',12)
-# Lower shelf: pantry baskets and a produce crate.
-wicker_basket(-.52,.37,.12,.18,.20,'clothCheck')
-wicker_basket(-.05,.37,.12,.16,.18,'cloth')
-box('Produce crate',(.48,.47,.12),(.42,.20,.36),'woodLight',.01)
-for k in range(3): box('Crate slat',(.48,.40+k*.065,.305),(.42,.03,.01),'woodDark',.004)
-for k in range(5): ball('Apple',(.34+k*.07,.60,.06+(k%2)*.10),(.045,.045,.045),'apple',12)
-for k in range(3): cone('Carrot',(.40+k*.09,.57,.22),.022,.002,.13,'carrot',10)
-# Pergola with a striped canvas awning.
-for sx in (-1,1): box('Pergola post',(sx*.86,1.30,-.48),(.09,2.40,.09),'woodDark',.015)
-box('Pergola beam',(0,2.46,-.48),(1.95,.10,.10),'wood',.015)
-stripes=8
-for i in range(stripes):
- x0=-.95+i*1.9/stripes;x1=x0+1.9/stripes
- pts=[(x0,2.48,-.50),(x1,2.48,-.50),(x1,2.12,.55),(x0,2.12,.55),(x0,2.50,-.50),(x1,2.50,-.50),(x1,2.14,.55),(x0,2.14,.55)]
- d=bpy.data.meshes.new('Awning stripe');d.from_pydata([xyz(p) for p in pts],[],[(0,1,2,3),(7,6,5,4),(0,4,5,1),(1,5,6,2),(2,6,7,3),(3,7,4,0)]);d.update()
- o=bpy.data.objects.new('Awning stripe',d);bpy.context.collection.objects.link(o);finish(o,'Awning stripe','teal' if i%2 else 'canvas')
-for i in range(stripes):
- x=-.95+(i+.5)*1.9/stripes;ball('Scallop',(x,2.10,.56),(.11,.06,.02),'teal' if i%2 else 'canvas',12)
-rod('Awning arm',(-.86,2.0,-.45),(-.86,2.12,.52),.012,'iron');rod('Awning arm',(.86,2.0,-.45),(.86,2.12,.52),.012,'iron')
-# Lantern.
-rod('Lantern chain',(.70,2.12,.40),(.70,1.92,.40),.006,'iron',8)
-box('Lantern cap',(.70,1.90,.40),(.13,.03,.13),'brass',.01);box('Lantern glass',(.70,1.80,.40),(.10,.16,.10),'glass',.01);box('Lantern base',(.70,1.71,.40),(.12,.02,.12),'brass',.006)
+  rod('Ladle handle',(x,1.40,wall_z+.17),(x,1.20,wall_z+.19),.01,'copper',8);ball('Ladle bowl',(x,1.18,wall_z+.20),(.05,.03,.05),'copperLight',12)
+# Counter: plastered base with teal doors under a butcher-block top.
+cz=-.40
+box('Counter base',(0,.50,cz),(1.66,.76,.58),'plaster',.03)
+box('Counter plinth',(0,.15,cz+.02),(1.70,.06,.60),'stoneDark',.012)
+for i,x in enumerate([-.54,0,.54]):
+ box('Cupboard door',(x,.52,cz+.30),(.46,.56,.03),'teal',.014)
+ box('Door panel',(x,.52,cz+.315),(.36,.44,.01),'tealLight',.004)
+ ball('Door knob',(x+(.16 if i!=1 else 0),.56,cz+.33),(.022,.022,.022),'brass',10)
+for i in range(12):
+ box('Worktop stave',(-.825+i*.15,.93,cz),(.148,.09,.66),'woodPale' if i%2 else 'woodLight',.01)
+box('Worktop front edge',(0,.93,cz+.335),(1.80,.09,.02),'endGrain',.006)
+# Worktop dressing: board, loaf, rolling pin, flour bowl, kettle, apples.
+box('Cutting board',(-.40,.995,cz+.06),(.52,.035,.32),'endGrain',.012)
+ball('Loaf',(-.43,1.06,cz+.06),(.15,.07,.09),'bread',18);ball('Loaf crust',(-.43,1.09,cz+.06),(.12,.035,.075),'breadLight',14)
+for k in range(3): box('Loaf score',(-.50+k*.07,1.12,cz+.06),(.012,.008,.08),'bread',.002)
+rod('Rolling pin',(.02,1.0,cz+.20),(.40,1.0,cz+.20),.028,'woodLight',16);rod('Pin handle',(-.05,1.0,cz+.20),(.02,1.0,cz+.20),.014,'woodDark');rod('Pin handle',(.40,1.0,cz+.20),(.47,1.0,cz+.20),.014,'woodDark')
+cone('Mixing bowl',(.18,.975,cz-.12),.08,.15,.10,'tealLight',24);ball('Flour in bowl',(.18,1.075,cz-.12),(.13,.028,.13),'flour',16)
+ball('Copper kettle',(.62,1.06,cz-.06),(.12,.10,.12),'copper',20);rod('Kettle lid knob',(.62,1.15,cz-.06),(.62,1.19,cz-.06),.02,'copperLight',10)
+rod('Kettle spout',(.70,1.04,cz-.06),(.80,1.12,cz-.06),.018,'copper',10)
+for k in range(3): ball('Apple',(.36+k*.06,1.02,cz+.16-(k%2)*.06),(.042,.042,.042),'apple',12)
+# Lean-to roof: terracotta tile rows from the wall down to two turned posts.
+k_back_z,k_front_z,k_back_y,k_front_y,k_width=-.86,.92,2.58,2.12,2.12
+def k_slope(z): return k_back_y+(k_front_y-k_back_y)*(z-k_back_z)/(k_front_z-k_back_z)
+def k_slab(name,x0,x1,z0,z1,lift,thick,mat):
+ pts=[(x0,k_slope(z0)+lift,z0),(x1,k_slope(z0)+lift,z0),(x1,k_slope(z1)+lift,z1),(x0,k_slope(z1)+lift,z1)]
+ pts+= [(x,y-thick,z) for x,y,z in pts]
+ d=bpy.data.meshes.new(name);d.from_pydata([xyz(p) for p in pts],[],[(0,1,2,3),(7,6,5,4),(0,4,5,1),(1,5,6,2),(2,6,7,3),(3,7,4,0)]);d.update()
+ bm=bmesh.new();bm.from_mesh(d);bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces));bm.to_mesh(d);bm.free()
+ o=bpy.data.objects.new(name,d);bpy.context.collection.objects.link(o);return finish(o,name,mat,.008)
+k_slab('Roof base',-k_width/2,k_width/2,k_back_z,k_front_z+.04,0,.07,'roofShade')
+rows=7;depth=(k_front_z-k_back_z)/rows
+for r in range(rows):
+ z0=k_back_z+r*depth-.02;z1=z0+depth+.05
+ n=9;w=k_width/n
+ for i in range(n+1):
+  x0=-k_width/2+i*w-(w/2 if r%2 else 0);x1=x0+w-.012
+  x0=max(x0,-k_width/2);x1=min(x1,k_width/2)
+  if x1-x0<.04: continue
+  k_slab('Roof tile',x0,x1,z0,z1,.03+.012*(r%2),.035,['roof','roofLight','roofShade'][(i+r)%3])
+k_slab('Ridge flashing',-k_width/2,k_width/2,k_back_z-.04,k_back_z+.10,.07,.05,'trim')
+box('Roof fascia',(0,k_front_y-.02,k_front_z+.04),(k_width+.04,.10,.06),'trim',.012)
+box('Roof beam',(0,k_front_y-.12,.66),(1.96,.10,.10),'wood',.012)
+for sx in (-1,1):
+ turned_post('Turned post',sx*.88,.66,.12,k_front_y-.16,'trim')
+ rod('Brace',(sx*.88,1.72,.66),(sx*.62,k_front_y-.17,.66),.025,'trim')
+# Herb bundles drying from the beam, and a lantern on the right post.
+for i,x in enumerate([-.46,-.16,.14]):
+ rod('Herb string',(x,k_front_y-.17,.66),(x,1.80,.66),.004,'iron',6)
+ ball('Herb bundle',(x,1.74,.66),(.07,.10,.06),'leafLight' if i%2 else 'leaf',12);box('Bundle tie',(x,1.82,.66),(.06,.02,.05),'cloth',.004)
+rod('Lantern arm',(.88,1.92,.66),(.88,1.92,.82),.012,'iron',8);rod('Lantern chain',(.88,1.92,.82),(.88,1.80,.82),.006,'iron',8)
+box('Lantern cap',(.88,1.78,.82),(.12,.03,.12),'brass',.01);box('Lantern glass',(.88,1.69,.82),(.09,.15,.09),'glass',.01);box('Lantern base',(.88,1.60,.82),(.11,.02,.11),'brass',.006)
+# Pantry baskets and a produce crate in front, inside the plinth.
+wicker_basket(-.52,.12,.42,.17,.20,'clothCheck')
+box('Produce crate',(.40,.24,.40),(.42,.22,.32),'woodLight',.01)
+for k in range(3): box('Crate slat',(.40,.17+k*.07,.565),(.42,.03,.01),'woodDark',.004)
+for k in range(5): ball('Apple',(.26+k*.07,.39,.34+(k%2)*.10),(.045,.045,.045),'apple',12)
+for k in range(3): cone('Carrot',(.32+k*.09,.36,.50),.022,.002,.13,'carrot',10)
 consolidate('Kitchen_');export('kitchen_bench')
 
 # ---------- Front porch ----------

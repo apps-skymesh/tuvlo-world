@@ -17,10 +17,14 @@ func run():
  DirAccess.make_dir_recursive_absolute(directory)
  root.transparent_bg=true; root.size=Vector2i(640,640); root.msaa_3d=Viewport.MSAA_8X; root.screen_space_aa=Viewport.SCREEN_SPACE_AA_FXAA
  var stage=Node3D.new(); root.add_child(stage)
- var light=DirectionalLight3D.new(); light.rotation_degrees=Vector3(-45,-35,0); light.light_energy=1.05; light.shadow_enabled=true; stage.add_child(light)
+ # Warm key, cool fill and filmic tone mapping with a little saturation: close to the World's afternoon light, not washed out.
+ var light=DirectionalLight3D.new(); light.rotation_degrees=Vector3(-42,-32,0); light.light_energy=1.0; light.light_color=Color("ffeccf"); light.shadow_enabled=true; stage.add_child(light)
+ var fill=DirectionalLight3D.new(); fill.rotation_degrees=Vector3(-20,150,0); fill.light_energy=0.28; fill.light_color=Color("d9e6ff"); stage.add_child(fill)
  var environment=WorldEnvironment.new(); var settings=Environment.new()
  settings.background_mode=Environment.BG_CLEAR_COLOR
- settings.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR; settings.ambient_light_color=Color("fff1db"); settings.ambient_light_energy=0.72
+ settings.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR; settings.ambient_light_color=Color("e9e2d4"); settings.ambient_light_energy=0.36
+ settings.tonemap_mode=Environment.TONE_MAPPER_FILMIC; settings.tonemap_white=4.0
+ settings.adjustment_enabled=true; settings.adjustment_saturation=1.12; settings.adjustment_contrast=1.06
  environment.environment=settings; stage.add_child(environment)
  var camera=Camera3D.new(); camera.projection=Camera3D.PROJECTION_ORTHOGONAL; stage.add_child(camera)
  var builder=HomesteadPresentation.new(); stage.add_child(builder); builder.data=HomesteadWorldData.new(); builder.set_process(false)
