@@ -981,6 +981,19 @@ func clear_preview_object():
 		preview_item.queue_free()
 	preview_item=null
 	preview_item_id=""
+# A not-yet-built piece shown where it would first go, before any purchase.
+var spot_model: Node3D
+func show_spot_model(kind: String,cell: Vector2i):
+	clear_spot_model()
+	if not HomesteadItems.DEFINITIONS.has(kind): return
+	spot_model=make_item(kind,0,true)
+	spot_model.position=HomesteadItems.center(cell,HomesteadItems.footprint(kind,0))
+	add_child(spot_model)
+func clear_spot_model():
+	if is_instance_valid(spot_model):
+		remove_child(spot_model)
+		spot_model.queue_free()
+	spot_model=null
 func clear_preview():
 	clear_preview_object()
 	if is_instance_valid(preview_node):

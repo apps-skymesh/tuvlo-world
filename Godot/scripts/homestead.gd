@@ -303,6 +303,21 @@ func receive_host_json(json: String):
    land_preview=land_preview_side!=""
    refresh_land_preview()
    wake_menu_preview() # A paused native menu may have exhausted its draw budget.
+  "spotPreview":
+   # Shows where a not-yet-built piece would first go; never selects or saves it.
+   if payload.get("clear",false)==true:
+    presentation.clear_spot_model()
+    if selected_id=="": presentation.clear_preview()
+   elif payload.get("cell") is Dictionary:
+    var spot=Vector2i(int(payload.cell.get("x",0)),int(payload.cell.get("z",0)))
+    var size=Vector2i(clampi(int(payload.get("w",1)),1,8),clampi(int(payload.get("d",1)),1,8))
+    presentation.highlight(spot,size,true,true)
+    if payload.get("kind") is String: presentation.show_spot_model(str(payload.kind),spot)
+    camera_mode="pan"; zoom=1.0
+    pan_focus=HomesteadItems.center(spot,size)+Vector3(0,0.7,0)
+    pan_size=minf(pan_size,11.0) if pan_size>0 else 11.0
+    camera_initialized=false # An explicit reframe, allowed while a menu holds the camera.
+   wake_menu_preview()
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "sunrise": begin_sunrise()
   "waterTree": begin_tree_watering(maxi(0,int(payload.get("count",0))))
