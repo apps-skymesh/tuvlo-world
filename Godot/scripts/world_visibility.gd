@@ -57,5 +57,5 @@ func markers(entries: Array,items: Array):
   if not marker.has_meta("fixed_marker_position") or not marker.global_position.is_equal_approx(target):
    marker.global_position=target
    marker.set_meta("fixed_marker_position",target)
-  if not marker.scale.is_equal_approx(Vector3.ONE*0.82): marker.scale=Vector3.ONE*0.82
+  if not marker.has_meta("adaptive_scale") and not marker.scale.is_equal_approx(Vector3.ONE*0.82): marker.scale=Vector3.ONE*0.82
   marker.set_meta("marker_placed",true)

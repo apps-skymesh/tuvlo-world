@@ -26,10 +26,10 @@ func run():
  var builder=HomesteadPresentation.new(); stage.add_child(builder); builder.data=HomesteadWorldData.new(); builder.set_process(false)
  var entries: Array=HomesteadItems.DEFINITIONS.keys()
  # House attachments are scenes of their own, not catalogue kinds.
- entries.append_array(["house/kitchen_bench","house/front_porch"])
+ entries.append_array(["house/kitchen_bench","house/front_porch","oven/cozy_outdoor_oven"])
  for key in entries:
   var model: Node3D
-  if str(key).begins_with("house/"):
+  if str(key).contains("/"):
    model=load("res://assets/"+str(key)+".glb").instantiate()
   else: model=builder.make_item(key,0)
   stage.add_child(model)
@@ -39,7 +39,8 @@ func run():
   for i in range(3): await process_frame
   await RenderingServer.frame_post_draw
   var image=root.get_texture().get_image(); image.convert(Image.FORMAT_RGBA8)
-  image.save_png(directory+"/WorldPlace_"+str(key).trim_prefix("house/")+"_Hero.png")
+  var hero_name={"oven/cozy_outdoor_oven":"oven"}.get(str(key),str(key).get_file())
+  image.save_png(directory+"/WorldPlace_"+hero_name+"_Hero.png")
   model.queue_free(); await process_frame
  print("PLACE_HEROES_RENDERED")
  quit()

@@ -21,7 +21,8 @@ var camera_preview_frames=0
 var panel_preview=false
 var hold_menu_camera=true
 const FIXED_YAW=0.25
-const MIN_CAMERA_SIZE=3.4
+# Closest zoom still frames a whole building; the farthest shows the valley, not dots.
+const MIN_CAMERA_SIZE=5.2
 var yaw=FIXED_YAW
 const OVERVIEW_PITCH=PI/6 # 30 degrees: roofs and faces read without flattening the land.
 var zoom=1.0
@@ -650,7 +651,7 @@ func zoom_camera(factor: float):
   camera_mode="pan"
   emit_message("cameraPanned",{})
  var viewport=get_viewport().get_visible_rect().size
- var maximum=overview_fit(viewport.x/maxf(1,viewport.y),FIXED_YAW).size*2.0
+ var maximum=overview_fit(viewport.x/maxf(1,viewport.y),FIXED_YAW).size*1.2
  var base=maxf(0.1,camera_base_size())
  zoom=clampf(zoom*factor,MIN_CAMERA_SIZE/base,maximum/base)
 

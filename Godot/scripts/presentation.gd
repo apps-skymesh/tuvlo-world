@@ -1016,7 +1016,7 @@ var spot_model: Node3D
 func show_spot_model(kind: String,cell: Vector2i):
 	clear_spot_model()
 	if not HomesteadItems.DEFINITIONS.has(kind): return
-	spot_model=make_item(kind,0,true)
+	spot_model=make_item(kind,0) # Full colour: the building as it will really look.
 	spot_model.position=HomesteadItems.center(cell,HomesteadItems.footprint(kind,0))
 	add_child(spot_model)
 func clear_spot_model():
@@ -1030,7 +1030,19 @@ func clear_preview():
 		remove_child(preview_node)
 		preview_node.queue_free()
 	preview_node=null
+# Map bubbles grow a little as the camera pulls back and shrink as it closes in,
+# so they stay readable without covering the building at any zoom.
+func adapt_marker_scale():
+	var camera=get_viewport().get_camera_3d()
+	if camera==null: return
+	var factor=clampf(camera.size/12.0,0.72,1.45)
+	var target=Vector3.ONE*0.82*factor
+	for marker in bubbles+production_nodes.values()+construction_nodes.values():
+		if not is_instance_valid(marker): continue
+		marker.set_meta("adaptive_scale",true)
+		if not marker.scale.is_equal_approx(target): marker.scale=target
 func _process(delta):
+	adapt_marker_scale()
 	if not reduced_motion: clock+=delta
 	for build in data.construction:
 		if nodes.has(build.placeID):
