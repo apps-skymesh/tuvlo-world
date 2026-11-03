@@ -303,7 +303,8 @@ func harvest_anchor(key: String) -> Variant:
 		var item=data.find(key)
 		if item.is_empty(): return null
 		var height: float=HomesteadItems.DEFINITIONS[item.kind].height
-		return HomesteadItems.item_center(item)+Vector3(0,height+1.0,0)
+		# Tall places keep the marker on their own body instead of a neighbour behind them.
+		return HomesteadItems.item_center(item)+Vector3(0,minf(height,2.4)+1.0,0)
 	return null
 
 # Bubbles mirror the host's ready materials; tapping one routes like its place.
