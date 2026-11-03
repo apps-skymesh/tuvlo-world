@@ -14,6 +14,9 @@ var navigation_signature=""
 var camera_mode="arrival"
 var focus_item_id=""
 var focus_station=""
+# A production card centres the live place in its ring at a fixed scale.
+var production_focus=false
+var focus_shift=Vector2.ZERO
 var panel_framing=0.0
 var inspection_top=0.0
 var inspection_bottom=0.0
@@ -339,6 +342,10 @@ func receive_host_json(json: String):
     camera_mode=payload.mode
    if payload.has("id"): focus_item_id=str(payload.id)
    if payload.has("id") or payload.has("mode"): focus_station=str(payload.get("station",""))
+   if payload.has("mode"): production_focus=payload.get("production",false)==true
+   if payload.has("focusShift") and payload.focusShift is Dictionary: focus_shift=Vector2(clampf(float(payload.focusShift.get("x",0)),-0.4,0.4),clampf(float(payload.focusShift.get("y",0)),-0.4,0.4))
+   elif payload.has("mode"): focus_shift=Vector2.ZERO
+   presentation.hidden_marker_place=focus_item_id if production_focus else ""
    if payload.has("framing"): panel_framing=clampf(float(payload.framing),0,0.65)
    if payload.has("inspectionTop"): inspection_top=clampf(float(payload.inspectionTop),0,0.45)
    if payload.has("inspectionBottom"): inspection_bottom=clampf(float(payload.inspectionBottom),0,0.35)
@@ -644,6 +651,7 @@ func camera_base_size() -> float:
 
 func zoom_camera(factor: float):
  if not is_finite(factor) or factor<=0 or is_equal_approx(factor,1.0): return
+ if production_focus: return # the card fixes the scale
  if camera_mode in ["overview","arrival"]:
   pan_focus=orbit_focus
   pan_size=camera.size*(1.0-panel_framing)
@@ -918,9 +926,16 @@ func _process(delta):
    focus=HomesteadItems.item_center(item)+Vector3(0,0.7,0)
    if focus_item_id==selected_id: focus=pan_focus
    size=6.4*zoom
+   if production_focus:
+    size=clampf(HomesteadItems.DEFINITIONS[item.kind].height*1.4+4.4,5.6,7.6)
+    focus=HomesteadItems.item_center(item)+Vector3(0,HomesteadItems.DEFINITIONS[item.kind].height*0.18,0)
+    if item.kind=="garden": focus.y-=0.9 # the flat beds read best a little above the ring centre
    if focus_station=="oven" and presentation.ovens.has(focus_item_id):
-    focus=presentation.ovens[focus_item_id].position+Vector3(0,1.05,0)
-    size=4.4*zoom
+    focus=presentation.ovens[focus_item_id].position+Vector3(0,0.75 if production_focus else 1.05,0)
+    size=5.0 if production_focus else 4.4*zoom
+   elif focus_station=="pantry" and presentation.kitchens.has(focus_item_id):
+    focus=presentation.kitchens[focus_item_id].position+Vector3(0,0.75,0)
+    size=5.0
   elif focus_item_id.begins_with("edge:") and HomesteadItems.EDGE_CENTERS.has(focus_item_id.substr(5)):
    focus=HomesteadItems.EDGE_CENTERS[focus_item_id.substr(5)]+Vector3(0,0.7,0)
    size=10.0*zoom
@@ -952,14 +967,17 @@ func _process(delta):
  var radius=maxf(32.0,scenery_radius+Vector2(orbit_focus.x,orbit_focus.z).length()+8.0)
  camera.position=orbit_focus+Vector3(sin(orbit_yaw)*radius,radius*tan(orbit_pitch),cos(orbit_yaw)*radius)
  # Reserve the bottom menu area, keeping the subject in the exposed map.
- size/=maxf(0.2,1.0-panel_framing-inspection_top-inspection_bottom)
+ var framing=0.0 if camera_mode=="place" and production_focus else panel_framing
+ size/=maxf(0.2,1.0-framing-inspection_top-inspection_bottom)
  camera.size=size if immediate else lerpf(camera.size,size,blend)
  if camera_mode=="overview": camera.size=maxf(size,camera.size)
- camera.h_offset=0.0
- camera.v_offset=camera.size*(inspection_top-inspection_bottom-panel_framing)*0.5
+ var view_aspect=get_viewport().get_visible_rect().size.x/maxf(1.0,get_viewport().get_visible_rect().size.y)
+ var shift=focus_shift if camera_mode=="place" and production_focus else Vector2.ZERO
+ camera.h_offset=-shift.x*camera.size*view_aspect
+ camera.v_offset=camera.size*(inspection_top-inspection_bottom-framing)*0.5+shift.y*camera.size
  camera.look_at(orbit_focus)
  camera_initialized=true
- var inspected=data.find(focus_item_id) if inspection_top>0 and camera_mode=="place" else {}
+ var inspected=data.find(focus_item_id) if (inspection_top>0 or production_focus) and camera_mode=="place" else {}
  if inspected.is_empty(): presentation.update_character_visibility(camera,resident.position,true)
  else:
   # Reuse the existing obstruction pass for the inspected place. Its own art

@@ -43,6 +43,9 @@ void vertex() {
 		INV_VIEW_MATRIX[0] * length(MODEL_MATRIX[0].xyz),
 		INV_VIEW_MATRIX[1] * length(MODEL_MATRIX[1].xyz),
 		INV_VIEW_MATRIX[2] * length(MODEL_MATRIX[2].xyz), MODEL_MATRIX[3]);
+	// Ready tokens stand out by size and bob; idle ones stay small and quiet.
+	if (shows_product && production_state == 2) VERTEX.xy *= 1.18;
+	if (shows_product && production_state == 0) VERTEX.xy *= 0.86;
 	if (shows_product && production_state == 2 && lively) VERTEX.y += sin(TIME * 4.0) * 0.05;
 }
 
@@ -53,7 +56,10 @@ void fragment() {
 		if (r > 0.99) discard;
 		vec3 gold = vec3(0.95, 0.71, 0.20);
 		vec3 col = vec3(1.0, 0.96, 0.86);
-		if (r > 0.86) col = production_state == 2 ? gold : vec3(0.55, 0.36, 0.17);
+		float plate_alpha = production_state == 0 ? 0.62 : 1.0;
+		if (production_state == 0 && r > 0.90) col = vec3(1.0);
+		if (production_state == 1 && r > 0.86) col = vec3(0.55, 0.36, 0.17);
+		if (production_state == 2 && r > 0.80) col = mix(gold, vec3(0.38, 0.70, 0.26), smoothstep(0.80, 0.97, r));
 		if (production_state == 1 && r > 0.74 && r <= 0.86) {
 			float elapsed = min(1.0, mod(TIME - sample_time + 3600.0, 3600.0));
 			float shown = min(0.999, progress + (smooth_progress ? elapsed * progress_rate : 0.0));
@@ -63,8 +69,8 @@ void fragment() {
 		if (r < 0.74) {
 			vec4 art = texture(product, vec2(p.x, -p.y) / 1.36 + 0.5);
 			vec3 ink = art.rgb;
-			if (production_state == 0) ink = mix(vec3(dot(ink, vec3(0.30, 0.59, 0.11))), ink, 0.35);
-			col = mix(col, ink, art.a * (production_state == 0 ? 0.65 : 1.0));
+			col = mix(col, ink, art.a);
+			if (art.a > 0.5) plate_alpha = 1.0;
 		}
 		if (production_state == 2) {
 			vec2 badge = p - vec2(0.58, -0.58);
@@ -75,7 +81,7 @@ void fragment() {
 			}
 		}
 		ALBEDO = col;
-		ALPHA = (1.0 - smoothstep(0.95, 0.99, r)) * fade;
+		ALPHA = (1.0 - smoothstep(0.95, 0.99, r)) * fade * (production_state == 0 ? max(plate_alpha, 0.0) : 1.0);
 	} else if (production_state >= 0) {
         vec4 plate = production_state == 2 ? texture(sun_bloom, UV) : production_state == 0 ? texture(sun_waiting, UV) : texture(sun_track, UV);
         if (production_state == 1) {

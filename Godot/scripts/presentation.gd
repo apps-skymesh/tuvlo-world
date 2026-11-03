@@ -29,6 +29,8 @@ var harvest_root: Node3D
 var bubbles: Array[Node3D]=[]
 var ovens: Dictionary={}
 var kitchens: Dictionary={}
+## Production cards hide the focused place's own map bubbles; the card shows them.
+var hidden_marker_place=""
 var porches: Dictionary={}
 const KITCHEN_MODEL=preload("res://assets/house/kitchen_bench.glb")
 const PORCH_MODEL=preload("res://assets/house/front_porch.glb")
@@ -1077,6 +1079,9 @@ func layout_markers():
 			entry.set_meta("utility_marker",kitchens[id].position+Vector3(0,2.75,0.45))
 		elif entry.has_meta("utility_marker"): entry.remove_meta("utility_marker")
 	marker_layout.markers(entries,data.items)
+	if hidden_marker_place!="":
+		for entry in entries:
+			if str(entry.get_meta("marker_place_id",""))==hidden_marker_place: entry.visible=false
 
 func blocks_view(camera: Camera3D,target: Vector3,center: Vector3,radius: float) -> bool:
 	var segment=target-camera.global_position
