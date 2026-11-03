@@ -37,6 +37,7 @@ var harvest_signature=""
 # Bubbles the child just tapped, by producer key, with the clock time of the tap.
 var collecting: Dictionary={}
 const BUBBLE_SHADER=preload("res://scripts/harvest_bubble.gdshader")
+const PRODUCT_ART={"wheat":preload("res://assets/goods/wheat.png"),"flour":preload("res://assets/goods/flour.png"),"bread":preload("res://assets/goods/bread.png"),"meal":preload("res://assets/goods/meal.png"),"fruit":preload("res://assets/goods/fruit.png"),"tart":preload("res://assets/goods/tart.png"),"meat":preload("res://assets/goods/meat.png")}
 
 func setup(world_data: HomesteadWorldData):
 	data=world_data
@@ -303,8 +304,7 @@ func harvest_anchor(key: String) -> Variant:
 		var item=data.find(key)
 		if item.is_empty(): return null
 		var height: float=HomesteadItems.DEFINITIONS[item.kind].height
-		# Tall places keep the marker on their own body instead of a neighbour behind them.
-		return HomesteadItems.item_center(item)+Vector3(0,minf(height,2.4)+1.0,0)
+		return HomesteadItems.item_center(item)+Vector3(0,height+1.0,0)
 	return null
 
 # Bubbles mirror the host's ready materials; tapping one routes like its place.
@@ -409,7 +409,13 @@ func update_production():
 		material.set_shader_parameter("sample_time",fmod(Time.get_ticks_msec()/1000.0,3600.0))
 		material.set_shader_parameter("progress_rate",(1.0-status.progress)/maxf(1.0,status.remaining))
 		material.set_shader_parameter("smooth_progress",not reduced_motion)
-		bubble.get_meta("label").text=countdown(int(status.remaining)) if status.state==1 else ""
+		material.set_shader_parameter("shows_product",PRODUCT_ART.has(status.good))
+		if PRODUCT_ART.has(status.good): material.set_shader_parameter("product",PRODUCT_ART[status.good])
+		material.set_shader_parameter("lively",not reduced_motion)
+		var label: Label3D=bubble.get_meta("label")
+		# The product fills the face, so the countdown sits just beneath it.
+		label.position.y=-0.62 if PRODUCT_ART.has(status.good) else 0.0
+		label.text=countdown(int(status.remaining)) if status.state==1 else ""
 
 		if status.station=="grill" and nodes.has(status.placeID):
 			HomesteadFarmBuildingArt.set_grill_status(nodes[status.placeID],status.state)

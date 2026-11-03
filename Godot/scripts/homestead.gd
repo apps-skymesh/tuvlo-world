@@ -743,7 +743,35 @@ func producer_at_screen(point: Vector2) -> String:
  # Woods and quarry are scenery; old host payloads must not revive collection.
  return "" if producer in ["woods","quarry","waterside"] else producer
 
+# Badges draw over buildings, so a tap on a visible badge wins over the
+# building in front of it, using the badge's on-screen disc.
+func marker_at_screen(point: Vector2) -> Dictionary:
+ var best={}
+ var nearest=INF
+ var entries=[]
+ for station in presentation.production_nodes: entries.append([presentation.production_nodes[station],"production"])
+ for id in presentation.construction_nodes: entries.append([presentation.construction_nodes[id],"construction"])
+ for entry in entries:
+  var bubble: Node3D=entry[0]
+  if not is_instance_valid(bubble) or not bubble.is_visible_in_tree() or camera.is_position_behind(bubble.global_position): continue
+  var centre=camera.unproject_position(bubble.global_position)
+  var radius=centre.distance_to(camera.unproject_position(bubble.global_position+camera.global_basis.x*0.5*bubble.scale.x))
+  var distance=centre.distance_to(point)
+  if distance>radius*1.1 or distance>=nearest: continue
+  var place=str(bubble.get_meta("marker_place_id",""))
+  if entry[1]=="construction":
+   if data.building(place).is_empty(): continue
+   best={"station":"construction","placeID":place}
+  else:
+   var role=str(bubble.get_meta("marker_role",""))
+   for status in data.production:
+    if status.station==role and status.placeID==place: best=status
+  if not best.is_empty(): nearest=distance
+ return best
+
 func production_at_screen(point: Vector2) -> Dictionary:
+ var marker=marker_at_screen(point)
+ if not marker.is_empty(): return marker
  var from=camera.project_ray_origin(point)
  var query=PhysicsRayQueryParameters3D.create(from,from+camera.project_ray_normal(point)*100,1)
  var result=get_world_3d().direct_space_state.intersect_ray(query)

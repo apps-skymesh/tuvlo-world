@@ -1,5 +1,6 @@
 shader_type spatial;
-render_mode unshaded, cull_disabled, blend_mix, depth_draw_opaque, shadows_disabled;
+// Badges are map UI: they draw over buildings so a place never hides its own marker.
+render_mode unshaded, cull_disabled, blend_mix, depth_draw_never, depth_test_disabled, shadows_disabled;
 // A camera-facing token: 0 wood, 1 stone, 2 food. The face keeps the icon.
 // A short lower edge and a soft shadow give it thickness. No textures.
 uniform int kind = 0;
@@ -13,6 +14,12 @@ uniform sampler2D sun_bloom : source_color, filter_linear;
 uniform float sample_time = 0.0;
 uniform float progress_rate = 0.0;
 uniform bool smooth_progress = true;
+
+// Production bubbles show the product they make: muted while idle, a gold
+// arc while working and a gold rim with a check (and a small bob) when ready.
+uniform sampler2D product : source_color, filter_linear_mipmap;
+uniform bool shows_product = false;
+uniform bool lively = true;
 
 // Collect flight fades the token out.
 uniform float fade = 1.0;
@@ -36,11 +43,40 @@ void vertex() {
 		INV_VIEW_MATRIX[0] * length(MODEL_MATRIX[0].xyz),
 		INV_VIEW_MATRIX[1] * length(MODEL_MATRIX[1].xyz),
 		INV_VIEW_MATRIX[2] * length(MODEL_MATRIX[2].xyz), MODEL_MATRIX[3]);
+	if (shows_product && production_state == 2 && lively) VERTEX.y += sin(TIME * 4.0) * 0.05;
 }
 
 void fragment() {
 	vec2 p = vec2(UV.x * 2.0 - 1.0, 1.0 - UV.y * 2.0);
-	if (production_state >= 0) {
+	if (production_state >= 0 && shows_product) {
+		float r = length(p);
+		if (r > 0.99) discard;
+		vec3 gold = vec3(0.95, 0.71, 0.20);
+		vec3 col = vec3(1.0, 0.96, 0.86);
+		if (r > 0.86) col = production_state == 2 ? gold : vec3(0.55, 0.36, 0.17);
+		if (production_state == 1 && r > 0.74 && r <= 0.86) {
+			float elapsed = min(1.0, mod(TIME - sample_time + 3600.0, 3600.0));
+			float shown = min(0.999, progress + (smooth_progress ? elapsed * progress_rate : 0.0));
+			float angle = mod(atan(p.x, p.y) + 6.2831853, 6.2831853) / 6.2831853;
+			col = angle <= shown ? gold : vec3(0.88, 0.82, 0.68);
+		}
+		if (r < 0.74) {
+			vec4 art = texture(product, vec2(p.x, -p.y) / 1.36 + 0.5);
+			vec3 ink = art.rgb;
+			if (production_state == 0) ink = mix(vec3(dot(ink, vec3(0.30, 0.59, 0.11))), ink, 0.35);
+			col = mix(col, ink, art.a * (production_state == 0 ? 0.65 : 1.0));
+		}
+		if (production_state == 2) {
+			vec2 badge = p - vec2(0.58, -0.58);
+			if (length(badge) < 0.27) {
+				col = vec3(0.30, 0.60, 0.25);
+				float mark = min(capsule(badge, vec2(-0.12, 0.0), vec2(-0.03, -0.09), 0.035), capsule(badge, vec2(-0.03, -0.09), vec2(0.13, 0.11), 0.035));
+				if (mark < 0.0) col = vec3(1.0);
+			}
+		}
+		ALBEDO = col;
+		ALPHA = (1.0 - smoothstep(0.95, 0.99, r)) * fade;
+	} else if (production_state >= 0) {
         vec4 plate = production_state == 2 ? texture(sun_bloom, UV) : production_state == 0 ? texture(sun_waiting, UV) : texture(sun_track, UV);
         if (production_state == 1) {
             float elapsed = min(1.0, mod(TIME - sample_time + 3600.0, 3600.0));

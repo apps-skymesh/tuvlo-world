@@ -286,7 +286,8 @@ func run():
  var timer_navigation_revision=scene.navigation.revision
  var mill_art=scene.presentation.nodes.mill
  check(mill_badge.get_meta("label").text=="0:45","Production countdown omits repeated product names")
- check(mill_badge.get_meta("label").position.y==0.0,"The remaining time stays inside the sun ring")
+ check(mill_badge.get_meta("label").position.y<0.0,"The remaining time sits beneath the pictured product")
+ check(mill_badge.get_meta("material").get_shader_parameter("shows_product")==true,"Production markers picture their product")
  check(mill_badge.get_meta("label").no_depth_test and mill_badge.get_meta("label").render_priority>0,"Countdown text draws above its plate at the gameplay camera pitch")
  check(mill_badge.get_meta("material").get_shader_parameter("sun_bloom").resource_path=="res://assets/time/WorldTimeBloom.png","Map and native ready states share the canonical bloom artwork")
  var sail=scene.presentation.sails[0]

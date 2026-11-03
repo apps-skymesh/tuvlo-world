@@ -29,6 +29,11 @@ static func marker_position(item: Dictionary,role: String) -> Vector3:
  var side=clampf(float(size.x)*0.30,0.65,1.15)
  var x=-side if role in ["material","oven"] else side
  var y=1.05 if item.kind in ["garden","pond"] else 1.15
+ # A single producer's badge sits centred and part-way up its own body, so a tall
+ # place never shares a slot with the cottage's corner badges behind it.
+ if role in ["mill","barn","grill","orchard"]:
+  x=0.0
+  y=maxf(y,minf(HomesteadItems.DEFINITIONS[item.kind].height,3.2)*0.6)
  if role=="construction":
   x=0.0
   y=1.45
