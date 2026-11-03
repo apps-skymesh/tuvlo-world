@@ -11,3 +11,13 @@ Run from the repository root:
 The current GLB is 2,676,944 bytes with 92,300 triangles and 21 shared materials. This is an asset inventory, not a performance result. Props are consolidated by material; roof material names retain treehouse palette support. Closed gables, rounded forms, recessed openings and fitted details are authored in geometry. All placement/ownership identifiers stay in Tuvlo's existing data, outside this asset.
 
 After changing art, regenerate the web and native packs using the existing preparation scripts; do not run the automated checks after every edit. Use `scripts/world-mac.py --play --cottage --camera home` with `TUVLO_GODOT_BIN` set for manual review. Tests, iOS/WebGL parity, physical performance and final visual approval remain deferred.
+
+## House extension (A70)
+
+`build_house_extension.py` builds `../Godot/assets/house/kitchen_bench.glb` and `front_porch.glb` with Blender 4.5.2 LTS, in the cottage palette, from original geometry only:
+
+```sh
+/Applications/Blender.app/Contents/MacOS/Blender --background --python WorldRuntime/Authoring/build_house_extension.py
+```
+
+`../Godot/tests/render_place_heroes.gd` also renders both models into the 540-pixel `WorldPlace_kitchen_bench_Hero` and `WorldPlace_front_porch_Hero` menu pictures.

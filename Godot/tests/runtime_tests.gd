@@ -315,6 +315,7 @@ func run():
    var blocked=not scene.data.buildable(cell) or (not occupied.is_empty() and HomesteadItems.DEFINITIONS[occupied.kind].blocks)
    var utility=scene.navigation.well_center.is_finite() and Rect2i(scene.navigation.well_cell,HomesteadItems.WELL_SIZE).has_point(cell)
    utility=utility or scene.navigation.oven_cells.values().any(func(start): return Rect2i(start,Vector2i(2,2)).has_point(cell))
+   utility=utility or scene.navigation.kitchen_cells.values().any(func(start): return Rect2i(start,Vector2i(2,2)).has_point(cell))
    check(scene.navigation.open(cell)==not (blocked or utility),"Walking boundaries retain saved obstacles, locked land and visible utilities")
  scene.set_paused(true,true)
  check(scene.production_preview_active() and scene.presentation.is_processing() and not scene.resident.is_physics_processing(),"Menu keeps production moving while residents stay paused")

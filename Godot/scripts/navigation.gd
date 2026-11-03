@@ -7,6 +7,9 @@ var well_cell=Vector2i(10000,10000)
 var well_center=Vector3.INF
 var oven_centers: Dictionary={}
 var oven_cells: Dictionary={}
+# The kitchen bench (A70) attaches to the cottage's other side, like the oven.
+var kitchen_centers: Dictionary={}
+var kitchen_cells: Dictionary={}
 var view_direction=Vector3(sin(0.25),0,cos(0.25))
 func rebuild(world_data: HomesteadWorldData):
 	data=world_data
@@ -79,9 +82,10 @@ func place_water_source(occupied: Dictionary):
 # Cottage-owned utility: no new saved place, land, price or recipe. The same
 # empty ring as the well keeps doors, existing paths and surrounding routes clear.
 func place_baking_ovens(occupied: Dictionary):
-	var previous=oven_cells.duplicate()
-	oven_centers.clear()
-	oven_cells.clear()
+	var previous_ovens=oven_cells.duplicate()
+	var previous_kitchens=kitchen_cells.duplicate()
+	oven_centers.clear(); oven_cells.clear()
+	kitchen_centers.clear(); kitchen_cells.clear()
 	if not data.oven_revealed: return
 	var silhouettes=[]
 	for item in data.items:
@@ -91,33 +95,44 @@ func place_baking_ovens(occupied: Dictionary):
 	if well_center.is_finite(): silhouettes.append(HomesteadVisibility.projected_box(well_center,Vector3(1.05,2.6,0.95),view_direction))
 	for cottage in data.items:
 		if cottage.kind!="cottage" or not data.building(cottage.id).is_empty(): continue
-		var desired=HomesteadItems.item_center(cottage)+Vector3(-3.0,0,0).rotated(Vector3.UP,cottage.rotation*PI/2)
-		var best=Vector2i(10000,10000)
-		var best_score=INF
-		for z in range(HomesteadItems.WORLD_BOUNDS.position.y,HomesteadItems.WORLD_BOUNDS.end.y-1):
-			for x in range(HomesteadItems.WORLD_BOUNDS.position.x,HomesteadItems.WORLD_BOUNDS.end.x-1):
-				var cell=Vector2i(x,z)
-				var clear=true
-				for dz in range(-1,3):
-					for dx in range(-1,3):
-						var square=cell+Vector2i(dx,dz)
-						if not data.buildable(square) or occupied.has(square) or not open(square): clear=false
-				if not clear: continue
-				var center=HomesteadItems.center(cell,Vector2i(2,2))
-				var outline=HomesteadVisibility.projected_box(center,Vector3(1.0,2.3,1.0),view_direction)
-				var score=center.distance_to(desired)
-				for silhouette in silhouettes: score+=HomesteadVisibility.overlap(outline.grow(0.15),silhouette)*10.0
-				if previous.get(cottage.id,Vector2i(10000,10000))==cell: score-=0.35
-				if score<best_score:
-					best=cell
-					best_score=score
-		if best.x==10000: continue
-		var center=HomesteadItems.center(best,Vector2i(2,2))
-		oven_cells[cottage.id]=best
-		oven_centers[cottage.id]=center
-		silhouettes.append(HomesteadVisibility.projected_box(center,Vector3(1,2.3,1),view_direction))
-		for z in 2:
-			for x in 2: grid.set_point_solid(best+Vector2i(x,z),true)
+		var oven=attach_beside(cottage,-3.0,previous_ovens.get(cottage.id,Vector2i(10000,10000)),occupied,silhouettes)
+		if oven.x!=10000:
+			oven_cells[cottage.id]=oven; oven_centers[cottage.id]=HomesteadItems.center(oven,Vector2i(2,2))
+		var kitchen=attach_beside(cottage,3.0,previous_kitchens.get(cottage.id,Vector2i(10000,10000)),occupied,silhouettes)
+		if kitchen.x!=10000:
+			kitchen_cells[cottage.id]=kitchen; kitchen_centers[cottage.id]=HomesteadItems.center(kitchen,Vector2i(2,2))
+
+# A 2 x 2 attachment beside the cottage with an empty ring, keeping doors,
+# paths and routes clear; it then blocks walking like a placed piece.
+func attach_beside(cottage: Dictionary,side: float,previous: Vector2i,occupied: Dictionary,silhouettes: Array) -> Vector2i:
+	var desired=HomesteadItems.item_center(cottage)+Vector3(side,0,0).rotated(Vector3.UP,cottage.rotation*PI/2)
+	var best=Vector2i(10000,10000)
+	var best_score=INF
+	for z in range(HomesteadItems.WORLD_BOUNDS.position.y,HomesteadItems.WORLD_BOUNDS.end.y-1):
+		for x in range(HomesteadItems.WORLD_BOUNDS.position.x,HomesteadItems.WORLD_BOUNDS.end.x-1):
+			var cell=Vector2i(x,z)
+			var clear=true
+			for dz in range(-1,3):
+				for dx in range(-1,3):
+					var square=cell+Vector2i(dx,dz)
+					if not data.buildable(square) or occupied.has(square) or not open(square): clear=false
+			if not clear: continue
+			var center=HomesteadItems.center(cell,Vector2i(2,2))
+			var outline=HomesteadVisibility.projected_box(center,Vector3(1.0,2.3,1.0),view_direction)
+			var score=center.distance_to(desired)
+			for silhouette in silhouettes: score+=HomesteadVisibility.overlap(outline.grow(0.15),silhouette)*10.0
+			if previous==cell: score-=0.35
+			if score<best_score:
+				best=cell
+				best_score=score
+	if best.x==10000: return best
+	var center=HomesteadItems.center(best,Vector2i(2,2))
+	# An attachment stays beside the house; with no room there it simply waits.
+	if side>0 and center.distance_to(desired)>2.6: return Vector2i(10000,10000)
+	silhouettes.append(HomesteadVisibility.projected_box(center,Vector3(1,2.4,1),view_direction))
+	for z in 2:
+		for x in 2: grid.set_point_solid(best+Vector2i(x,z),true)
+	return best
 
 func well_approach() -> Vector3:
 	# The authored filling tap is on the west, clear of the open water and roof.

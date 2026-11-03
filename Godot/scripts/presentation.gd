@@ -28,6 +28,10 @@ var yellow_leaves=false
 var harvest_root: Node3D
 var bubbles: Array[Node3D]=[]
 var ovens: Dictionary={}
+var kitchens: Dictionary={}
+var porches: Dictionary={}
+const KITCHEN_MODEL=preload("res://assets/house/kitchen_bench.glb")
+const PORCH_MODEL=preload("res://assets/house/front_porch.glb")
 var ready_goods: Dictionary={}
 var production_root: Node3D
 var production_nodes: Dictionary={}
@@ -377,6 +381,32 @@ func place_ovens(centers: Dictionary):
 		ovens[id].position=centers[id]
 		var item=data.find(id)
 		ovens[id].rotation.y=item.rotation*PI/2
+	update_production()
+# The extended house (A70): the kitchen bench packs meals beside the cottage,
+# and a porch shelters the front door once the house starts cooking.
+func place_kitchens(centers: Dictionary):
+	for table in [kitchens,porches]:
+		for id in table.keys():
+			if not centers.has(id):
+				remove_child(table[id]); table[id].queue_free(); table.erase(id)
+	for id in centers:
+		var item=data.find(id)
+		if item.is_empty(): continue
+		if not kitchens.has(id):
+			var bench=Node3D.new(); bench.name="KitchenBench"
+			bench.add_child(KITCHEN_MODEL.instantiate())
+			var body=StaticBody3D.new(); body.collision_layer=1; body.collision_mask=0
+			body.set_meta("production_station","pantry"); body.set_meta("oven_place_id",id)
+			var shape=CollisionShape3D.new(); var box=BoxShape3D.new(); box.size=Vector3(1.86,2.4,1.62)
+			shape.shape=box; shape.position.y=1.2; body.add_child(shape); bench.add_child(body)
+			add_child(bench); kitchens[id]=bench
+		kitchens[id].position=centers[id]
+		kitchens[id].rotation.y=item.rotation*PI/2
+		if not porches.has(id):
+			var porch=PORCH_MODEL.instantiate(); porch.name="FrontPorch"; porch.scale=Vector3.ONE*0.82
+			add_child(porch); porches[id]=porch
+		porches[id].position=HomesteadItems.item_center(item)+Vector3(0,0,1.95).rotated(Vector3.UP,item.rotation*PI/2)
+		porches[id].rotation.y=item.rotation*PI/2
 	update_production()
 func oven_marker(id: String) -> Vector3:
 	return ovens[id].position+Vector3(0,1.15,1.85)
@@ -1031,6 +1061,8 @@ func layout_markers():
 		var id=str(entry.get_meta("marker_place_id",""))
 		if entry.get_meta("marker_role","")=="oven" and ovens.has(id):
 			entry.set_meta("utility_marker",oven_marker(id))
+		elif entry.get_meta("marker_role","")=="pantry" and kitchens.has(id):
+			entry.set_meta("utility_marker",kitchens[id].position+Vector3(0,2.75,0.45))
 		elif entry.has_meta("utility_marker"): entry.remove_meta("utility_marker")
 	marker_layout.markers(entries,data.items)
 

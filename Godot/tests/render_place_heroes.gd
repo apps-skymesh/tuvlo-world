@@ -24,15 +24,22 @@ func run():
  environment.environment=settings; stage.add_child(environment)
  var camera=Camera3D.new(); camera.projection=Camera3D.PROJECTION_ORTHOGONAL; stage.add_child(camera)
  var builder=HomesteadPresentation.new(); stage.add_child(builder); builder.data=HomesteadWorldData.new(); builder.set_process(false)
- for key in HomesteadItems.DEFINITIONS.keys():
-  var model: Node3D=builder.make_item(key,0); stage.add_child(model)
+ var entries: Array=HomesteadItems.DEFINITIONS.keys()
+ # House attachments are scenes of their own, not catalogue kinds.
+ entries.append_array(["house/kitchen_bench","house/front_porch"])
+ for key in entries:
+  var model: Node3D
+  if str(key).begins_with("house/"):
+   model=load("res://assets/"+str(key)+".glb").instantiate()
+  else: model=builder.make_item(key,0)
+  stage.add_child(model)
   var box=bounds(model); var center=box.get_center()
   camera.size=maxf(box.size.x,maxf(box.size.z,box.size.y))*1.5
   camera.position=center+Vector3(5,4,7); camera.look_at(center)
   for i in range(3): await process_frame
   await RenderingServer.frame_post_draw
   var image=root.get_texture().get_image(); image.convert(Image.FORMAT_RGBA8)
-  image.save_png(directory+"/WorldPlace_"+key+"_Hero.png")
+  image.save_png(directory+"/WorldPlace_"+str(key).trim_prefix("house/")+"_Hero.png")
   model.queue_free(); await process_frame
  print("PLACE_HEROES_RENDERED")
  quit()

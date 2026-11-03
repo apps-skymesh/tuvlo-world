@@ -244,7 +244,7 @@ func receive_host_json(json: String):
    navigation_signature=next_navigation
    navigation.rebuild(data)
    presentation.well.place(navigation.well_center)
-   presentation.place_ovens(navigation.oven_centers)
+   presentation.place_ovens(navigation.oven_centers); presentation.place_kitchens(navigation.kitchen_centers)
    resident.world_changed()
    for person in guests:
     if is_instance_valid(person): person.world_changed()
@@ -486,7 +486,7 @@ func clear_host_session():
  presentation.update_harvest()
  navigation.rebuild(data)
  presentation.well.place(navigation.well_center)
- presentation.place_ovens(navigation.oven_centers)
+ presentation.place_ovens(navigation.oven_centers); presentation.place_kitchens(navigation.kitchen_centers)
  resident.route.clear()
  resident.target_id=""
  resident.state="pause"
