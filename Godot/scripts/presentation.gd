@@ -31,6 +31,8 @@ var ovens: Dictionary={}
 var kitchens: Dictionary={}
 ## Production cards hide the focused place's own map bubbles; the card shows them.
 var hidden_marker_place=""
+# Screen fraction of the HUD's warehouse box; collected goods fly there.
+var warehouse_point=Vector2(0.86,0.07)
 var porches: Dictionary={}
 const KITCHEN_MODEL=preload("res://assets/house/kitchen_bench.glb")
 const PORCH_MODEL=preload("res://assets/house/front_porch.glb")
@@ -434,6 +436,10 @@ func update_production():
 		bubble.set_meta("marker_place_id",status.placeID)
 		bubble.set_meta("marker_role",status.station)
 		if not bubble.has_meta("marker_placed"): bubble.position=point
+		# A finished job pops its product up on the map, so it is seen from anywhere.
+		var was=int(bubble.get_meta("state",-1))
+		bubble.set_meta("state",int(status.state))
+		if int(status.state)==2 and was!=-1 and was!=2 and not reduced_motion: pop_in(bubble.get_child(0))
 		var material: ShaderMaterial=bubble.get_meta("material")
 		material.set_shader_parameter("kind",(9 if status.good=="meat" else ["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good)))
 		material.set_shader_parameter("production_state",status.state)
@@ -470,7 +476,7 @@ func update_production():
 				effect=Node3D.new()
 				production_root.add_child(effect)
 				production_effects[status.station]=effect
-				if status.station in ["oven","grill"]:
+				if status.station in ["oven","grill","pantry"]:
 					for i in 3:
 						var puff=HomesteadMesh.ellipsoid(effect,Vector3.ZERO,Vector3.ONE*0.11,"f5ead3")
 						puff.material_override=HomesteadMesh.transparent(Color(0.97,0.93,0.84,0.36))
@@ -480,24 +486,23 @@ func update_production():
 					HomesteadMesh.box(effect,Vector3(0,0.075,0),Vector3(0.46,0.025,0.24),"d9b76c",0.02)
 					for i in 6:
 						HomesteadMesh.ellipsoid(effect,Vector3(-0.16+float(i%3)*0.14,0.105,-0.06+float(i/3)*0.12),Vector3(0.045,0.025,0.035),"f3d58c")
-				else:
-					HomesteadMesh.box(effect,Vector3.ZERO,Vector3(0.44,0.22,0.32),"d5b77c",0.035)
-					var lid=Node3D.new()
-					lid.name="Lid"
-					lid.position=Vector3(0,0.11,-0.16)
-					effect.add_child(lid)
-					HomesteadMesh.box(lid,Vector3(0,0,0.16),Vector3(0.46,0.04,0.34),"f2dfad",0.02)
-					HomesteadMesh.box(lid,Vector3(0,0.025,0.16),Vector3(0.055,0.015,0.34),"63856a",0.005)
 			var item=data.find(status.placeID)
 			var local=Vector3(0.96,4.13,-0.56) if status.station=="oven" else Vector3(-0.25,1.2,0.15) if status.station=="grill" else Vector3(-1.25,0.3,1.1) if status.station=="barn" else Vector3(-0.65,0.55,1.45)
 			effect.position=HomesteadItems.item_center(item)+local.rotated(Vector3.UP,int(item.rotation)*PI/2)
 			if status.station=="oven" and ovens.has(status.placeID):
 				effect.position=ovens[status.placeID].to_global(Vector3(-0.40,2.17,-0.37))
+			# The kitchen bench steams from its copper kettle's spout.
+			if status.station=="pantry" and kitchens.has(status.placeID):
+				effect.position=kitchens[status.placeID].to_global(Vector3(0.80,1.16,-0.46))
+				effect.scale=Vector3.ONE*0.6
 			effect.set_meta("working",status.state==1)
 	for station in production_nodes.keys():
 		if not present.has(station):
-			production_root.remove_child(production_nodes[station])
-			production_nodes[station].queue_free()
+			# A collected product flies to the warehouse; anything else simply leaves.
+			if int(production_nodes[station].get_meta("state",-1))==2: fly_to_wallet(production_nodes[station],warehouse_point)
+			else:
+				production_root.remove_child(production_nodes[station])
+				production_nodes[station].queue_free()
 			production_nodes.erase(station)
 			if ready_goods.has(station):
 				ready_goods[station].queue_free()
@@ -644,6 +649,12 @@ func reveal_finished(root: Node3D,size: Vector2i):
 	tween.tween_property(halo.material_override,"albedo_color:a",0.0,0.65)
 	tween.chain().tween_callback(halo.queue_free)
 
+# A ready mill rests until its flour is collected.
+func station_ready(station: String) -> bool:
+	for status in data.production:
+		if status.station==station: return status.state==2
+	return false
+
 func station_working(station: String) -> bool:
 	for status in data.production:
 		if status.station==station: return status.state==1
@@ -654,14 +665,11 @@ func update_production_effects():
 		var effect: Node3D=production_effects[station]
 		effect.visible=effect.get_meta("working",false) and (station=="barn" or not reduced_motion)
 		if station=="barn": continue
-		if station=="pantry":
-			effect.get_node("Lid").rotation.x=-0.28*(0.5+0.5*sin(clock*1.5))
-		else:
-			for i in effect.get_child_count():
-				var phase=fmod(clock*0.32+float(i)/3.0,1.0)
-				var puff: Node3D=effect.get_child(i)
-				puff.position=Vector3(sin(phase*PI)*0.13,phase*0.85,0)
-				puff.scale=Vector3.ONE*sin(phase*PI)*0.12
+		for i in effect.get_child_count():
+			var phase=fmod(clock*0.32+float(i)/3.0,1.0)
+			var puff: Node3D=effect.get_child(i)
+			puff.position=Vector3(sin(phase*PI)*0.13,phase*0.85,0)
+			puff.scale=Vector3.ONE*sin(phase*PI)*0.12
 
 func make_item(kind: String,rotation: int,ghost=false,style=0,growth=-1) -> Node3D:
 	var root=Node3D.new()
@@ -1037,7 +1045,8 @@ func clear_preview():
 func adapt_marker_scale():
 	var camera=get_viewport().get_camera_3d()
 	if camera==null: return
-	var factor=clampf(camera.size/12.0,0.72,1.45)
+	# Nearly constant on screen: zooming in grows badges a little, zooming out shrinks them a little.
+	var factor=clampf(pow(camera.size/12.0,0.8),0.5,2.0)
 	var target=Vector3.ONE*0.82*factor
 	for marker in bubbles+production_nodes.values()+construction_nodes.values():
 		if not is_instance_valid(marker): continue
@@ -1054,14 +1063,19 @@ func _process(delta):
 		var plant=foliage[i]
 		if is_instance_valid(plant): plant.rotation.z=sin(clock*0.8+i*1.7)*0.017 if not reduced_motion else 0
 	for pivot in sails:
-		if is_instance_valid(pivot) and not reduced_motion and data.building(str(pivot.get_meta("item_id",""))).is_empty() and (data.production.is_empty() or station_working("mill")):
+		if is_instance_valid(pivot) and not reduced_motion and data.building(str(pivot.get_meta("item_id",""))).is_empty() and not station_ready("mill"):
 			var camera=get_viewport().get_camera_3d()
 			if camera and not camera.is_position_behind(pivot.global_position) and camera.unproject_position(pivot.global_position).x>=0 and get_viewport().get_visible_rect().has_point(camera.unproject_position(pivot.global_position)):
-				pivot.rotation.z+=delta*(0.46 if not data.production.is_empty() else 0.12)
+				pivot.rotation.z+=delta*(0.95 if station_working("mill") else 0.14) # milling turns the sails briskly; no smoke
 	for part in pet_parts:
 		if not is_instance_valid(part): continue
 		HomesteadAnimalArt.animate(part,clock,reduced_motion)
 	update_production_effects()
+	# Ready products bob gently until collected.
+	for marker in production_nodes.values():
+		if is_instance_valid(marker) and marker.get_child_count()>0:
+			var face: Node3D=marker.get_child(0)
+			face.position.y=absf(sin(clock*2.6))*0.10 if int(marker.get_meta("state",-1))==2 and not reduced_motion else 0.0
 	for water in waters:
 		water.set_shader_parameter("clock",clock)
 		water.set_shader_parameter("motion",0.0 if reduced_motion else 1.0)
@@ -1316,17 +1330,17 @@ func mark_collecting(key: String):
 
 # A collected bubble leaves the map and flies to the wallet at the top centre.
 # Presentation only: the host has already saved the materials.
-func fly_to_wallet(bubble: Node3D):
+func fly_to_wallet(bubble: Node3D,toward: Vector2=Vector2(0.5,0.05)):
 	var camera=get_viewport().get_camera_3d()
 	if reduced_motion or camera==null or bubble.get_child_count()==0:
-		harvest_root.remove_child(bubble)
+		bubble.get_parent().remove_child(bubble)
 		bubble.queue_free()
 		return
 	for body in bubble.find_children("*","StaticBody3D",true,false): body.queue_free()
 	var start=bubble.global_position
 	var size=get_viewport().get_visible_rect().size
 	var depth=maxf(1.0,camera.global_position.distance_to(start)*0.55)
-	var target=camera.project_position(Vector2(size.x*0.5,size.y*0.05),depth)
+	var target=camera.project_position(Vector2(size.x*toward.x,size.y*toward.y),depth)
 	var lift=start.lerp(target,0.3)+camera.global_basis.y*0.8
 	var face: MeshInstance3D=bubble.get_child(0)
 	var material: ShaderMaterial=face.material_override

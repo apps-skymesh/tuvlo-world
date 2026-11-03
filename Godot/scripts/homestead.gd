@@ -17,6 +17,10 @@ var focus_station=""
 # A production card centres the live place in its ring at a fixed scale.
 var production_focus=false
 var focus_shift=Vector2.ZERO
+# The ring's share of the screen height; the place's own outline is fitted inside it.
+var ring_share=0.0
+var subject_points: PackedVector3Array=[]
+var subject_key=""
 var panel_framing=0.0
 var inspection_top=0.0
 var inspection_bottom=0.0
@@ -25,7 +29,7 @@ var panel_preview=false
 var hold_menu_camera=true
 const FIXED_YAW=0.25
 # Closest zoom still frames a whole building; the farthest shows the valley, not dots.
-const MIN_CAMERA_SIZE=5.2
+const MIN_CAMERA_SIZE=6.0
 var yaw=FIXED_YAW
 const OVERVIEW_PITCH=PI/6 # 30 degrees: roofs and faces read without flattening the land.
 var zoom=1.0
@@ -301,6 +305,8 @@ func receive_host_json(json: String):
    var screen=camera.unproject_position(point)
    var extent=get_viewport().get_visible_rect().size
    emit_message("feedbackAnchor",{"event":event,"x":clampf(screen.x/maxf(1,extent.x),0,1),"y":clampf(screen.y/maxf(1,extent.y),0,1)})
+  "hudAnchors":
+   if payload.get("warehouse") is Dictionary: presentation.warehouse_point=Vector2(clampf(float(payload.warehouse.get("x",0.86)),0,1),clampf(float(payload.warehouse.get("y",0.07)),0,1))
   "landPreview":
    var side=str(payload.get("side","west" if payload.get("west",false)==true else ""))
    land_preview_side=side if side in ["west","east","north"] else ""
@@ -345,6 +351,8 @@ func receive_host_json(json: String):
    if payload.has("mode"): production_focus=payload.get("production",false)==true
    if payload.has("focusShift") and payload.focusShift is Dictionary: focus_shift=Vector2(clampf(float(payload.focusShift.get("x",0)),-0.4,0.4),clampf(float(payload.focusShift.get("y",0)),-0.4,0.4))
    elif payload.has("mode"): focus_shift=Vector2.ZERO
+   if payload.has("ring"): ring_share=clampf(float(payload.ring),0.1,0.9)
+   elif payload.has("mode"): ring_share=0.0
    presentation.hidden_marker_place=focus_item_id if production_focus else ""
    if payload.has("framing"): panel_framing=clampf(float(payload.framing),0,0.65)
    if payload.has("inspectionTop"): inspection_top=clampf(float(payload.inspectionTop),0,0.45)
@@ -659,7 +667,7 @@ func zoom_camera(factor: float):
   camera_mode="pan"
   emit_message("cameraPanned",{})
  var viewport=get_viewport().get_visible_rect().size
- var maximum=overview_fit(viewport.x/maxf(1,viewport.y),FIXED_YAW).size*1.2
+ var maximum=overview_fit(viewport.x/maxf(1,viewport.y),FIXED_YAW).size*1.1
  var base=maxf(0.1,camera_base_size())
  zoom=clampf(zoom*factor,MIN_CAMERA_SIZE/base,maximum/base)
 
@@ -968,15 +976,24 @@ func _process(delta):
  camera.position=orbit_focus+Vector3(sin(orbit_yaw)*radius,radius*tan(orbit_pitch),cos(orbit_yaw)*radius)
  # Reserve the bottom menu area, keeping the subject in the exposed map.
  var framing=0.0 if camera_mode=="place" and production_focus else panel_framing
- size/=maxf(0.2,1.0-framing-inspection_top-inspection_bottom)
+ var fit=production_fit(Basis.looking_at(orbit_focus-camera.position,Vector3.UP)) if camera_mode=="place" and production_focus else {}
+ if not fit.is_empty(): size=fit.size
+ # A production card fits its own ring, so menu insets for other pages never apply.
+ var top=0.0 if not fit.is_empty() else inspection_top
+ var bottom=0.0 if not fit.is_empty() else inspection_bottom
+ size/=maxf(0.2,1.0-framing-top-bottom)
  camera.size=size if immediate else lerpf(camera.size,size,blend)
  if camera_mode=="overview": camera.size=maxf(size,camera.size)
  var view_aspect=get_viewport().get_visible_rect().size.x/maxf(1.0,get_viewport().get_visible_rect().size.y)
  var shift=focus_shift if camera_mode=="place" and production_focus else Vector2.ZERO
- camera.h_offset=-shift.x*camera.size*view_aspect
- camera.v_offset=camera.size*(inspection_top-inspection_bottom-framing)*0.5+shift.y*camera.size
+ # A fitted place sits a touch below the ring's centre, so roofs and sails stay inside.
+ var lowered=ring_share*0.04 if not fit.is_empty() else 0.0
+ var centre: Vector2=fit.get("center",Vector2.ZERO)
+ camera.h_offset=centre.x-shift.x*camera.size*view_aspect
+ camera.v_offset=centre.y+camera.size*(top-bottom-framing)*0.5+(shift.y+lowered)*camera.size
  camera.look_at(orbit_focus)
  camera_initialized=true
+
  var inspected=data.find(focus_item_id) if (inspection_top>0 or production_focus) and camera_mode=="place" else {}
  if inspected.is_empty(): presentation.update_character_visibility(camera,resident.position,true)
  else:
@@ -984,6 +1001,44 @@ func _process(delta):
   # stays solid; foreground roofs/trees clear the view without moving records.
   presentation.update_character_visibility(camera,HomesteadItems.item_center(inspected),true,focus_item_id,maxf(1.0,HomesteadItems.DEFINITIONS[inspected.kind].height*0.8))
  presentation.layout_markers()
+
+# The production card's subject: the oven or kitchen for those stations, otherwise the place.
+func production_subject() -> Node3D:
+ if focus_station=="oven" and presentation.ovens.has(focus_item_id): return presentation.ovens[focus_item_id]
+ if focus_station=="pantry" and presentation.kitchens.has(focus_item_id): return presentation.kitchens[focus_item_id]
+ return presentation.nodes.get(focus_item_id)
+
+# Fits the subject's visible outline inside the ring from its mesh corners, sampled
+# once per subject and revision so turning sails or puffs never make it jitter.
+func production_fit(view: Basis) -> Dictionary:
+ var subject=production_subject()
+ if ring_share<=0.0 or not is_instance_valid(subject): return {}
+ var key="%s:%s:%d:%d" % [focus_item_id,focus_station,subject.get_instance_id(),presentation.visual_revision]
+ if key!=subject_key:
+  subject_key=key
+  subject_points.clear()
+  # Only the place's own art: ground patches, grass or effects reaching past its yard never count.
+  var item=data.find(focus_item_id)
+  var footprint=HomesteadItems.footprint(item.kind,item.rotation) if not item.is_empty() and subject==presentation.nodes.get(focus_item_id) else Vector2i(2,2)
+  var reach=maxf(footprint.x,footprint.y)*0.75+0.8
+  var middle=subject.global_position if subject!=presentation.nodes.get(focus_item_id) or item.is_empty() else HomesteadItems.item_center(item)
+  for mesh in subject.find_children("*","GeometryInstance3D",true,false):
+   if not mesh.is_visible_in_tree() or mesh is Label3D: continue
+   var box: AABB=mesh.get_aabb()
+   if box.size.length()<0.01: continue
+   var world: AABB=mesh.global_transform*box
+   var flat=Vector2(world.get_center().x-middle.x,world.get_center().z-middle.z)
+   if flat.length()>reach or maxf(world.size.x,world.size.z)>reach*2.4 or world.size.y>8.0: continue
+   for i in 8: subject_points.append(mesh.global_transform*box.get_endpoint(i))
+ if subject_points.is_empty(): return {}
+ var low=Vector2(INF,INF)
+ var high=Vector2(-INF,-INF)
+ for point in subject_points:
+  var offset=point-orbit_focus
+  var flat=Vector2(offset.dot(view.x),offset.dot(view.y))
+  low=low.min(flat); high=high.max(flat)
+ # The loose mesh-box outline fills the ring; the art itself sits a little inside it.
+ return {"size":clampf((high-low).length()/(ring_share*1.02),3.2,14.0),"center":(low+high)*0.5}
 
 func overview_points() -> Array[Vector3]:
  # Include inactive plots as well as the active clearing; no imaginary roofs
