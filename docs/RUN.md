@@ -11,12 +11,10 @@ Saves go to Godot's user folder (`~/Library/Application Support/Godot/app_userda
 
 ## iPhone and iPad
 
-1. In Godot, install the 4.7.2 export templates (**Editor › Manage Export Templates**).
-2. Open **Project › Export › iOS** and set your **App Store Team ID**. The bundle ID is `com.skymesh.tuvloworld`, which is provisional.
-3. Export. The preset writes an Xcode project into `build/ios/` because `export_project_only` is on.
-4. Open that project in Xcode, pick your iPhone or iPad and press Run.
+1. Run `sh scripts/export-ios.sh`. The first time, it downloads and installs the Godot 4.7.2 export templates (about 1 GB). It then writes an Xcode project into `build/ios/` and opens it.
+2. In Xcode, plug in your iPhone or iPad, pick it as the run target and press Run. Signing uses Team `F36G3M2Y7Y` (the same team as Tuvlo) with automatic signing. The first run on a device needs **Settings › General › VPN & Device Management** to trust the developer.
 
-The same preset targets both iPhone and iPad (device family 2) on iOS/iPadOS 18.0 and later. The game is landscape-only on both.
+The bundle ID `com.skymesh.tuvloworld` is provisional. The same preset targets both iPhone and iPad (device family 2) on iOS/iPadOS 18.0 and later. The game is landscape-only on both.
 
 ## Tests
 
