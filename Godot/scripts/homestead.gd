@@ -108,7 +108,7 @@ func _ready():
  # Noon finish in the renderer's own tonemap step, with no extra full-screen
  # copy: more colour, a gentle 1.05 curve and a warm cap still below white.
  settings.adjustment_enabled=true
- settings.adjustment_saturation=1.22
+ settings.adjustment_saturation=1.16
  settings.adjustment_color_correction=grade_curve()
  environment.environment=settings
  add_child(environment)
@@ -153,11 +153,12 @@ static func grade_curve() -> GradientTexture1D:
  var gradient=Gradient.new()
  var offsets=PackedFloat32Array()
  var colors=PackedColorArray()
- for i in 9:
-  var value=float(i)/8.0
-  var lifted=pow(value,1.05)
+ for i in 17:
+  var value=float(i)/16.0
+  # A gentle S-curve for depth, and a cap that stays warm but less yellow.
+  var lifted=pow(clampf(value-0.045*sin(TAU*value),0,1),1.05)
   offsets.append(value)
-  colors.append(Color(lifted*0.93,lifted*0.927,lifted*0.852))
+  colors.append(Color(lifted*0.94,lifted*0.935,lifted*0.885))
  gradient.offsets=offsets
  gradient.colors=colors
  var texture=GradientTexture1D.new()

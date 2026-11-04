@@ -75,6 +75,9 @@ var last_coins := -1
 var audio: Dictionary = {}
 var music: AudioStreamPlayer
 var sound_on := true
+var music_on := true
+var haptics_on := true
+const SETTINGS_PATH := "user://settings.cfg"
 var fly_from := Vector2(-1, -1)
 var last_stock := {}
 
@@ -138,37 +141,65 @@ class Ribbon extends Control:
 			var d := 4.5 * k
 			draw_colored_polygon(PackedVector2Array([Vector2(x, h / 2 - d), Vector2(x + d, h / 2), Vector2(x, h / 2 + d), Vector2(x - d, h / 2)]), WorldUI.GOLD)
 
-## The card's band, with a round window so the real place shows through the ring.
-class Band extends Control:
+## Dims the whole map except a soft circle around the ring: a spotlight on
+## the place, so the card reads as a focus mode rather than a pop-up.
+const SPOTLIGHT_SHADER := """
+shader_type canvas_item;
+uniform vec2 rect_size = vec2(1280.0, 720.0);
+uniform vec2 centre = vec2(640.0, 360.0);
+uniform float radius = 100.0;
+uniform float feather = 60.0;
+uniform vec4 tint : source_color = vec4(0.02, 0.06, 0.05, 0.62);
+void fragment() {
+	vec2 p = UV * rect_size;
+	float d = distance(p, centre);
+	float hole = smoothstep(radius, radius + feather, d);
+	float edge = smoothstep(rect_size.y * 0.35, rect_size.y * 1.1, d) * 0.25;
+	COLOR = vec4(tint.rgb, clamp(tint.a * hole + edge, 0.0, 0.9));
+}
+"""
+static var spotlight_shader: Shader
+
+class Spotlight extends ColorRect:
+	func aim(viewport: Vector2, at: Vector2, radius: float, feather: float) -> void:
+		if WorldUI.spotlight_shader == null:
+			WorldUI.spotlight_shader = Shader.new()
+			WorldUI.spotlight_shader.code = WorldUI.SPOTLIGHT_SHADER
+		var shading := ShaderMaterial.new()
+		shading.shader = WorldUI.spotlight_shader
+		shading.set_shader_parameter("rect_size", viewport)
+		shading.set_shader_parameter("centre", at)
+		shading.set_shader_parameter("radius", radius)
+		shading.set_shader_parameter("feather", feather)
+		material = shading
+		size = viewport
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+## A small on/off switch in the iOS manner.
+class Switch extends Control:
+	signal toggled(on: bool)
+	var on := true
+	var knob := 1.0
 	var ui
-	var hole_radius := 100.0
-	func _rounded(rect: Rect2, radius: float) -> PackedVector2Array:
-		var points := PackedVector2Array()
-		var corners := [[rect.position + Vector2(radius, radius), PI], [Vector2(rect.end.x - radius, rect.position.y + radius), -PI / 2], [rect.end - Vector2(radius, radius), 0.0], [Vector2(rect.position.x + radius, rect.end.y - radius), PI / 2]]
-		for corner in corners:
-			for k in 9: points.append(corner[0] + Vector2.from_angle(corner[1] + k * PI / 16) * radius)
-		return points
 	func _draw() -> void:
 		var k: float = ui.s
-		var circle := PackedVector2Array()
-		for i in 72: circle.append(size / 2 + Vector2.from_angle(i * TAU / 72) * hole_radius)
-		var outer := _rounded(Rect2(Vector2.ZERO, size), minf(36 * k, size.y / 2))
-		# clip_polygons returns the outer ring and the hole separately; split into halves instead.
-		var halves := []
-		for side in [0, 1]:
-			var clip := PackedVector2Array([Vector2(size.x / 2 * side, -10), Vector2(size.x / 2 * (side + 1), -10), Vector2(size.x / 2 * (side + 1), size.y + 10), Vector2(size.x / 2 * side, size.y + 10)])
-			for half in Geometry2D.intersect_polygons(outer, clip):
-				for piece in Geometry2D.clip_polygons(half, circle): halves.append(piece)
-		for step in 4:
-			var shadow := Transform2D(0, Vector2(0, (3 + step * 3) * k))
-			for piece in halves: draw_colored_polygon(shadow * piece, Color(0, 0, 0, 0.07))
-		for piece in halves: draw_colored_polygon(piece, WorldUI.GLASS)
-		var edge := outer.duplicate()
-		edge.append(outer[0])
-		for i in edge.size() - 1:
-			var a := edge[i]; var b := edge[i + 1]
-			if a.distance_to(size / 2) > hole_radius + 2 and b.distance_to(size / 2) > hole_radius + 2:
-				draw_line(a, b, Color(1, 1, 1, 0.2 if a.y < size.y / 2 else 0.08), 1.5 * k, true)
+		var track := StyleBoxFlat.new()
+		track.bg_color = Color(1, 1, 1, 0.16).lerp(WorldUI.MINT, knob)
+		track.set_corner_radius_all(int(size.y / 2))
+		track.anti_aliasing_size = 0.8
+		draw_style_box(track, Rect2(Vector2.ZERO, size))
+		var r := size.y / 2 - 3 * k
+		var x := lerpf(size.y / 2, size.x - size.y / 2, knob)
+		draw_circle(Vector2(x, size.y / 2 + 1.5 * k), r, Color(0, 0, 0, 0.2))
+		draw_circle(Vector2(x, size.y / 2), r, WorldUI.IVORY)
+	func _gui_input(event: InputEvent) -> void:
+		var press: bool = (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed) or (event is InputEventScreenTouch and not event.pressed)
+		if not press: return
+		on = not on
+		create_tween().tween_property(self, "knob", 1.0 if on else 0.0, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		var redraw := create_tween()
+		redraw.tween_method(func(_v): queue_redraw(), 0.0, 1.0, 0.2)
+		toggled.emit(on)
 
 ## The level as a dark medal with a gold progress ring.
 class LevelBadge extends Control:
@@ -347,6 +378,7 @@ func setup(owner_main) -> void:
 	pointer.visible = false
 	root.add_child(pointer)
 	root.move_child(pointer, 1)
+	_load_settings()
 	_setup_audio()
 	_show_title()
 	refresh()
@@ -496,16 +528,39 @@ func _setup_audio() -> void:
 		music.stream = stream
 		music.volume_db = -16.0
 		add_child(music)
-		music.play()
+		if music_on: music.play()
 
 func sfx(name: String) -> void:
 	if sound_on and audio.has(name): audio[name].play()
 
+## A light tap on phones and iPads; nothing elsewhere.
+func haptic(strength := 0.35) -> void:
+	if haptics_on and OS.has_feature("mobile"): Input.vibrate_handheld(12, strength)
+
+func _load_settings() -> void:
+	var config := ConfigFile.new()
+	if config.load(SETTINGS_PATH) != OK: return
+	sound_on = config.get_value("audio", "effects", true)
+	music_on = config.get_value("audio", "music", true)
+	haptics_on = config.get_value("feel", "haptics", true)
+
+func _save_settings() -> void:
+	var config := ConfigFile.new()
+	config.set_value("audio", "effects", sound_on)
+	config.set_value("audio", "music", music_on)
+	config.set_value("feel", "haptics", haptics_on)
+	config.save(SETTINGS_PATH)
+
+func set_music(on: bool) -> void:
+	music_on = on
+	if music and music.stream:
+		if on and not music.playing: music.play()
+		elif not on: music.stop()
+	_save_settings()
+
 func toggle_sound() -> void:
 	sound_on = not sound_on
-	if music.stream:
-		if sound_on: music.play()
-		else: music.stop()
+	set_music(sound_on)
 
 # --- motion ----------------------------------------------------------------
 
@@ -529,7 +584,7 @@ func _juice(button: BaseButton) -> void:
 		button.pivot_offset = button.size / 2
 		create_tween().tween_property(button, "scale", Vector2(0.93, 0.93), 0.06))
 	button.button_up.connect(func(): create_tween().tween_property(button, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
-	button.pressed.connect(func(): sfx("tap"))
+	button.pressed.connect(func(): sfx("tap"); haptic())
 
 ## Icons fly from a screen point to a HUD target along an arc, then the target bumps.
 func fly(texture: Texture2D, from: Vector2, target: Control, count := 3, side := 44.0) -> void:
@@ -862,11 +917,11 @@ func _build_hud() -> void:
 	root.add_child(dock)
 	hud.append(dock)
 	dock_node = dock
-	var sound := _round_button("", func(): pass, "Sound")
-	sound.text = "♪"
-	sound.add_theme_font_size_override("font_size", int(22 * s))
+	var sound := _round_button("", func(): open("settings"), "Settings")
+	sound.text = "•••"
+	sound.add_theme_font_override("font", DISPLAY)
+	sound.add_theme_font_size_override("font_size", int(15 * s))
 	sound.custom_minimum_size = Vector2(46, 46) * s
-	sound.pressed.connect(func(): toggle_sound(); sound.modulate.a = 1.0 if sound_on else 0.45)
 	sound.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, int(16 * s))
 	sound.offset_left -= safe.size.x; sound.offset_right -= safe.size.x
 	sound.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -946,7 +1001,7 @@ func _quick(action: Callable) -> void:
 
 func blocks(point: Vector2) -> bool:
 	if title_layer: return true
-	if mode in ["place", "more", "land"]: return true
+	if mode in ["place", "more", "land", "settings"]: return true
 	if sheet_root and sheet_root.get_global_rect().has_point(point): return true
 	for control in hud:
 		if control.get_global_rect().has_point(point): return true
@@ -1069,6 +1124,7 @@ func refresh() -> void:
 	if ring and is_instance_valid(ring): from = ring.get_global_rect().get_center()
 	if last_coins >= 0 and coins > last_coins:
 		sfx("coins")
+		haptic(0.5)
 		fly(icons["coin"], from, coin_pill, clampi(coins - last_coins, 1, 6))
 		float_text("+%d" % (coins - last_coins), from + Vector2(0, -50 * s), GOLD)
 	elif last_coins >= 0 and coins < last_coins: sfx("world_build_complete")
@@ -1145,7 +1201,7 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	goal_box.visible = false
 	dock_node.visible = false
 	if next_mode != "build": main.spot_preview({})
-	panel_changed.emit(next_mode in ["place", "more", "land"])
+	panel_changed.emit(next_mode in ["place", "more", "land", "settings"])
 	if was == "" or was != next_mode: pass
 
 func close() -> void:
@@ -1177,6 +1233,7 @@ func _fill() -> void:
 		"build": _fill_build()
 		"more": _fill_more()
 		"land": _fill_land()
+		"settings": _fill_settings()
 	if sheet_root and was_new:
 		var target := sheet_root
 		get_tree().process_frame.connect(func(): if is_instance_valid(target): pop_in(target), CONNECT_ONE_SHOT)
@@ -1223,7 +1280,7 @@ func _good_tile(good: String, count_text: String, short := false, draggable := f
 	return column
 
 func _card_shell(title: String) -> Array:
-	# A picture sentence on one band: goods › the place in a ring › products.
+	# A picture sentence under a spotlight: goods › the place in a ring › products.
 	# Returns [left well, centre column, right well].
 	var viewport := root.get_viewport_rect().size
 	var width := minf(760 * s, viewport.x - 24 * s)
@@ -1232,13 +1289,11 @@ func _card_shell(title: String) -> Array:
 	card.size = Vector2(width, height)
 	card.position = (viewport - card.size) / 2 + Vector2(0, 14 * s)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var band := Band.new()
-	band.ui = self
-	band.hole_radius = RING_DIAMETER * s / 2 - 4 * s
-	band.size = Vector2(width, 168 * s)
-	band.position = Vector2(0, (RING_DIAMETER * s - band.size.y) / 2)
-	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(band)
+	var spotlight := Spotlight.new()
+	spotlight.aim(viewport, card.position + Vector2(width / 2, RING_DIAMETER * s / 2), RING_DIAMETER * s / 2 + 6 * s, 70 * s)
+	spotlight.position = -card.position
+	card.add_child(spotlight)
+	var band_top := 22 * s
 	var row := HBoxContainer.new()
 	row.size = Vector2(width, height)
 	row.add_theme_constant_override("separation", int(4 * s))
@@ -1260,17 +1315,18 @@ func _card_shell(title: String) -> Array:
 	row.add_child(_arrow())
 	row.add_child(_well_holder(right))
 	var close_button := _close_button()
-	close_button.position = Vector2(width - 30 * s, band.position.y - 18 * s)
+	close_button.position = Vector2(width - 44 * s, band_top - 26 * s)
 	card.add_child(close_button)
 	var ribbon := Ribbon.new()
 	ribbon.ui = self
 	ribbon.text = title
 	var ribbon_width := DISPLAY.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * s)).x + 92 * s
 	ribbon.size = Vector2(ribbon_width, 44 * s)
-	ribbon.position = Vector2((width - ribbon_width) / 2, band.position.y - 74 * s)
+	ribbon.position = Vector2((width - ribbon_width) / 2, band_top - 74 * s)
 	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(ribbon)
 	root.add_child(card)
+	root.move_child(wallet_node, -1)
 	sheet_root = card
 	ring = WorldRing.new()
 	ring.ui = self
@@ -1284,7 +1340,14 @@ func _well_holder(well: VBoxContainer) -> Control:
 	var holder := CenterContainer.new()
 	holder.custom_minimum_size = Vector2(150 * s, RING_DIAMETER * s)
 	holder.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	holder.add_child(well)
+	var plate := PanelContainer.new()
+	var box := glass(28)
+	box.set_content_margin_all(10 * s)
+	plate.add_theme_stylebox_override("panel", box)
+	plate.custom_minimum_size = Vector2(140, 140) * s
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(well)
+	holder.add_child(plate)
 	return holder
 
 func _arrow() -> Control:
@@ -1804,3 +1867,52 @@ func _order_ticket(order: Dictionary) -> Control:
 
 func _fill_land() -> void:
 	open("build")
+
+# --- settings -----------------------------------------------------------------
+
+func _fill_settings() -> void:
+	var column := _sheet("Settings")
+	var rows := [["Sound effects", sound_on, func(on): sound_on = on; _save_settings()],
+		["Music", music_on, func(on): set_music(on)],
+		["Haptics", haptics_on, func(on): haptics_on = on; _save_settings(); haptic(0.6)]]
+	var list := PanelContainer.new()
+	var box := tile_box(20)
+	box.set_content_margin_all(6 * s)
+	list.add_theme_stylebox_override("panel", box)
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 0)
+	for i in rows.size():
+		var entry: Array = rows[i]
+		var line := HBoxContainer.new()
+		line.custom_minimum_size = Vector2(0, 54) * s
+		var gap := Control.new()
+		gap.custom_minimum_size = Vector2(12, 0) * s
+		line.add_child(gap)
+		var label := Label.new()
+		label.text = entry[0]
+		label.add_theme_font_override("font", DISPLAY_SEMI)
+		label.add_theme_font_size_override("font_size", int(20 * s))
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		line.add_child(label)
+		var toggle := Switch.new()
+		toggle.ui = self
+		toggle.on = entry[1]
+		toggle.knob = 1.0 if entry[1] else 0.0
+		toggle.custom_minimum_size = Vector2(58, 34) * s
+		toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		toggle.toggled.connect(func(on): sfx("tap"); entry[2].call(on))
+		line.add_child(toggle)
+		var tail := Control.new()
+		tail.custom_minimum_size = Vector2(10, 0) * s
+		line.add_child(tail)
+		stack.add_child(line)
+		if i < rows.size() - 1: stack.add_child(HSeparator.new())
+	list.add_child(stack)
+	column.add_child(list)
+	if C.speed() > 1.0:
+		var note := Label.new()
+		note.text = "Quick play  ×%d" % roundi(C.speed())
+		note.add_theme_font_size_override("font_size", int(14 * s))
+		note.add_theme_color_override("font_color", MUTED)
+		column.add_child(note)
