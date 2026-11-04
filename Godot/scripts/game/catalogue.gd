@@ -109,6 +109,18 @@ const SELL_PRICE := {"wheat": 1, "flour": 3, "bread": 5, "fruit": 1, "tart": 10,
 const SOLO_STARTING_COINS := 6
 const SOLO_SALES_PER_LEVEL := 5
 
+## SOLO daily gift: the first visit of each later day finds a basket on the
+## farm. Consecutive days climb the week below and then loop; a missed day
+## starts again at day 1. Goods only: gifts never pay coins or count as sales.
+const GIFT_BASKETS := [
+	{"wheat": 2}, {"wheat": 3}, {"wheat": 2, "flour": 1}, {"wheat": 3, "flour": 1},
+	{"flour": 2}, {"flour": 1, "bread": 1}, {"bread": 2, "tart": 1},
+]
+static func gift_basket(streak: int) -> Dictionary: return GIFT_BASKETS[(maxi(streak, 1) - 1) % GIFT_BASKETS.size()]
+## The device's local calendar day for a clock time (days since 1970).
+static func local_day(at: float) -> int:
+	return floori((at + Time.get_time_zone_from_system().get("bias", 0) * 60.0) / 86400.0)
+
 ## SOLO market orders: three slots, each with its own deterministic sequence, so
 ## two devices always agree on which order comes next. A slot opens once the
 ## place that makes its goods exists.

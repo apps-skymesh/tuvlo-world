@@ -8,6 +8,7 @@ const REASONS := {
 	"full": "No free spot", "owned": "Already built", "busy": "Already making something",
 	"not-ready": "Not ready yet", "growing": "Still growing", "save": "Couldn't save. Try again.",
 	"read-only": "Read only", "invalid": "Can't do that now", "occupied": "That spot is taken",
+	"claimed": "Already collected today",
 }
 var host: WorldHost
 var game: WorldGame
