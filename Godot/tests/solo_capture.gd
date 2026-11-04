@@ -65,6 +65,8 @@ func _process(delta: float) -> bool:
 				if game.state.stock[good] > 0: game.sell(good, game.state.stock[good])
 			main.ui.close(); main.push(); wait = 0.5
 		29: shot("13-level-up")
-		30: return true
+		30: main.ui.open("settings"); wait = 0.8
+		31: shot("14-settings")
+		32: return true
 	step += 1
 	return false
