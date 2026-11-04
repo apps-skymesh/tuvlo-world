@@ -35,9 +35,19 @@ func push() -> void:
 		world.receive_host_json(JSON.stringify({"version": 1, "session": "solo", "type": "snapshot", "payload": game.snapshot()}))
 	if ui: ui.refresh()
 
+func send(type: String, payload: Dictionary) -> void:
+	if world.ready_for_snapshot:
+		world.receive_host_json(JSON.stringify({"version": 1, "session": "solo", "type": type, "payload": payload}))
+
+func camera(payload: Dictionary) -> void: send("camera", payload)
+func spot_preview(payload: Dictionary) -> void:
+	send("spotPreview", payload if not payload.is_empty() else {"clear": true})
+func land_preview(side: String) -> void: send("landPreview", {"side": side})
+
 func after_action(result: String) -> void:
 	if result == "":
-		if game.state.notice != "": ui.show_toast(game.state.notice)
+		# Gains fly to the HUD and fields change in place; only builds need words.
+		if game.state.notice.ends_with("built") or game.state.notice.ends_with("is yours"): ui.show_toast(game.state.notice)
 		push()
 	else:
 		ui.show_toast(REASONS.get(result, "Can't do that now"))
@@ -56,8 +66,8 @@ func _on_world_message(json: String) -> void:
 		"ready": push()
 		"productionRequested", "visited":
 			if game.state.find(str(payload.get("id", ""))).is_empty(): return
-			ui.open("place", str(payload.id))
-		"landRequested": ui.open("land", str(payload.get("side", "")))
+			ui.place_tapped(str(payload.id), str(payload.get("station", "")))
+		"landRequested": ui.open("build")
 		"error": push_warning("World renderer: " + str(payload))
 
 func _notification(what: int) -> void:

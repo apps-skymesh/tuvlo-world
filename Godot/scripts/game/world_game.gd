@@ -84,5 +84,18 @@ func sell(good: String, count: int) -> String:
 	var amount: int = C.SELL_PRICE[good] * count
 	return _commit(_record("sell", {"good": good, "count": count, "amount": amount}), 0, amount)
 
+func deliver(slot: int) -> String:
+	if not host.features().get("market", false): return "unavailable"
+	if slot < 0 or slot >= C.ORDER_SLOTS.size() or not state.owns(C.ORDER_SLOTS[slot].opens): return "invalid"
+	var want := C.order(slot, state.orders_filled[slot])
+	if state.stock.get(want.good, 0) < want.count: return "short"
+	return _commit(_record("order", {"slot": slot, "nth": want.nth, "good": want.good, "count": want.count, "amount": want.reward}), 0, want.reward)
+
+## Sales still needed for the next level (solo hosts; 0 when unknown).
+func next_level_progress() -> Vector2:
+	if not host.has_method("earned"): return Vector2.ZERO
+	var per := C.SOLO_SALES_PER_LEVEL
+	return Vector2(host.earned() % per, per)
+
 func snapshot() -> Dictionary:
 	return state.snapshot(now(), host.progress(), host.player().get("reduced_motion", false))

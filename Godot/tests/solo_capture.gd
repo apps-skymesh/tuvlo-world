@@ -28,18 +28,42 @@ func _process(delta: float) -> bool:
 	match step:
 		0: wait = 4.0
 		1: shot("01-start")
-		2:
-			for i in 2: game.tend(i); game.tend(i)
-			offset.s += 31; main.push(); wait = 2.0
-		3: shot("02-wheat-ready")
-		4: main.ui.open("place", "base:garden"); wait = 1.0
-		5: shot("03-farm-panel")
-		6:
-			main.ui.close(); game.tend(0); game.tend(1); main.ui.open("market"); wait = 1.0
-		7: shot("04-market")
-		8:
-			main.ui.close(); main.ui.open("build"); wait = 1.0
-		9: shot("05-build")
-		10: return true
+		2: main.ui.goal_action.call(); wait = 0.6
+		3: shot("02-planted-quick")
+		4: main.ui.place_tapped("base:garden"); wait = 0.6
+		5: offset.s += 31; main.push(); wait = 1.0
+		6: shot("03-farm-ready")
+		7: main.ui.place_tapped("base:garden"); wait = 0.35
+		8: shot("04-harvest-fly")
+		9: wait = 1.5
+		10: main.ui.open("place", "base:garden"); wait = 4.0
+		11: shot("05-farm-card")
+		12: main.ui.close(); main.ui.open("more"); wait = 1.0
+		13: shot("06-market-orders")
+		14: main.ui._act(game.deliver(0)); wait = 0.3
+		15: shot("07-order-coins")
+		16:
+			main.ui.close(); main.host.grant("test-level", 40, []); main.push()
+			main.ui.open("build"); wait = 1.0
+		17: shot("08-build-tray")
+		18: main.ui._pick_build("windmill", ""); wait = 1.5
+		19: shot("09-build-spot")
+		20:
+			main.ui._confirm_build(); offset.s += 9; main.push(); wait = 2.0
+		21:
+			main.ui.open("place", game.state.first_of("windmill").id, "mill"); wait = 4.0
+		22: shot("10-mill-card")
+		23:
+			main.ui._ring_dropped("wheat"); offset.s += 20; main.push(); wait = 1.0
+		24: shot("11-mill-working")
+		25:
+			main.ui.close(); main.ui.open("more"); wait = 1.0
+		26: shot("12-market")
+		27:
+			for good in game.state.stock:
+				if game.state.stock[good] > 0: game.sell(good, game.state.stock[good])
+			main.ui.close(); main.push(); wait = 0.5
+		28: shot("13-level-up")
+		29: return true
 	step += 1
 	return false
