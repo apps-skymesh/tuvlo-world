@@ -166,14 +166,16 @@ func _setup_audio() -> void:
 	for name in ["tap", "coin", "coins", "world_harvest", "world_plant", "world_mill", "world_grill", "world_sheep", "world_build_complete", "place_set", "success", "level_up", "world_paper", "world_wood", "soft_fail", "celebrate"]:
 		var path := "res://assets/audio/%s.wav" % name
 		if ResourceLoader.exists(path):
+			var effect = load(path)
+			if effect == null: continue
 			var player := AudioStreamPlayer.new()
-			player.stream = load(path)
+			player.stream = effect
 			player.volume_db = -6.0
 			add_child(player)
 			audio[name] = player
 	music = AudioStreamPlayer.new()
-	if ResourceLoader.exists("res://assets/audio/music_world.ogg"):
-		var stream: AudioStreamOggVorbis = load("res://assets/audio/music_world.ogg")
+	var stream = load("res://assets/audio/music_world.ogg") if ResourceLoader.exists("res://assets/audio/music_world.ogg") else null
+	if stream is AudioStreamOggVorbis:
 		stream.loop = true
 		music.stream = stream
 		music.volume_db = -16.0
