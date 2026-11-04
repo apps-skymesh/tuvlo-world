@@ -61,6 +61,10 @@ func _process(delta: float) -> bool:
 			ui.open("build")
 			tap.call(corner)
 			check(ui.mode == "build", "the Build tray stays open for map taps")
+			# The tray opens on what can be built now; finished places go last.
+			var order: Array = ui._build_entries(main.host.progress()).map(func(e): return e.blocker)
+			var first_owned := order.find("owned")
+			check(order[0] == "" and (first_owned < 0 or order.slice(first_owned).all(func(b): return b == "owned")), "Build tray leads with what's buildable and ends with what's built (%s)" % [order])
 			ui.close()
 			# Totals changing faster than the count can finish; the game's next refresh
 			# must still land the wallet on the real balance.

@@ -1316,6 +1316,7 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	filled = {}
 	build_pick = ""
 	was_new = true
+	if next_mode == "build" and was != "build": build_scroll = 0
 	if next_mode == "place":
 		var item: Dictionary = main.game.state.find(place_id)
 		var stations := C.stations_for(item.get("kind", ""))
@@ -1747,23 +1748,42 @@ func _fill_build() -> void:
 	scroll.add_child(row)
 	column.add_child(scroll)
 	var level := game.host.progress()
-	var entries: Array = C.BUILD_ORDER.duplicate()
-	for side in C.LAND: entries.append(side)
-	for key in entries:
-		var is_land: bool = C.LAND.has(key)
-		var spec: Dictionary = C.LAND[key] if is_land else C.BUILDS[key]
-		var blocker := ""
-		if is_land: blocker = "owned" if key in game.state.land else ("locked" if level < spec.gate else "")
-		else: blocker = game.state.build_blocker(key, level)
-		row.add_child(_build_tile(key, spec, blocker))
+	for entry in _build_entries(level): row.add_child(_build_tile(entry.key, entry.spec, entry.blocker))
+	# Keep the tray where the player left it when picking redraws it.
+	scroll.scroll_deadzone = int(10 * s)
+	scroll.set_deferred("scroll_horizontal", build_scroll)
+	scroll.get_h_scroll_bar().value_changed.connect(func(v: float): build_scroll = int(v))
 	tray.reset_size()
 	root.add_child(tray)
 	tray.position = Vector2(14 * s + safe.position.x, viewport.y - tray.get_combined_minimum_size().y - 16 * s - safe.size.y)
 	sheet_root = tray
 
+## The Build tray's order: what can be built now first, then decorations, then
+## the next unlocks by level, and finished places last, so the tray opens on
+## what's new instead of a row of ticks.
+const BUILD_GROUPS := {"": 0, "decor": 1, "locked": 2, "land": 3, "full": 4, "owned": 5}
+func _build_entries(level: int) -> Array:
+	var game: WorldGame = main.game
+	var entries := []
+	var keys: Array = C.BUILD_ORDER.duplicate()
+	for side in C.LAND: keys.append(side)
+	for i in keys.size():
+		var key: String = keys[i]
+		var is_land: bool = C.LAND.has(key)
+		var spec: Dictionary = C.LAND[key] if is_land else C.BUILDS[key]
+		var blocker := ""
+		if is_land: blocker = "owned" if key in game.state.land else ("locked" if level < spec.gate else "")
+		else: blocker = game.state.build_blocker(key, level)
+		var group: int = BUILD_GROUPS["decor"] if blocker == "" and key in ["flowers", "bench", "rocks"] else BUILD_GROUPS.get(blocker, 4)
+		entries.append({"key": key, "spec": spec, "blocker": blocker, "rank": [group, int(spec.gate) if blocker == "locked" else 0, i]})
+	entries.sort_custom(func(a, b): return a.rank < b.rank)
+	return entries
+
 func _build_tile(key: String, spec: Dictionary, blocker: String) -> Control:
 	var button := Button.new()
 	button.focus_mode = Control.FOCUS_NONE
+	# Pass drags up so a finger can scroll the tray across the tiles.
+	button.mouse_filter = Control.MOUSE_FILTER_PASS
 	button.custom_minimum_size = Vector2(118, 144) * s
 	button.tooltip_text = C.title(key)
 	var picked := key == build_pick
@@ -1807,7 +1827,10 @@ func _build_tile(key: String, spec: Dictionary, blocker: String) -> Control:
 	tag.add_child(label)
 	column.add_child(tag)
 	button.add_child(column)
-	button.pressed.connect(func(): _pick_build(key, blocker))
+	# A finger that scrolled the tray isn't a pick.
+	var down_at := [0]
+	button.button_down.connect(func(): down_at[0] = build_scroll)
+	button.pressed.connect(func(): if absi(build_scroll - down_at[0]) < int(6 * s): _pick_build(key, blocker))
 	_juice(button)
 	return button
 
@@ -2148,6 +2171,7 @@ class Ripple extends Control:
 var press_at := Vector2(-1, -1)
 var press_time := 0.0
 var press_panel: Control  # the panel open when the finger went down
+var build_scroll := 0  # the Build tray's scroll, kept while it stays open
 func _input(event: InputEvent) -> void:
 	var down := false
 	var up := false
