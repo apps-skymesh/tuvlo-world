@@ -25,6 +25,7 @@ var start_day := -1  # local day of the first record
 var gift_day := -1
 var gift_streak := 0
 var notice := ""
+var speech := {}  # the last neighbour to speak: {"name", "line"}
 
 func _init() -> void:
 	for spec in C.STARTER:
@@ -41,6 +42,7 @@ static func replay(records: Array) -> WorldState:
 	for record in sorted:
 		if state.apply(record) != "": state.rejected += 1
 	state.notice = ""
+	state.speech = {}
 	return state
 
 # --- queries ---------------------------------------------------------------
@@ -183,7 +185,7 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 				orchard_watered = -1.0; stock.fruit += C.ORCHARD_YIELD; notice = "+%d fruit" % C.ORCHARD_YIELD
 			else: return "growing"
 		"sell":
-			var good := str(r.get("good", ""))
+			var good := C.good_id(str(r.get("good", "")))
 			var count := int(r.get("count", 0))
 			var amount := int(r.get("amount", 0))
 			if not C.SELL_PRICE.has(good) or count < 1 or stock.get(good, 0) < count or amount < 0: return "short"
@@ -192,13 +194,20 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			notice = "Sold %d %s" % [count, C.title(good).to_lower()]
 		"order":
 			var slot := int(r.get("slot", -1))
-			if slot < 0 or slot >= C.ORDER_SLOTS.size() or int(r.get("nth", -1)) != orders_filled[slot]: return "invalid"
-			var want := C.order(slot, orders_filled[slot])
-			if str(r.get("good", "")) != want.good or int(r.get("count", 0)) != want.count: return "invalid"
-			if stock.get(want.good, 0) < want.count: return "short"
-			stock[want.good] -= want.count
+			if slot < 0 or slot >= C.FOLK.size() or int(r.get("nth", -1)) != orders_filled[slot]: return "invalid"
+			var good := C.good_id(str(r.get("good", "")))
+			var count := int(r.get("count", 0))
+			var want := C.order(slot, orders_filled[slot], owned_kinds())
+			var current := r.has("folk")
+			# Orders saved before the valley folk keep their own saved terms.
+			if current and (str(r.folk) != want.folk or good != want.good or count != want.count): return "invalid"
+			if count < 1 or stock.get(good, -1) < count: return "short"
+			stock[good] -= count
 			orders_filled[slot] += 1
 			lifetime_sales += int(r.get("amount", 0))
+			if current:
+				for gift in want.keepsake: stock[gift] += want.keepsake[gift]
+				speech = {"name": want.name, "line": want.thanks}
 			notice = "Order delivered"
 		"gift":
 			var day := int(r.get("day", -1))
@@ -227,10 +236,15 @@ func gift_ready(today: int) -> bool:
 func gift_streak_on(day: int) -> int:
 	return gift_streak + 1 if gift_day >= 0 and day == gift_day + 1 else 1
 
+func owned_kinds() -> Array:
+	var kinds := []
+	for item in items: if not kinds.has(item.kind): kinds.append(item.kind)
+	return kinds
+
 func open_orders() -> Array:
 	var result := []
 	for slot in C.ORDER_SLOTS.size():
-		if owns(C.ORDER_SLOTS[slot].opens): result.append(C.order(slot, orders_filled[slot]))
+		if owns(C.ORDER_SLOTS[slot].opens): result.append(C.order(slot, orders_filled[slot], owned_kinds()))
 	return result
 
 # --- renderer snapshot -------------------------------------------------------

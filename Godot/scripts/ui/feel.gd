@@ -57,6 +57,9 @@ const RIPPLE_TO := 46.0
 const RIPPLE_TIME := 0.42
 const RIPPLE_MAX_ON_SCREEN := 6
 
+# How long a neighbour's thank-you stays up.
+const SPEECH_TIME := 3.2
+
 # Haptic strengths (0–1) for a light tap and a reward.
 const HAPTIC_TAP := 0.35
 const HAPTIC_REWARD := 0.5
