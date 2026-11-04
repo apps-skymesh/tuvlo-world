@@ -129,3 +129,37 @@ Saeed asked for named neighbours in place of generic market orders, and cheese i
 - **Renderer.** It accepts barn production as "cheese", or "meat" from older hosts, and shows the new cheese art.
 
 Tests: rules 71/0 (9 new checks for folk, keepsakes and legacy saves), feel spam 13/0, runtime and collect pass.
+
+## Pass 5 · 2026-11-04 (owner request)
+
+Saeed asked for a time-of-day cycle, wind, environmental sound, and proof that mobile cost stays lean.
+
+- **Day cycle** (`scripts/day_cycle.gd`). The light follows the local clock: dawn, morning gold (the original look), a crisp afternoon, dusky amber, then hearth-glow with the cottage windows lit.
+  - It only retunes the existing sun, ambient light, background and valley haze every 4 s. There are no new lights or passes.
+  - The window glow uses emission that is always enabled, so dusk never compiles a new shader.
+  - The sun stays above about 38°. A lower sun stretched shadows and cost about 4% more draw calls.
+  - A sunny-day lift now rises from the cycle's current light.
+- **Wind** (`scripts/wind.gd`, `wind.gdshader`). Trees, orchard leaves, flowers, the treehouse canopy, ripening wheat and the distant treeline sway in the vertex shader.
+  - Each matte material gets one cached twin, so the batching and draw calls stay the same. The CPU sway loop is gone.
+  - Reduce Motion holds them still. Camera fading still works through the original material.
+  - The mission tree keeps its own animation. The windmill has no flags; its sails already turn.
+- **Ambience** (`scripts/ui/ambience.gd`, volumes in `feel.gd`). A distant river loop, wooden mill creaks while the mill grinds, and bird calls that are frequent at dawn, thinner in the afternoon and absent at night.
+  - Three small mono clips (420 KB in total), synthesized for this pass. They follow the Sound effects switch.
+
+**Performance** (`tests/perf_probe.gd`, 1280×720, Compatibility renderer, built farm):
+
+| | Draw calls | Video MB |
+|---|---|---|
+| Before | 843 | 97.5 |
+| Morning | 847 | 97.5 |
+| Afternoon | 842 | 97.5 |
+| Dusk / evening | 855 | 97.5 |
+
+Static memory rose by about 0.4 MB (the audio). Not measured on an iPhone; sound balance has not been checked by ear.
+
+Tests: rules 71/0, feel spam 20/0 (7 new checks for the day cycle, wind and ambience), runtime and collect pass.
+
+### Next pass candidates
+
+1. **Adaptive music**: layers that follow the day phase and the valley tiers.
+2. **Economy pacing**: orders count toward levels; tune the early level curve.

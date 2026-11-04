@@ -49,6 +49,9 @@ var fit_cache={}
 var reduced_motion=false
 var sun: DirectionalLight3D
 var sunrise_remaining=0.0
+var environment_settings: Environment
+var day: Dictionary=HomesteadDayCycle.at(8.5)
+var day_clock=0.0
 const SUNRISE_SECONDS=3.6
 const SUN_REST_ENERGY=0.92
 var paused=false
@@ -111,6 +114,7 @@ func _ready():
  settings.adjustment_saturation=1.16
  settings.adjustment_color_correction=grade_curve()
  environment.environment=settings
+ environment_settings=settings
  add_child(environment)
  var light=DirectionalLight3D.new()
  light.rotation_degrees=Vector3(-48,-38,0)
@@ -122,6 +126,7 @@ func _ready():
  light.shadow_enabled=true
  add_child(light)
  sun=light
+ apply_day_cycle()
  var fill=DirectionalLight3D.new()
  fill.rotation_degrees=Vector3(-28,145,0)
  fill.light_color=Color("c9e0e2")
@@ -238,6 +243,7 @@ func receive_host_json(json: String):
   data.farm_fruit_stage=next_data.farm_fruit_stage
   reduced_motion=payload.get("reducedMotion",false)==true
   presentation.reduced_motion=reduced_motion
+  HomesteadWind.set_still(reduced_motion)
   resident.reduced_motion=reduced_motion
   # Animation may defer a reveal, never the authoritative earned size forever.
   if reduced_motion or data.find(data.growth_tree_id).is_empty() or (resident.watering_tree_id!="" and resident.watering_tree_id!=data.growth_tree_id):
@@ -1113,9 +1119,26 @@ func update_sunrise(delta: float):
  if reduced_motion: sunrise_remaining=0
  elif sunrise_remaining>0: sunrise_remaining=maxf(0,sunrise_remaining-delta)
  if sun==null: return
+ day_clock+=delta
+ if day_clock>=HomesteadDayCycle.SAMPLE_SECONDS:
+  day_clock=0.0
+  apply_day_cycle()
  var lift=0.0 if sunrise_remaining<=0 else sin((1.0-sunrise_remaining/SUNRISE_SECONDS)*PI)
- sun.light_energy=SUN_REST_ENERGY+0.22*lift
- sun.rotation_degrees.x=-48.0+6.0*lift
+ # A sunny day lifts the light from wherever the day cycle has it now.
+ sun.light_energy=day.sun_energy*SUN_REST_ENERGY/0.92+0.22*lift
+ sun.rotation_degrees.x=day.sun_pitch+6.0*lift
+## Retunes the existing sun, ambient light and haze to the local hour.
+func apply_day_cycle():
+ day=HomesteadDayCycle.at(HomesteadDayCycle.local_hour())
+ if sun:
+  sun.light_color=day.sun_color
+  sun.light_energy=day.sun_energy*SUN_REST_ENERGY/0.92
+  sun.rotation_degrees=Vector3(day.sun_pitch,day.sun_yaw,0)
+ if environment_settings:
+  environment_settings.ambient_light_color=day.ambient_color
+  environment_settings.ambient_light_energy=day.ambient_energy
+  environment_settings.background_color=day.haze
+ if presentation: presentation.set_daylight(day.haze,day.glow)
 func send_activity():
  emit_message("activity",{"key":resident.state,"destination":resident.destination_kind,"text":resident.activity})
 

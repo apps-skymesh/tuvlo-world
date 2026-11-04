@@ -855,10 +855,10 @@ func run():
  scene.receive_host_json(JSON.stringify({"version":1,"session":"next-child","type":"sunrise","payload":{}}))
  check(scene.sunrise_remaining==3.6 and scene.resident.activity=="A sunny day","A new approval asks the valley to notice")
  scene._process(1.8)
- check(scene.sun.light_energy>0.92,"The sun lifts while the sunny day plays")
+ check(scene.sun.light_energy>scene.day.sun_energy+0.05,"The sun lifts while the sunny day plays")
  scene.reduced_motion=true
  scene._process(0.1)
- check(scene.sunrise_remaining==0 and is_equal_approx(scene.sun.light_energy,0.92),"Reduce Motion returns the sun immediately")
+ check(scene.sunrise_remaining==0 and is_equal_approx(scene.sun.light_energy,scene.day.sun_energy),"Reduce Motion returns the sun immediately")
  scene.receive_host_json(JSON.stringify({"version":1,"session":"test-child-session","type":"select","payload":{"id":"cottage"}}))
  check(scene.selected_id=="","Prior child callbacks cannot mutate the reopened scene")
  var tree_items=[{"id":"cottage","kind":"cottage","cell":{"x":3,"z":2},"rotation":0},{"id":"garden","kind":"garden","cell":{"x":2,"z":10},"rotation":0},{"id":"path","kind":"path","cell":{"x":5,"z":5},"rotation":0},{"id":"tree","kind":"tree","cell":{"x":12,"z":2},"rotation":0}]

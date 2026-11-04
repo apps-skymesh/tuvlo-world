@@ -25,10 +25,18 @@ func _ready():
 	scenery.name="ValleyScenery"
 	add_child(scenery)
 	plant_hills(scenery)
-	plant_treeline(scenery)
-	HomesteadStaticBatcher.consolidate(scenery,[])
-	for child in scenery.get_children():
-		if child is GeometryInstance3D: child.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# The treeline batches on its own so its few merged meshes can sway in the
+	# wind shader while the hills stay still.
+	var treeline=Node3D.new()
+	treeline.name="ValleyTreeline"
+	scenery.add_child(treeline)
+	plant_treeline(treeline)
+	HomesteadStaticBatcher.consolidate(scenery,[treeline])
+	HomesteadStaticBatcher.consolidate(treeline,[])
+	HomesteadWind.apply(treeline,"valley")
+	for group in [scenery,treeline]:
+		for child in group.get_children():
+			if child is GeometryInstance3D: child.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 # Haze in four steps keeps materials shared, so the scenery batches into a
 # handful of draw calls.
