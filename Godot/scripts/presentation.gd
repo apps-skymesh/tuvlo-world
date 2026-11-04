@@ -42,6 +42,7 @@ var production_nodes: Dictionary={}
 var production_effects: Dictionary={}
 var construction_nodes: Dictionary={}
 var harvest_signature=""
+var awakening: HomesteadAwakening
 # Bubbles the child just tapped, by producer key, with the clock time of the tap.
 var collecting: Dictionary={}
 const BUBBLE_SHADER=preload("res://scripts/harvest_bubble.gdshader")
@@ -56,6 +57,9 @@ func setup(world_data: HomesteadWorldData):
 	var valley=HomesteadValley.new()
 	valley.name="Valley"
 	add_child(valley)
+	awakening=HomesteadAwakening.new()
+	awakening.name="Awakening"
+	add_child(awakening)
 	land_root=Node3D.new()
 	add_child(land_root)
 	prop_root=Node3D.new()
@@ -82,6 +86,7 @@ func rebuild():
 		build_island()
 		land_waters=waters.duplicate()
 		land_signature=next_land
+	awakening.wake(data.approvals,reduced_motion)
 	foliage.clear()
 	sails.clear()
 	pet_parts.clear()

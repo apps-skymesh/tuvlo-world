@@ -1137,6 +1137,15 @@ func _celebrate_level(level: int, before: int) -> void:
 		gap.custom_minimum_size = Vector2(0, 6 * s)
 		column.add_child(gap)
 		column.add_child(unlocked)
+	# What woke up in the valley, so the world change has a name.
+	for tier in HomesteadAwakening.woken(before, level).slice(-2):
+		var line := Label.new()
+		line.text = tier.line
+		line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		line.add_theme_font_override("font", DISPLAY_SEMI)
+		line.add_theme_font_size_override("font_size", int(20 * s))
+		line.add_theme_color_override("font_color", MINT)
+		column.add_child(line)
 	banner.add_child(column)
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	fly_layer.add_child(banner)

@@ -57,6 +57,14 @@ func _process(delta: float) -> bool:
 			var pitch := 0.0
 			for i in 20: pitch = ui._combo_pitch()
 			check(is_equal_approx(pitch, 1.0 + F.COMBO_MAX_STEPS * F.COMBO_STEP), "combo pitch stops at its ceiling")
+			# The valley wakes in tiers as the level rises, and stays awake.
+			check(HomesteadAwakening.woken(0, 1).map(func(t): return t.key) == ["flowers"], "level 1 wakes the wildflowers")
+			check(HomesteadAwakening.woken(3, 3).is_empty(), "no tier between its gates")
+			var awake: HomesteadAwakening = main.world.presentation.awakening
+			var level: int = main.host.progress()
+			check(awake.parts.keys() == HomesteadAwakening.awake_keys(level), "renderer shows exactly the tiers for level %d" % level)
+			main.host.grant("feel-wake", 60, []); main.push()
+			check(awake.parts.size() == HomesteadAwakening.TIERS.size(), "a big level jump wakes every tier")
 			ui.set_reduce_motion(true)
 			check(main.host.player().reduced_motion, "renderer is told about Reduce Motion")
 			ui.bump(ui.coin_pill)
