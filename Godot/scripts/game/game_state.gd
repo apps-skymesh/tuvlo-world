@@ -18,6 +18,7 @@ var construction := {}
 var seen := {}
 var rejected := 0
 var lifetime_sales := 0
+var orders_filled := [0, 0, 0]
 var notice := ""
 
 func _init() -> void:
@@ -174,6 +175,16 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			stock[good] -= count
 			lifetime_sales += amount
 			notice = "Sold %d %s" % [count, C.title(good).to_lower()]
+		"order":
+			var slot := int(r.get("slot", -1))
+			if slot < 0 or slot >= C.ORDER_SLOTS.size() or int(r.get("nth", -1)) != orders_filled[slot]: return "invalid"
+			var want := C.order(slot, orders_filled[slot])
+			if str(r.get("good", "")) != want.good or int(r.get("count", 0)) != want.count: return "invalid"
+			if stock.get(want.good, 0) < want.count: return "short"
+			stock[want.good] -= want.count
+			orders_filled[slot] += 1
+			lifetime_sales += int(r.get("amount", 0))
+			notice = "Order delivered"
 		"swap":
 			var a := find(str(r.get("a", "")))
 			var b := find(str(r.get("b", "")))
@@ -184,6 +195,12 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 		_:
 			return "unknown"
 	return ""
+
+func open_orders() -> Array:
+	var result := []
+	for slot in C.ORDER_SLOTS.size():
+		if owns(C.ORDER_SLOTS[slot].opens): result.append(C.order(slot, orders_filled[slot]))
+	return result
 
 # --- renderer snapshot -------------------------------------------------------
 

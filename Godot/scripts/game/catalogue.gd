@@ -86,6 +86,21 @@ const SELL_PRICE := {"wheat": 1, "flour": 3, "bread": 5, "fruit": 1, "tart": 10,
 const SOLO_STARTING_COINS := 6
 const SOLO_SALES_PER_LEVEL := 5
 
+## SOLO market orders: three slots, each with its own deterministic sequence, so
+## two devices always agree on which order comes next. A slot opens once the
+## place that makes its goods exists.
+const ORDER_SLOTS := [
+	{"opens": "garden", "goods": ["wheat", "wheat", "wheat"]},
+	{"opens": "windmill", "goods": ["flour", "bread", "bread", "flour"]},
+	{"opens": "barn", "goods": ["meat", "meal", "tart", "meal"]},
+]
+static func order(slot: int, nth: int) -> Dictionary:
+	var spec: Dictionary = ORDER_SLOTS[slot]
+	var good: String = spec.goods[nth % spec.goods.size()]
+	var count := 2 + (nth * 7 + slot * 3) % 3 + mini(nth / 4, 3)
+	var reward := int(ceil(SELL_PRICE[good] * count * 1.5)) + 2
+	return {"slot": slot, "nth": nth, "good": good, "count": count, "reward": reward}
+
 const TITLES := {
 	"cottage": "Cottage", "tree": "Tree", "garden": "Farm", "path": "Path", "pond": "Pond", "nook": "Reading nook",
 	"treehouse": "Treehouse", "windmill": "Windmill", "workshop": "Workshop", "barn": "Barn", "doghouse": "Dog house",

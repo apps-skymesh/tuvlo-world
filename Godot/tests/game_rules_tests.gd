@@ -10,6 +10,7 @@ class MemoryHost extends WorldHost:
 	var fail_saves := false
 	func wallet() -> int: return coins
 	func progress() -> int: return earned / WorldCatalogue.SOLO_SALES_PER_LEVEL
+	func earned_total() -> int: return earned
 	func features() -> Dictionary: return {"market": true}
 	func load_records() -> Array: return records.duplicate(true)
 	func append_records(list: Array) -> bool:
@@ -112,6 +113,22 @@ func _initialize() -> void:
 	check(game.build("orchard") == "", "orchard on the meadow")
 	check(game.state.first_of("orchard").cell == Vector2i(-10, 2), "orchard spot")
 	check(renderer.apply_snapshot(game.snapshot()), "renderer accepts land snapshot")
+
+	# Market orders: deterministic, and each order fills once.
+	check(WorldCatalogue.order(1, 3) == WorldCatalogue.order(1, 3), "orders are deterministic")
+	var first: Dictionary = game.state.open_orders()[0]
+	game.state.stock.wheat = 0
+	check(game.deliver(0) == "short", "order needs the goods")
+	game.state.stock.wheat = 0
+	for i in 3:
+		game.tend(0); game.tend(0); clock.t += WorldCatalogue.FIELD_SECONDS; game.tend(0)
+	var coins_before := host.coins
+	check(game.state.stock.wheat >= first.count, "enough wheat for the order")
+	check(game.deliver(0) == "", "deliver order")
+	check(host.coins == coins_before + first.reward, "order pays its reward")
+	check(game.state.open_orders()[0].nth == 1, "next order in that slot")
+	var again := WorldState.replay(host.records)
+	check(again.orders_filled[0] == 1, "replay keeps delivered orders")
 
 	print("game rules: %d checks, %d failed" % [checks, failures])
 	host.free()

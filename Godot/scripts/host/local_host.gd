@@ -36,6 +36,7 @@ func _save(next: Dictionary) -> bool:
 	return true
 
 func wallet() -> int: return int(data.coins)
+func earned() -> int: return int(data.earned)
 func progress() -> int: return int(data.earned) / C.SOLO_SALES_PER_LEVEL
 func features() -> Dictionary: return {"market": true}
 func load_records() -> Array: return data.records.duplicate(true)

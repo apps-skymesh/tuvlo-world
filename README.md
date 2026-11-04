@@ -12,6 +12,12 @@ Owner decision (2026-11-04): **all-Godot game, thin Swift shell.** Godot holds t
 | `docs/` | [Architecture and host interface](docs/ARCHITECTURE.md), the [porting plan](docs/PORTING-PLAN.md) and how to [run and test](docs/RUN.md). |
 | `scripts/` | `run-mac.sh` to play and `test.sh` to run the rules tests. |
 
-![The solo game at the start](docs/images/step1-start.png)
+| Title | Start, with the goal ticket |
+| --- | --- |
+| ![Title](docs/images/step2-00-title.png) | ![Start](docs/images/step2-01-start.png) |
+| **Farm card** | **Windmill card** |
+| ![Farm card](docs/images/step2-05-farm-card.png) | ![Windmill card](docs/images/step2-10-mill-card.png) |
+| **Market stall and orders** | **Harvest flies to the Market** |
+| ![Market](docs/images/step2-06-market-orders.png) | ![Harvest](docs/images/step2-04-harvest-fly.png) |
 
 Tuvlo keeps its own World unchanged until the owner decides to converge the two. See Tuvlo's `docs/design/STANDALONE-WORLD-PLAN.md`.
