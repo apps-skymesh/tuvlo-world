@@ -11,7 +11,7 @@ Done before this pass: timers and quick play (#8), the glass interface and fonts
 | Core loop | 5 | Plant → mill → sell works; there's little reason to come back later. |
 | Game feel / juice | 6 | Gains flew to the HUD but the wallet jumped; rapid taps could stack tweens. |
 | UI / UX | 7 | Glass HUD, dock and cards are consistent. |
-| Art / graphics | 6 | Warm grade; the world is still mostly static. |
+| Art / graphics | 6 | Warm grade; the world is still mostly static. (Pass 9: living air, value separation.) |
 | Onboarding / FTUE | 6 | The first wheat took a full grow time before anything paid off. |
 | Narrative | 3 | No story beat or reason the valley exists. |
 | Audio | 5 | Fixed-pitch effects; no sense of a run of gains. |
@@ -227,3 +227,31 @@ Changes:
 - **Error state:** an action that can't happen now shakes the button that asked for it, as well as playing the soft sound and showing the toast. Spamming the button still settles where it started. Reduce Motion keeps only the sound and the toast. Tuning is in `feel.gd`.
 
 Tests: feel spam 28/0 (a new check that spamming the shake settles at home), rules 83/0, runtime and collect pass. Checked in 1280×720 captures, not on a device or at phone aspect ratios.
+
+## Pass 9 · 2026-11-04 (owner request: art direction)
+
+Audit from blurred and grayscale captures at morning, afternoon, dusk and evening.
+
+- **Squint test:** the red roofs and the cottage read first, which is the right focal point. Fences and plots were lost, because the turf was nearly as light as the cream walls and the paper-coloured plots.
+- **Grayscale test:** at noon the ground went close to white, so buildings separated by outline and shadow only, not by value.
+- **Color script:** the day cycle (#15) already moves from morning gold to amber hearth-glow. The olive afternoon green leaned neon under the grade's saturation boost.
+- **Static world:** wind moves the foliage, but the air was empty. Nothing drifted by day and nothing glowed at night apart from the windows.
+- **Frame:** the screen edges were nearly as bright as the centre, so the eye wasn't pulled in.
+
+Chosen upgrade: secondary motion and ambient life, with a small value correction for depth.
+
+Changes:
+- **Living air** (`world_ui.Atmosphere`, tuning in `feel.gd`).
+  - By day, 14 pollen motes drift sideways on the wind.
+  - As the hearth-glow comes up, 12 amber fireflies blink in loops over the near half of the map.
+  - Both fade with the day cycle's window glow, which is sampled every 4 s.
+  - Each mote is a vertex-coloured soft dot: a bright core fading to clear. All of them go out in one triangle list, so the layer costs one canvas draw call and no textures, nodes or materials. It redraws at 30 fps.
+  - It sits under the HUD, ignores input and is hidden under Reduce Motion.
+- **Depth and value:**
+  - The turf and valley green drop about 15% in value (0.56/0.64/0.45 to 0.47/0.56/0.39). Both shaders change together so the edges still match. Walls, fences and plots now separate from the ground in grayscale, and the green is calmer.
+  - The edge vignette deepens from 34% to 42%.
+- **Fix:** a quick place tap logged an error, because `punch` read a missing meta with a null default. It now checks `has_meta` first. This was found during the #17 device install.
+
+**Performance** (`tests/perf_probe.gd`, 1280×720, Compatibility renderer, built farm): 859 draw calls before and 860 after, with video memory unchanged at 97.5 MB. The first version drew stacked circles and cost +36 draw calls; it was replaced by the single triangle list.
+
+Tests: rules 83/0, feel spam 28/0, runtime and collect pass. Checked in captures only, not on a device; firefly brightness at night hasn't been judged on a phone screen.

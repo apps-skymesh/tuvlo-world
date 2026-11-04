@@ -1346,8 +1346,9 @@ func punch(id: String,strength:=1.0,good:=""):
 	if reduced_motion or not nodes.has(id): return
 	var root: Node3D=nodes[id]
 	if not is_instance_valid(root): return
-	var previous=root.get_meta("punch",null)
-	if previous is Tween and previous.is_valid(): previous.kill()
+	if root.has_meta("punch"):
+		var previous=root.get_meta("punch")
+		if previous is Tween and previous.is_valid(): previous.kill()
 	var k=FEEL.PUNCH_SQUASH*strength
 	root.scale=Vector3.ONE
 	var tween=root.create_tween()

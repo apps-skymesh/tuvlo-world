@@ -2,7 +2,7 @@ shader_type spatial;
 render_mode specular_disabled;
 // Match valley.gdshader's source-colour palette before the shared noon grade.
 // A separate vivid green here becomes neon under its 1.22 saturation boost.
-uniform vec4 grass_color : source_color = vec4(0.56, 0.64, 0.45, 1.0);
+uniform vec4 grass_color : source_color = vec4(0.47, 0.56, 0.39, 1.0);
 uniform float dormant : hint_range(0.0, 1.0) = 0.0;
 // A locked plot's half size: its muted tint feathers into the grass over a
 // wobbling band, so the plot stays distinct without a straight cut edge.
