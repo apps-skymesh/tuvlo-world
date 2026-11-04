@@ -14,7 +14,7 @@ window/handheld/orientation=4
 window/stretch/mode="disabled"
 [rendering]
 renderer/rendering_method="gl_compatibility"
-renderer/rendering_method.mobile="mobile"
+renderer/rendering_method.mobile="gl_compatibility"
 rendering_device/driver.ios="metal"
 textures/vram_compression/import_etc2_astc=true
 textures/vram_compression/import_s3tc_bptc=true

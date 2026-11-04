@@ -19,7 +19,9 @@ Owner decision (2026-11-04): **all-Godot game, thin Swift shell.** Godot holds t
 | ![Farm card](docs/images/step2-05-farm-card.png) | ![Windmill card](docs/images/step2-10-mill-card.png) |
 | **Market stall and orders** | **Harvest flies to the Market** |
 | ![Market](docs/images/step2-06-market-orders.png) | ![Harvest](docs/images/step2-04-harvest-fly.png) |
-| **Build shelf and level-up** | |
+| **Build dock and level-up** | |
 | ![Build shelf](docs/images/step2-08-build-tray.png) | |
+
+The interface uses dark glass panels with ivory type in [Fredoka](https://fonts.google.com/specimen/Fredoka) and [Nunito](https://fonts.google.com/specimen/Nunito) (both SIL Open Font License; licences in `Godot/assets/fonts`).
 
 Tuvlo keeps its own World unchanged until the owner decides to converge the two. See Tuvlo's `docs/design/STANDALONE-WORLD-PLAN.md`.
