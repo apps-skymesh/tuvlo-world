@@ -63,7 +63,7 @@ func build(kind: String) -> String:
 	if host.wallet() < price: return "short"
 	var cell: Vector2i = state.free_spot(kind)
 	var record := _record("build", {"kind": kind, "place": "place:%s:%s" % [kind, new_id().substr(0, 8)],
-		"x": cell.x, "z": cell.y, "price": price, "seconds": int(C.BUILDS[kind].seconds)})
+		"x": cell.x, "z": cell.y, "price": price, "seconds": C.duration(C.BUILDS[kind].seconds)})
 	return _commit(record, price)
 
 func buy_land(side: String) -> String:
@@ -73,10 +73,12 @@ func buy_land(side: String) -> String:
 	if host.wallet() < price: return "short"
 	return _commit(_record("land", {"side": side, "price": price}), price)
 
-func tend(field: int) -> String: return _commit(_record("tend", {"field": field}))
-func make(recipe: String) -> String: return _commit(_record("make", {"recipe": recipe}))
+func tend(field: int) -> String: return _commit(_record("tend", {"field": field, "seconds": C.duration(C.FIELD_SECONDS)}))
+func make(recipe: String) -> String:
+	if not C.RECIPES.has(recipe): return "invalid"
+	return _commit(_record("make", {"recipe": recipe, "seconds": C.duration(C.RECIPES[recipe].seconds)}))
 func collect(station: String) -> String: return _commit(_record("collect", {"station": station}))
-func tend_orchard() -> String: return _commit(_record("orchard"))
+func tend_orchard() -> String: return _commit(_record("orchard", {"seconds": C.duration(C.ORCHARD_SECONDS)}))
 
 func sell(good: String, count: int) -> String:
 	if not host.features().get("market", false): return "unavailable"

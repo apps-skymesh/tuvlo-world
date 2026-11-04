@@ -32,7 +32,7 @@ func _process(delta: float) -> bool:
 		3: main.ui.goal_action.call(); wait = 0.6
 		4: shot("02-planted-quick")
 		5: main.ui.place_tapped("base:garden"); wait = 0.6
-		6: offset.s += 31; main.push(); wait = 1.0
+		6: offset.s += 25; main.push(); wait = 1.0
 		7: shot("03-farm-ready")
 		8: main.ui.place_tapped("base:garden"); wait = 0.35
 		9: shot("04-harvest-fly")
@@ -50,12 +50,12 @@ func _process(delta: float) -> bool:
 		19: main.ui._pick_build("windmill", ""); wait = 1.5
 		20: shot("09-build-spot")
 		21:
-			main.ui._confirm_build(); offset.s += 9; main.push(); wait = 2.0
+			main.ui._confirm_build(); offset.s += 20; main.push(); wait = 2.0
 		22:
 			main.ui.open("place", game.state.first_of("windmill").id, "mill"); wait = 4.0
 		23: shot("10-mill-card")
 		24:
-			main.ui._ring_dropped("wheat"); offset.s += 20; main.push(); wait = 1.0
+			main.ui._ring_dropped("wheat"); offset.s += 40; main.push(); wait = 1.0
 		25: shot("11-mill-working")
 		26:
 			main.ui.close(); main.ui.open("more"); wait = 1.0

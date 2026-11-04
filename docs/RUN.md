@@ -16,6 +16,10 @@ Saves go to Godot's user folder (`~/Library/Application Support/Godot/app_userda
 
 The bundle ID `com.skymesh.tuvloworld` is provisional. The same preset targets both iPhone and iPad (device family 2) on iOS/iPadOS 18.0 and later. The game is landscape-only on both.
 
+## Quick play
+
+`tuvlo_world/quick_play=true` in `Godot/project.godot` runs every new timer 5× faster for testing. Wheat takes 24 s instead of 2 min, for example. Set it to `false` for normal speed. The full timer ladder is in `Godot/scripts/game/catalogue.gd`.
+
 ## Tests
 
 `scripts/test.sh` runs the headless rules tests (`Godot/tests/game_rules_tests.gd`), which cover:

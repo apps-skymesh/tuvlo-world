@@ -14,6 +14,7 @@ var stock := {}
 var fields: Array[Dictionary] = []
 var jobs := {}
 var orchard_watered := -1.0
+var orchard_grow := C.ORCHARD_SECONDS
 var construction := {}
 var seen := {}
 var rejected := 0
@@ -61,17 +62,22 @@ func field_stage(index: int, now: float) -> int:
 	if not field.planted: return 0
 	if field.watered < 0: return 1
 	var elapsed: float = now - field.watered
-	return 4 if elapsed >= C.FIELD_SECONDS else (3 if elapsed >= C.FIELD_SECONDS / 2 else 2)
+	var grow := field_total(index)
+	return 4 if elapsed >= grow else (3 if elapsed >= grow / 2 else 2)
+## Each timer keeps the length it started with (records freeze it).
+func field_total(index: int) -> float: return float(fields[index].get("grow", C.FIELD_SECONDS))
+func job_total(station: String) -> float:
+	var job: Dictionary = jobs.get(station, {})
+	return 1.0 if job.is_empty() else float(job.get("seconds", C.RECIPES[job.recipe].seconds))
 func field_remaining(index: int, now: float) -> int:
 	if fields[index].watered < 0: return 0
-	return maxi(0, ceili(C.FIELD_SECONDS - (now - fields[index].watered)))
+	return maxi(0, ceili(field_total(index) - (now - fields[index].watered)))
 func job_remaining(station: String, now: float) -> int:
 	if not jobs.has(station): return 0
-	var job: Dictionary = jobs[station]
-	return maxi(0, ceili(job.started + C.RECIPES[job.recipe].seconds - now))
+	return maxi(0, ceili(jobs[station].started + job_total(station) - now))
 func orchard_remaining(now: float) -> int:
 	if orchard_watered < 0: return 0
-	return maxi(0, ceili(C.ORCHARD_SECONDS - (now - orchard_watered)))
+	return maxi(0, ceili(orchard_grow - (now - orchard_watered)))
 
 func buildable(cell: Vector2i) -> bool:
 	if HomesteadItems.BASE_BOUNDS.has_point(cell): return true
@@ -137,7 +143,10 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			if index < 0 or index >= fields.size() or not ready_place("garden", at): return "invalid"
 			match field_stage(index, at):
 				0: fields[index].planted = true; notice = "Planted"
-				1: fields[index].watered = at; notice = "Watered"
+				1:
+					fields[index].watered = at
+					fields[index].grow = float(r.get("seconds", C.FIELD_SECONDS))
+					notice = "Watered"
 				4:
 					fields[index] = {"planted": false, "watered": -1.0}
 					stock.wheat += C.FIELD_YIELD
@@ -151,7 +160,7 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			for good in spec.input:
 				if stock[good] < spec.input[good]: return "short"
 			for good in spec.input: stock[good] -= spec.input[good]
-			jobs[spec.station] = {"recipe": recipe, "started": at}
+			jobs[spec.station] = {"recipe": recipe, "started": at, "seconds": float(r.get("seconds", spec.seconds))}
 			notice = C.title(recipe) + " started"
 		"collect":
 			var station := str(r.get("station", ""))
@@ -163,8 +172,8 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 		"orchard":
 			if not ready_place("orchard", at): return "invalid"
 			if orchard_watered < 0:
-				orchard_watered = at; notice = "Orchard watered"
-			elif at - orchard_watered >= C.ORCHARD_SECONDS:
+				orchard_watered = at; orchard_grow = float(r.get("seconds", C.ORCHARD_SECONDS)); notice = "Orchard watered"
+			elif at - orchard_watered >= orchard_grow:
 				orchard_watered = -1.0; stock.fruit += C.ORCHARD_YIELD; notice = "+%d fruit" % C.ORCHARD_YIELD
 			else: return "growing"
 		"sell":
@@ -220,7 +229,7 @@ func snapshot(now: float, progress: int, reduced_motion := false) -> Dictionary:
 			elif stage in [2, 3]: growing.append(field_remaining(i, now))
 		var left: int = 0 if ripe or growing.is_empty() else growing.min()
 		production.append({"placeID": garden.id, "station": "field", "good": "wheat", "state": 2 if ripe else (1 if not growing.is_empty() else 0),
-			"remaining": left, "progress": 1.0 if ripe else (0.0 if growing.is_empty() else clampf(1.0 - left / C.FIELD_SECONDS, 0, 1))})
+			"remaining": left, "progress": 1.0 if ripe else (0.0 if growing.is_empty() else clampf(1.0 - left / field_total(0), 0, 1))})
 	for station in C.STATIONS:
 		var place := first_of(C.STATIONS[station])
 		if place.is_empty(): continue
@@ -228,14 +237,14 @@ func snapshot(now: float, progress: int, reduced_motion := false) -> Dictionary:
 		var remaining := job_remaining(station, now)
 		var good: String = C.RECIPES[job.recipe].output if not job.is_empty() else C.RECIPES[C.recipes_for(station)[0]].output
 		production.append({"placeID": place.id, "station": station, "good": good, "state": 0 if job.is_empty() else (1 if remaining > 0 else 2),
-			"remaining": remaining, "progress": 0.0 if job.is_empty() else clampf(1.0 - float(remaining) / C.RECIPES[job.recipe].seconds, 0, 1)})
+			"remaining": remaining, "progress": 0.0 if job.is_empty() else clampf(1.0 - float(remaining) / job.get("seconds", C.RECIPES[job.recipe].seconds), 0, 1)})
 	var orchard := first_of("orchard")
 	var fruit_stage := -1
 	if not orchard.is_empty():
 		var left := orchard_remaining(now)
 		fruit_stage = 0 if orchard_watered < 0 else (1 if left > 0 else 2)
 		production.append({"placeID": orchard.id, "station": "orchard", "good": "fruit", "state": fruit_stage, "remaining": left,
-			"progress": 0.0 if orchard_watered < 0 else clampf(1.0 - left / C.ORCHARD_SECONDS, 0, 1)})
+			"progress": 0.0 if orchard_watered < 0 else clampf(1.0 - left / orchard_grow, 0, 1)})
 	var building := []
 	for id in construction:
 		var c: Dictionary = construction[id]
