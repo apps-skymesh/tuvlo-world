@@ -255,3 +255,18 @@ Changes:
 **Performance** (`tests/perf_probe.gd`, 1280×720, Compatibility renderer, built farm): 859 draw calls before and 860 after, with video memory unchanged at 97.5 MB. The first version drew stacked circles and cost +36 draw calls; it was replaced by the single triangle list.
 
 Tests: rules 83/0, feel spam 28/0, runtime and collect pass. Checked in captures only, not on a device; firefly brightness at night hasn't been judged on a phone screen.
+
+## Pass 10 · 2026-11-04 (owner request: systems design)
+
+Audit and design: see the second section of `docs/design/CORE-LOOP-AUDIT.md`.
+
+- **Gap:** market demand only tells the player what not to sell. The long timers didn't plan anything, holding stock had one answer, and wheat had no allocation choice.
+- **Change: in season.** Each 10-minute window (2 min in quick play), one good the homestead can make sells for +50%, and the next window's good is shown.
+  - The bonus applies before demand, so only a small timed batch pays.
+  - There is no season while wheat is the only good, so the opening is unchanged.
+  - It is shown in one gold strip under the Market awning (good, time left, next good), plus a gold "+50%" in the existing price-tag slot.
+  - The stall reprices live when the window turns or demand recovers.
+- **Saves:** new sale records freeze `season`. Replay checks the amount. Earlier sales replay unchanged.
+- **Tuning:** `SEASON_SECONDS`, `SEASON_BONUS` and `SEASON_STEP` are in `catalogue.gd`.
+
+Tests: rules 92/0 (9 new season checks), feel spam 28/0, runtime and collect pass. Checked in a 1280×720 market capture, not on a device.

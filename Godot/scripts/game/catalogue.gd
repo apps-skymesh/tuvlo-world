@@ -118,9 +118,25 @@ const SELL_PRICE := {"wheat": 1, "flour": 3, "bread": 5, "fruit": 1, "tart": 10,
 const DEMAND_DROP := 0.12
 const DEMAND_FLOOR := 0.4
 const DEMAND_RECOVER_SECONDS := 45.0
+## SOLO in season: the market favours one good at a time. For each window of
+## SEASON_SECONDS (normal speed; frozen in each sale record) one good the
+## homestead can make sells for SEASON_BONUS more, and the next window's good
+## is shown in advance. Demand still drops per unit, so the premium rewards
+## timing a batch to the window and holding just a few, not hoarding.
+const SEASON_SECONDS := 600.0
+const SEASON_BONUS := 0.5
+## Prime step through the makeable goods: every good comes round and the same
+## good never runs two windows in a row (while two or more can be made).
+const SEASON_STEP := 7919
+## The good in season during `window` among `makeable` (GOODS order). With
+## only one good to make there is no choice to reward, so no season.
+static func season_good(window: int, makeable: Array) -> String:
+	if makeable.size() < 2: return ""
+	return makeable[posmod(window * SEASON_STEP + 3, makeable.size())]
 ## The price of one more unit of `good` when `glut` units are still unrecovered.
-static func unit_price(good: String, glut: float) -> int:
-	return maxi(1, roundi(SELL_PRICE[good] * maxf(DEMAND_FLOOR, 1.0 - DEMAND_DROP * glut)))
+static func unit_price(good: String, glut: float, in_season := false) -> int:
+	var base: float = SELL_PRICE[good] * (1.0 + SEASON_BONUS if in_season else 1.0)
+	return maxi(1, roundi(base * maxf(DEMAND_FLOOR, 1.0 - DEMAND_DROP * glut)))
 ## SOLO: coins a new player starts with, and lifetime sales per level.
 const SOLO_STARTING_COINS := 6
 const SOLO_SALES_PER_LEVEL := 5
