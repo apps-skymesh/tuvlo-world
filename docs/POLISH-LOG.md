@@ -53,3 +53,29 @@ Rules (51), runtime and collect tests pass. The 1280×720 capture still runs end
 
 1. **Narrative and reactivity**: a "wake the valley" beat. Each level brightens part of the valley (flowers, birds, a lit window), so progress shows in the world, not just the number.
 2. **Return reward and adaptive music**: a small daily find on the first visit, and a music layer that adds instruments as the homestead grows.
+
+## Pass 2 · 2026-11-04
+
+Scores after pass 1: juice 7, accessibility 6, FTUE 7. The weakest pillars are now narrative (3) and reactivity (5): levelling only changes a number.
+
+**Chosen: the valley wakes up** (Delight 8, Differentiation 7, Risk 2).
+- New `scripts/valley_awakening.gd` (`HomesteadAwakening`) adds a tier of scenery at levels 1, 2, 4, 6, 8 and 10: wildflowers, butterflies, songbirds, a neighbour's farm with lit windows, a drifting balloon, and a rainbow over the hills.
+- Tiers are scenery only. They have no colliders or cells, sit outside the starter clearing's fixed spots, and are never removed.
+- When the game opens, tiers already reached appear quietly. A tier reached during play grows in with a pop.
+- Reduce Motion keeps every tier visible but holds it still: no reveal, flutter, flight or drift.
+- The level-up banner names what woke, for example "A balloon drifts by".
+- The tier table lives in one const (`TIERS`), so adding a tier means adding one row and its builder.
+
+Edge cases:
+- A jump of several levels at once wakes every tier between them, and the banner lists the last two.
+- Reopening the game rebuilds the right set without replaying reveals.
+- `feel_spam_tests.gd` checks the gates and that the renderer shows exactly the tiers for the current level.
+
+Known limits:
+- The north and east flower beds sit where the future north and east regions will go. Revisit when those regions are built.
+- Not checked on a device.
+
+### Next pass candidates
+
+1. **Return reward and adaptive music**: a small daily find on the first visit of the day, and a music layer that adds instruments as tiers wake.
+2. **Economy pacing**: levels come only from sales. Orders could count extra, and the level curve could be tuned so tiers arrive roughly every few minutes early on and slower later.
