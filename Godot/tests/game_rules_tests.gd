@@ -53,7 +53,8 @@ func _initialize() -> void:
 	check(game.tend(0) == "", "plant")
 	check(game.tend(0) == "", "water")
 	check(game.tend(0) == "growing", "can't harvest while growing")
-	clock.t += WorldCatalogue.FIELD_SECONDS
+	check(game.state.field_remaining(0, clock.t) == int(WorldCatalogue.FIRST_FIELD_SECONDS), "the very first wheat grows fast")
+	clock.t += WorldCatalogue.FIRST_FIELD_SECONDS
 	check(game.tend(0) == "", "harvest")
 	check(game.state.stock.wheat == 2, "harvest gives 2 wheat")
 
@@ -76,6 +77,7 @@ func _initialize() -> void:
 	# Production chain: wheat -> flour -> bread.
 	for i in 2:
 		game.tend(i); game.tend(i)
+	check(game.state.field_total(0) == WorldCatalogue.FIELD_SECONDS, "later wheat takes the normal time")
 	clock.t += WorldCatalogue.FIELD_SECONDS
 	game.tend(0); game.tend(1)
 	check(game.state.stock.wheat == 4, "two fields harvested")
