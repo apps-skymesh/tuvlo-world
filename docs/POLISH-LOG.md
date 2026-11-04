@@ -163,3 +163,67 @@ Tests: rules 71/0, feel spam 20/0 (7 new checks for the day cycle, wind and ambi
 
 1. **Adaptive music**: layers that follow the day phase and the valley tiers.
 2. **Economy pacing**: orders count toward levels; tune the early level curve.
+
+## Pass 6 · 2026-11-04 (owner request: systems pass)
+
+Saeed asked for a core loop audit and one rule that adds depth without adding complexity. The full audit is in [design/CORE-LOOP-AUDIT.md](design/CORE-LOOP-AUDIT.md).
+
+- **Problem found.** The market had one best move: turn everything into meals and sell them all at once.
+- **Chosen fix: market demand** (Delight 6, Differentiation 6, Risk 2).
+  - Each sale lowers that good's next price by 12% of base, down to 40%. The price recovers one unit every 45 s.
+  - The tuning is in `catalogue.gd`. Prices are deterministic and checked on replay.
+  - Older sales keep their saved amounts.
+  - The "All" button now shows the batch total.
+- **Also in this pass:**
+  - Removed the river loop, which played on device as constant hiss (#16).
+  - Tapping outside a box now closes it (#16).
+
+Tests: rules 83/0 (12 new demand checks), feel spam 23/0.
+
+## Pass 7 · 2026-11-04 (owner request: juice)
+
+Audit findings:
+- Interface tweens already use eased, overshooting curves (pass 1).
+- The gaps were on the map:
+  - Collecting or harvesting only animated the small bubble; the place itself didn't react.
+  - A finished build barely moved.
+  - Tapping a timer that showed "0:01" opened a menu instead of collecting.
+
+Changes:
+- **Impact on the place** (`presentation.punch`, tuning in `feel.gd`). On the frame an action lands, the place dips for 60 ms, stretches for 80 ms and settles elastically over 420 ms. It also throws flecks coloured like what it made (wheat gold, flour white, and so on).
+  - Planting or watering uses a softer punch with a light haptic.
+  - Collecting uses the full punch together with the existing sound and reward haptic.
+  - A finished build uses double strength with a gold burst.
+  - Each place runs one punch at a time; a new one replaces the old. Display only: input is never delayed, and Reduce Motion skips it.
+- **Timer input buffer** (`TIMER_BUFFER` 0.6 s). A tap on a place whose timer finishes within 0.6 s waits and collects, instead of opening the card. A tap further off still opens the card.
+
+Tests: feel spam 27/0 (3 new checks for the buffer), rules 83/0, runtime and collect pass. Not checked on a device.
+
+## Pass 8 · 2026-11-04 (owner request: UI/UX)
+
+Audit against the 4-second rule. The player should be able to tell what they're working towards, what they can do, and what their last action did.
+
+- **What they're working towards:** clear. The goal ticket and level badge are always visible.
+- **What they can do:** mostly clear.
+  - The dock has two large buttons.
+  - Places on the map open cards.
+  - Before this pass, the Build tray opened on a row of places already built (fixed in #17).
+- **What the last action did:** weak in two places.
+  - A refused action only showed a toast, so the eye had to leave the button to see what happened.
+  - The new market demand was invisible apart from a smaller number.
+- **Ergonomics:**
+  - The dock, Close and Collect targets are 46–78 pt.
+  - No action destroys anything; selling everything is a separate "All" button.
+  - Tapping outside a box closes it (#16).
+- **Immersion:** the Market was a generic dark glass box, the most app-like screen in the game.
+
+Changes:
+- **Market as a stall:**
+  - A striped awning with a scalloped hem across the top.
+  - Neighbour orders are paper notes, each pinned with a red tack, with the name in terracotta and the request in brown ink.
+  - A finished order has a gold border. An unfinished one shows its reward in a pressed paper slot, still readable.
+  - Neither the awning nor the notes add any controls.
+- **Demand shown on the price:** a fixed-width "-24%" tag sits beside a dipped price. Its slot is reserved even when empty, so the row never moves when the tag appears.
+- **Error state:** an action that can't happen now shakes the button that asked for it, as well as playing the soft sound and showing the toast. Spamming the button still settles where it started. Reduce Motion keeps only the sound and the toast. Tuning is in `feel.gd`.
+
+Tests: feel spam 28/0 (a new check that spamming the shake settles at home), rules 83/0, runtime and collect pass. Checked in 1280×720 captures, not on a device or at phone aspect ratios.

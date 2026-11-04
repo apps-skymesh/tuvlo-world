@@ -649,10 +649,8 @@ func construction_site(root: Node3D,item: Dictionary,phase: int):
 	root.set_meta("build_tool",tool)
 
 func reveal_finished(root: Node3D,size: Vector2i):
-	if root.get_child_count()>0:
-		var art=root.get_child(0)
-		art.scale=Vector3.ONE*0.96
-		create_tween().tween_property(art,"scale",Vector3.ONE,0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	# A finished build lands with double-strength squash and a gold burst.
+	punch(str(root.get_meta("item_id","")),2.0,"build")
 	var halo=HomesteadMesh.cylinder(root,Vector3(0,0.025,0),maxf(size.x,size.y)*0.62,0.01,"e7c984")
 	halo.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	halo.material_override=HomesteadMesh.transparent(Color(0.91,0.78,0.49,0.25))
@@ -1337,6 +1335,53 @@ func show_tap(point: Vector3):
 		tween.tween_property(material,"albedo_color:a",0.0,0.55)
 		tween.set_parallel(false)
 	tween.tween_callback(ring.queue_free)
+
+const FEEL=preload("res://scripts/ui/feel.gd")
+const BURST_COLORS={"wheat":"e8c25a","flour":"f4efe2","bread":"c98a4b","cheese":"f2cf63","meal":"e07a4f","fruit":"d9534f","tart":"d46a8c","build":"ffd46b"}
+static var fleck_mesh: SphereMesh
+## Squash and stretch on the frame an action lands: a short dip (anticipation),
+## a stretch (impact), then an elastic settle, with flecks of the good thrown
+## up. Display only and never blocks input; Reduce Motion skips it.
+func punch(id: String,strength:=1.0,good:=""):
+	if reduced_motion or not nodes.has(id): return
+	var root: Node3D=nodes[id]
+	if not is_instance_valid(root): return
+	var previous=root.get_meta("punch",null)
+	if previous is Tween and previous.is_valid(): previous.kill()
+	var k=FEEL.PUNCH_SQUASH*strength
+	root.scale=Vector3.ONE
+	var tween=root.create_tween()
+	root.set_meta("punch",tween)
+	tween.tween_property(root,"scale",Vector3(1+k*0.6,1-k,1+k*0.6),FEEL.PUNCH_DIP_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(root,"scale",Vector3(1-k*0.4,1+k*1.2,1-k*0.4),FEEL.PUNCH_HIT_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(root,"scale",Vector3.ONE,FEEL.PUNCH_SETTLE_TIME).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	var item=data.find(id)
+	var height=float(HomesteadItems.DEFINITIONS[item.kind].height) if not item.is_empty() else 1.0
+	burst(root.position+Vector3(0,clampf(height*0.6,0.4,1.8),0),BURST_COLORS.get(good,BURST_COLORS.build),int(FEEL.BURST_FLECKS*strength),strength)
+func burst(at: Vector3,color: String,count: int,strength:=1.0):
+	if fleck_mesh==null:
+		fleck_mesh=SphereMesh.new()
+		fleck_mesh.radius=0.09
+		fleck_mesh.height=0.18
+		fleck_mesh.radial_segments=6
+		fleck_mesh.rings=3
+	var material=HomesteadMesh.material(color,0.6)
+	for i in count:
+		var fleck=MeshInstance3D.new()
+		fleck.mesh=fleck_mesh
+		fleck.material_override=material
+		fleck.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(fleck)
+		fleck.position=at
+		var angle=TAU*(float(i)+randf_range(-0.3,0.3))/count
+		var reach=FEEL.BURST_SPREAD*sqrt(strength)*randf_range(0.6,1.0)
+		var peak=at+Vector3(cos(angle)*reach,FEEL.BURST_RISE*randf_range(0.7,1.1)*sqrt(strength),sin(angle)*reach)
+		var land=peak+Vector3(cos(angle)*reach*0.3,-FEEL.BURST_RISE*0.8,sin(angle)*reach*0.3)
+		var tween=fleck.create_tween()
+		tween.tween_property(fleck,"position",peak,FEEL.BURST_TIME*0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(fleck,"position",land,FEEL.BURST_TIME*0.55).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.parallel().tween_property(fleck,"scale",Vector3.ONE*0.05,FEEL.BURST_TIME*0.55).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.tween_callback(fleck.queue_free)
 
 # A new ready bubble grows in with a small overshoot. Layout owns the bubble
 # root's scale, so only the face animates.

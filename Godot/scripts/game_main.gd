@@ -9,6 +9,7 @@ const REASONS := {
 	"not-ready": "Not ready yet", "growing": "Still growing", "save": "Couldn't save. Try again.",
 	"read-only": "Read only", "invalid": "Can't do that now", "occupied": "That spot is taken",
 	"claimed": "Already collected today",
+	"price": "Prices just changed. Try again",
 }
 var host: WorldHost
 var game: WorldGame

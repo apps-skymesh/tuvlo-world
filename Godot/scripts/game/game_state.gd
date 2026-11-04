@@ -25,6 +25,7 @@ var start_day := -1  # local day of the first record
 var gift_day := -1
 var gift_streak := 0
 var notice := ""
+var glut := {}  # good -> {"units", "at", "recover"}: recent sales not yet recovered
 var speech := {}  # the last neighbour to speak: {"name", "line"}
 
 func _init() -> void:
@@ -115,6 +116,19 @@ func build_blocker(kind: String, progress: int) -> String:
 	if free_spot(kind) == null: return "full"
 	return ""
 
+## Units of `good` sold recently enough to still weigh on its price.
+func glut_at(good: String, at: float) -> float:
+	if not glut.has(good): return 0.0
+	var g: Dictionary = glut[good]
+	return maxf(0.0, g.units - maxf(0.0, at - g.at) / maxf(1.0, g.recover))
+## Coins for selling `count` of `good` at `at`, each unit priced after the last.
+func quote(good: String, count: int, at: float) -> int:
+	if not C.SELL_PRICE.has(good): return 0
+	var base := glut_at(good, at)
+	var total := 0
+	for i in count: total += C.unit_price(good, base + i)
+	return total
+
 # --- records ---------------------------------------------------------------
 
 ## Applies one record. Returns "" on success or a short reason.
@@ -189,6 +203,12 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			var count := int(r.get("count", 0))
 			var amount := int(r.get("amount", 0))
 			if not C.SELL_PRICE.has(good) or count < 1 or stock.get(good, 0) < count or amount < 0: return "short"
+			# Sales saved with demand must match the price at that moment; older
+			# sales keep their saved amount.
+			var current := r.has("recover")
+			if current and amount != quote(good, count, at): return "price"
+			var recover := float(r.get("recover", C.DEMAND_RECOVER_SECONDS))
+			glut[good] = {"units": glut_at(good, at) + count, "at": at, "recover": recover}
 			stock[good] -= count
 			lifetime_sales += amount
 			notice = "Sold %d %s" % [count, C.title(good).to_lower()]

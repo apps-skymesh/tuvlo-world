@@ -85,8 +85,13 @@ func tend_orchard() -> String: return _commit(_record("orchard", {"seconds": C.d
 func sell(good: String, count: int) -> String:
 	if not host.features().get("market", false): return "unavailable"
 	if not C.SELL_PRICE.has(good) or count < 1 or state.stock.get(good, 0) < count: return "short"
-	var amount: int = C.SELL_PRICE[good] * count
-	return _commit(_record("sell", {"good": good, "count": count, "amount": amount}), 0, amount)
+	var record := _record("sell", {"good": good, "count": count, "recover": C.duration(C.DEMAND_RECOVER_SECONDS)})
+	# Priced at the record's own time, so replay reaches the same amount.
+	record.amount = state.quote(good, count, record.at)
+	return _commit(record, 0, record.amount)
+
+## What selling `count` of `good` would pay right now.
+func sell_price(good: String, count := 1) -> int: return state.quote(good, count, now())
 
 func deliver(slot: int) -> String:
 	if not host.features().get("market", false): return "unavailable"

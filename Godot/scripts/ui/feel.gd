@@ -73,3 +73,24 @@ const MILL_CREAK_EVERY := Vector2(2.6, 4.2)
 ## Seconds between bird calls by day phase; missing phases stay quiet.
 const BIRD_CALL_EVERY := {"dawn": Vector2(5.0, 10.0), "morning": Vector2(9.0, 18.0), "afternoon": Vector2(22.0, 40.0)}
 const AMBIENT_PITCH_JITTER := 0.08
+
+# Impact on the map (presentation.punch): a place dips, stretches and settles
+# on the frame an action lands, with a burst of flecks. Strength 1 for a
+# collect or harvest, 2 for a finished build.
+const PUNCH_SQUASH := 0.05     # fraction of height per unit of strength
+const PUNCH_DIP_TIME := 0.06   # anticipation
+const PUNCH_HIT_TIME := 0.08   # impact stretch
+const PUNCH_SETTLE_TIME := 0.42 # elastic follow-through
+const BURST_FLECKS := 7        # per unit of strength
+const BURST_RISE := 0.9
+const BURST_SPREAD := 0.8
+const BURST_TIME := 0.5
+
+# Taps on a timer about to finish wait for it instead of opening the card,
+# so a player tapping on "0:01" gets the harvest, not a menu.
+const TIMER_BUFFER := 0.6
+
+# An action that can't happen shakes the button that asked (world_ui.shake).
+const SHAKE_DISTANCE := 7.0
+const SHAKE_STEPS := 5
+const SHAKE_TIME := 0.28

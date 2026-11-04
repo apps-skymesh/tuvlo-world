@@ -25,6 +25,13 @@ const GOLD_DEEP := Color("C98A1C")
 const GOLD_INK := Color("3D2805")
 const MINT := Color("7EDB9C")
 const SHORT := Color("FF8E72")
+# Stall and paper, for the Market (the valley's own materials, not glass).
+const AWNING_RED := Color("C8553D")
+const PAPER := Color("F4E8CF")
+const PAPER_EDGE := Color("D9C39A")
+const PAPER_INK := Color("5B4636")
+const PAPER_READY := Color("3F8F5A")
+const PAPER_SHORT := Color("C2502F")
 # Older names, kept so the art helpers below read the same.
 const CREAM := IVORY
 const INK := IVORY
@@ -127,6 +134,35 @@ class WorldRing extends Control:
 	func _drop_data(_at: Vector2, data: Variant) -> void: dropped.emit(str(data.good))
 
 ## A card or sheet title: display type on a glass chip with gold diamonds.
+## A market stall's striped canvas valance with a scalloped hem: the Market
+## sheet reads as a stall in the valley, not a settings box.
+class Awning extends Control:
+	var ui
+	func _draw() -> void:
+		var k: float = ui.s
+		var stripe := 34.0 * k
+		var band := size.y - 12 * k
+		var count := ceili(size.x / stripe)
+		var width := size.x / count
+		for i in count:
+			var x := i * width
+			var color := WorldUI.AWNING_RED if i % 2 == 0 else WorldUI.PAPER
+			draw_rect(Rect2(x, 0, width, band), color)
+			# Each stripe ends in a scallop.
+			var points := PackedVector2Array()
+			for j in 9: points.append(Vector2(x + width * j / 8.0, band + sin(PI * j / 8.0) * 12 * k))
+			points.append(Vector2(x + width, band))
+			draw_colored_polygon(points, color)
+		draw_rect(Rect2(0, 0, size.x, 4 * k), Color(0, 0, 0, 0.18))
+
+## The tack holding a neighbour's note to the stall.
+class Pin extends Control:
+	func _draw() -> void:
+		var r := size.x / 2
+		draw_circle(Vector2(r, r + 1.5), r, Color(0, 0, 0, 0.25))
+		draw_circle(Vector2(r, r), r, WorldUI.AWNING_RED)
+		draw_circle(Vector2(r * 0.7, r * 0.7), r * 0.32, Color(1, 1, 1, 0.55))
+
 class Ribbon extends Control:
 	var text := ""
 	var ui
@@ -630,7 +666,7 @@ func _juice(button: BaseButton) -> void:
 		if not is_instance_valid(button): return
 		if reduce_motion: button.scale = Vector2.ONE; return
 		_solo_tween(button, "press").tween_property(button, "scale", Vector2.ONE, F.RELEASE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
-	button.pressed.connect(func(): sfx("tap"); haptic())
+	button.pressed.connect(func(): last_pressed = button; sfx("tap"); haptic())
 
 ## Icons fly from a screen point to a HUD target along an arc, then the target bumps.
 ## With Reduce Motion the target only acknowledges the gain.
@@ -1044,7 +1080,7 @@ func place_tapped(id: String, tapped_station := "") -> void:
 			var stages := []
 			for i in st.fields.size(): stages.append(st.field_stage(i, now))
 			if 4 in stages or 0 in stages or 1 in stages:
-				_quick(func():
+				_quick(id, func():
 					var target := 4 if 4 in stages else (0 if 0 in stages else 1)
 					var result := ""
 					for i in stages.size():
@@ -1055,20 +1091,57 @@ func place_tapped(id: String, tapped_station := "") -> void:
 				return
 		elif item.kind == "orchard":
 			if st.orchard_watered < 0 or st.orchard_remaining(now) == 0:
-				_quick(func(): return game.tend_orchard())
+				_quick(id, func(): return game.tend_orchard())
 				return
 		else:
 			for each in C.stations_for(item.kind):
 				if tapped_station != "" and each != tapped_station: continue
 				if st.jobs.has(each) and st.job_remaining(each, now) == 0:
-					_quick(func(): return game.collect(each))
+					_quick(id, func(): return game.collect(each))
 					return
+		# Input buffer: a tap just before a timer finishes waits for it.
+		var wait := _ready_in(item, tapped_station, now)
+		if wait > 0.0 and wait <= F.TIMER_BUFFER:
+			if not buffered.has(id):
+				buffered[id] = true
+				get_tree().create_timer(wait + 0.05).timeout.connect(func():
+					buffered.erase(id)
+					if mode == "": place_tapped(id, tapped_station))
+			return
 	open("place", id, tapped_station)
 
-func _quick(action: Callable) -> void:
+var buffered := {}  # place ids with a tap waiting for their timer
+## Seconds until this place has something to collect, or -1 when nothing is running.
+func _ready_in(item: Dictionary, tapped_station: String, now: float) -> float:
+	var st: WorldState = main.game.state
+	var soonest := -1.0
+	match item.kind:
+		"garden":
+			for i in st.fields.size():
+				if st.field_stage(i, now) in [2, 3]: soonest = _min_positive(soonest, st.fields[i].watered + st.field_total(i) - now)
+		"orchard":
+			if st.orchard_watered >= 0: soonest = _min_positive(soonest, st.orchard_watered + st.orchard_grow - now)
+		_:
+			for each in C.stations_for(item.kind):
+				if tapped_station != "" and each != tapped_station: continue
+				if st.jobs.has(each): soonest = _min_positive(soonest, st.jobs[each].started + st.job_total(each) - now)
+	return soonest
+static func _min_positive(a: float, b: float) -> float:
+	if b <= 0: return a
+	return b if a < 0 or b < a else a
+
+## A map action: on success the place squashes and throws flecks of what it
+## made on the same frame as the sound and haptic; on failure, a soft thud.
+func _quick(id: String, action: Callable) -> void:
+	var before: Dictionary = main.game.state.stock.duplicate()
 	var result: String = action.call()
 	main.after_action(result)
-	if result != "": sfx("soft_fail")
+	if result != "": sfx("soft_fail"); return
+	var good := ""
+	for each in main.game.state.stock:
+		if main.game.state.stock[each] > before.get(each, 0): good = each; break
+	main.send("punch", {"id": id, "good": good if good != "" else "wheat", "strength": 1.0 if good != "" else 0.6})
+	if good == "": haptic(F.HAPTIC_TAP)
 
 func blocks(point: Vector2) -> bool:
 	if title_layer: return true
@@ -1316,6 +1389,7 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	filled = {}
 	build_pick = ""
 	was_new = true
+	if next_mode == "build" and was != "build": build_scroll = 0
 	if next_mode == "place":
 		var item: Dictionary = main.game.state.find(place_id)
 		var stations := C.stations_for(item.get("kind", ""))
@@ -1345,6 +1419,24 @@ func close() -> void:
 func _act(result: String) -> void:
 	filled = {}
 	main.after_action(result)
+	if result != "":
+		sfx("soft_fail")
+		shake(last_pressed)
+
+var last_pressed: Control
+## An action that can't happen shakes the control that asked for it: a short
+## side-to-side shiver that settles exactly where it started. Reduce Motion
+## keeps only the sound and the toast.
+func shake(control: Control) -> void:
+	if reduce_motion or control == null or not is_instance_valid(control) or not control.is_inside_tree(): return
+	var home: Vector2 = control.get_meta("shake_home", control.position)
+	control.set_meta("shake_home", home)
+	var tween := _solo_tween(control, "shake")
+	for i in F.SHAKE_STEPS:
+		var side := (1.0 if i % 2 == 0 else -1.0) * F.SHAKE_DISTANCE * s * (1.0 - float(i) / F.SHAKE_STEPS)
+		tween.tween_property(control, "position:x", home.x + side, F.SHAKE_TIME / F.SHAKE_STEPS).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(control, "position:x", home.x, F.SHAKE_TIME / F.SHAKE_STEPS)
+	tween.tween_callback(func(): if is_instance_valid(control): control.remove_meta("shake_home"))
 
 var was_new := false
 
@@ -1747,23 +1839,42 @@ func _fill_build() -> void:
 	scroll.add_child(row)
 	column.add_child(scroll)
 	var level := game.host.progress()
-	var entries: Array = C.BUILD_ORDER.duplicate()
-	for side in C.LAND: entries.append(side)
-	for key in entries:
-		var is_land: bool = C.LAND.has(key)
-		var spec: Dictionary = C.LAND[key] if is_land else C.BUILDS[key]
-		var blocker := ""
-		if is_land: blocker = "owned" if key in game.state.land else ("locked" if level < spec.gate else "")
-		else: blocker = game.state.build_blocker(key, level)
-		row.add_child(_build_tile(key, spec, blocker))
+	for entry in _build_entries(level): row.add_child(_build_tile(entry.key, entry.spec, entry.blocker))
+	# Keep the tray where the player left it when picking redraws it.
+	scroll.scroll_deadzone = int(10 * s)
+	scroll.set_deferred("scroll_horizontal", build_scroll)
+	scroll.get_h_scroll_bar().value_changed.connect(func(v: float): build_scroll = int(v))
 	tray.reset_size()
 	root.add_child(tray)
 	tray.position = Vector2(14 * s + safe.position.x, viewport.y - tray.get_combined_minimum_size().y - 16 * s - safe.size.y)
 	sheet_root = tray
 
+## The Build tray's order: what can be built now first, then decorations, then
+## the next unlocks by level, and finished places last, so the tray opens on
+## what's new instead of a row of ticks.
+const BUILD_GROUPS := {"": 0, "decor": 1, "locked": 2, "land": 3, "full": 4, "owned": 5}
+func _build_entries(level: int) -> Array:
+	var game: WorldGame = main.game
+	var entries := []
+	var keys: Array = C.BUILD_ORDER.duplicate()
+	for side in C.LAND: keys.append(side)
+	for i in keys.size():
+		var key: String = keys[i]
+		var is_land: bool = C.LAND.has(key)
+		var spec: Dictionary = C.LAND[key] if is_land else C.BUILDS[key]
+		var blocker := ""
+		if is_land: blocker = "owned" if key in game.state.land else ("locked" if level < spec.gate else "")
+		else: blocker = game.state.build_blocker(key, level)
+		var group: int = BUILD_GROUPS["decor"] if blocker == "" and key in ["flowers", "bench", "rocks"] else BUILD_GROUPS.get(blocker, 4)
+		entries.append({"key": key, "spec": spec, "blocker": blocker, "rank": [group, int(spec.gate) if blocker == "locked" else 0, i]})
+	entries.sort_custom(func(a, b): return a.rank < b.rank)
+	return entries
+
 func _build_tile(key: String, spec: Dictionary, blocker: String) -> Control:
 	var button := Button.new()
 	button.focus_mode = Control.FOCUS_NONE
+	# Pass drags up so a finger can scroll the tray across the tiles.
+	button.mouse_filter = Control.MOUSE_FILTER_PASS
 	button.custom_minimum_size = Vector2(118, 144) * s
 	button.tooltip_text = C.title(key)
 	var picked := key == build_pick
@@ -1807,7 +1918,10 @@ func _build_tile(key: String, spec: Dictionary, blocker: String) -> Control:
 	tag.add_child(label)
 	column.add_child(tag)
 	button.add_child(column)
-	button.pressed.connect(func(): _pick_build(key, blocker))
+	# A finger that scrolled the tray isn't a pick.
+	var down_at := [0]
+	button.button_down.connect(func(): down_at[0] = build_scroll)
+	button.pressed.connect(func(): if absi(build_scroll - down_at[0]) < int(6 * s): _pick_build(key, blocker))
 	_juice(button)
 	return button
 
@@ -1943,6 +2057,13 @@ func _fill_more() -> void:
 	var game: WorldGame = main.game
 	var market: bool = game.host.features().get("market", false)
 	var column := _sheet("Market" if market else "Warehouse")
+	if market:
+		var awning := Awning.new()
+		awning.ui = self
+		awning.custom_minimum_size = Vector2(0, 40 * s)
+		awning.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		column.add_child(awning)
+		column.move_child(awning, 0)
 	var orders := game.state.open_orders()
 	if market and not orders.is_empty():
 		column.add_child(_eyebrow("Orders"))
@@ -1984,14 +2105,27 @@ func _fill_more() -> void:
 		row.add_child(words)
 		if market:
 			var sell: Button
-			sell = _button("%d" % C.SELL_PRICE[good], func(): fly_from = sell.get_global_rect().get_center(); _act(game.sell(good, 1)), true, "coin")
-			sell.tooltip_text = "Sell one"
+			var price := game.sell_price(good)
+			sell = _button("%d" % price, func(): fly_from = sell.get_global_rect().get_center(); _act(game.sell(good, 1)), true, "coin")
+			sell.tooltip_text = "Sell one" if price >= C.SELL_PRICE[good] else "Sell one (demand is recovering)"
 			sell.custom_minimum_size = Vector2(88, 46) * s
+			# How far demand has dipped, in a fixed-width slot so nothing shifts.
+			var dip := Label.new()
+			var drop := roundi(100.0 * (1.0 - float(price) / C.SELL_PRICE[good]))
+			dip.text = "-%d%%" % drop if drop > 0 else ""
+			dip.custom_minimum_size = Vector2(44, 0) * s
+			dip.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			dip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			dip.add_theme_font_override("font", DISPLAY_SEMI)
+			dip.add_theme_font_size_override("font_size", int(15 * s))
+			dip.add_theme_color_override("font_color", SHORT)
+			dip.tooltip_text = "Demand is recovering"
+			row.add_child(dip)
 			row.add_child(sell)
 			if count > 1:
 				var all: Button
-				all = _button("All", func(): fly_from = all.get_global_rect().get_center(); _act(game.sell(good, count)), true, "", true)
-				all.custom_minimum_size = Vector2(0, 46) * s
+				all = _button("All · %d" % game.sell_price(good, count), func(): fly_from = all.get_global_rect().get_center(); _act(game.sell(good, count)), true, "", true)
+				all.custom_minimum_size = Vector2(104, 46) * s
 				row.add_child(all)
 		cell.add_child(row)
 		grid.add_child(cell)
@@ -2015,16 +2149,34 @@ func _order_ticket(order: Dictionary) -> Control:
 	var game: WorldGame = main.game
 	var have: int = game.state.stock.get(order.good, 0)
 	var ready: bool = have >= order.count
+	# A paper note pinned to the stall, written in the neighbour's hand.
 	var ticket := PanelContainer.new()
-	var box := tile_box(22, ready)
+	var box := StyleBoxFlat.new()
+	box.bg_color = PAPER
+	box.set_corner_radius_all(int(10 * s))
+	box.border_color = GOLD if ready else PAPER_EDGE
+	box.set_border_width_all(int((3.0 if ready else 1.5) * s))
+	box.shadow_color = Color(0, 0, 0, 0.3)
+	box.shadow_size = int(8 * s)
+	box.shadow_offset = Vector2(0, 4 * s)
 	box.set_content_margin_all(12 * s)
+	box.content_margin_top = 6 * s
+	box.anti_aliasing_size = 0.8
 	ticket.add_theme_stylebox_override("panel", box)
+	ticket.rotation_degrees = [-1.6, 1.2, -0.8][int(order.slot) % 3] if not reduce_motion else 0.0
+	ticket.resized.connect(func(): ticket.pivot_offset = ticket.size / 2)
+	var pin := Pin.new()
+	pin.custom_minimum_size = Vector2(14, 14) * s
+	pin.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	pin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var column := VBoxContainer.new()
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_theme_constant_override("separation", int(8 * s))
 	column.custom_minimum_size = Vector2(176, 0) * s
+	column.add_child(pin)
 	var who := _eyebrow(order.name)
 	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	who.add_theme_color_override("font_color", AWNING_RED)
 	column.add_child(who)
 	var ask := Label.new()
 	ask.text = order.ask
@@ -2032,7 +2184,7 @@ func _order_ticket(order: Dictionary) -> Control:
 	ask.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ask.custom_minimum_size.x = 176 * s
 	ask.add_theme_font_size_override("font_size", int(14 * s))
-	ask.add_theme_color_override("font_color", MUTED)
+	ask.add_theme_color_override("font_color", PAPER_INK)
 	column.add_child(ask)
 	var crate := HBoxContainer.new()
 	crate.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -2040,7 +2192,7 @@ func _order_ticket(order: Dictionary) -> Control:
 	crate.add_child(_icon(icons.get(order.good), 56))
 	var count := _number(24)
 	count.text = "%d/%d" % [mini(have, order.count), order.count]
-	count.add_theme_color_override("font_color", MINT if ready else SHORT)
+	count.add_theme_color_override("font_color", PAPER_READY if ready else PAPER_SHORT)
 	crate.add_child(count)
 	column.add_child(crate)
 	if not order.keepsake.is_empty():
@@ -2062,6 +2214,14 @@ func _order_ticket(order: Dictionary) -> Control:
 		_act(game.deliver(order.slot))
 		if game.state.stock.get(order.good, 0) < have: sfx("celebrate"), ready, "coin")
 	deliver.custom_minimum_size = Vector2(0, 46) * s
+	if not ready:
+		# Not yet: a pressed-in paper slot with the reward in faded ink.
+		var slot := StyleBoxFlat.new()
+		slot.bg_color = Color("E6D6B4")
+		slot.set_corner_radius_all(int(23 * s))
+		slot.set_content_margin_all(8 * s)
+		deliver.add_theme_stylebox_override("disabled", slot)
+		deliver.add_theme_color_override("font_disabled_color", Color(PAPER_INK, 0.7))
 	column.add_child(deliver)
 	ticket.add_child(column)
 	if not ready:
@@ -2147,6 +2307,7 @@ class Ripple extends Control:
 var press_at := Vector2(-1, -1)
 var press_time := 0.0
 var press_panel: Control  # the panel open when the finger went down
+var build_scroll := 0  # the Build tray's scroll, kept while it stays open
 func _input(event: InputEvent) -> void:
 	var down := false
 	var up := false
