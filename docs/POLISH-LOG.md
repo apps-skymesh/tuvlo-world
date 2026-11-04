@@ -163,3 +163,19 @@ Tests: rules 71/0, feel spam 20/0 (7 new checks for the day cycle, wind and ambi
 
 1. **Adaptive music**: layers that follow the day phase and the valley tiers.
 2. **Economy pacing**: orders count toward levels; tune the early level curve.
+
+## Pass 6 · 2026-11-04 (owner request: systems pass)
+
+Saeed asked for a core loop audit and one rule that adds depth without adding complexity. The full audit is in [design/CORE-LOOP-AUDIT.md](design/CORE-LOOP-AUDIT.md).
+
+- **Problem found.** The market had one best move: turn everything into meals and sell them all at once.
+- **Chosen fix: market demand** (Delight 6, Differentiation 6, Risk 2).
+  - Each sale lowers that good's next price by 12% of base, down to 40%. The price recovers one unit every 45 s.
+  - The tuning is in `catalogue.gd`. Prices are deterministic and checked on replay.
+  - Older sales keep their saved amounts.
+  - The "All" button now shows the batch total.
+- **Also in this pass:**
+  - Removed the river loop, which played on device as constant hiss (#16).
+  - Tapping outside a box now closes it (#16).
+
+Tests: rules 83/0 (12 new demand checks), feel spam 23/0.

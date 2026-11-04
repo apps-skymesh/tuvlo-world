@@ -189,6 +189,33 @@ func _initialize() -> void:
 	var legacy := WorldState.replay([{"v": 1, "id": "old", "type": "tend", "at": 0.0, "seq": 1, "field": 0}, {"v": 1, "id": "old2", "type": "tend", "at": 1.0, "seq": 2, "field": 0}])
 	check(legacy.field_remaining(0, 1.0) == int(WorldCatalogue.FIELD_SECONDS), "records without a length use the catalogue time")
 
+	# Market demand: each sale lowers that good's next price, demand recovers
+	# over time, other goods are untouched, and replay holds sellers to the price.
+	var dclock := {"t": 50000.0}
+	var dhost := MemoryHost.new()
+	var dgame := WorldGame.new(dhost)
+	dgame.clock = func(): return dclock.t
+	check(dgame.sell_price("tart") == 10, "a fresh market pays the base price")
+	check(dgame.sell_price("tart", 3) == 10 + 9 + 8, "a batch prices each unit after the last")
+	check(dgame.state.quote("tart", 12, dclock.t) == 10 + 9 + 8 + 6 + 5 + 4 + 4 + 4 + 4 + 4 + 4 + 4, "prices stop at the floor")
+	var ds := WorldState.new()
+	for good in ["tart", "bread"]: ds.stock[good] = 20
+	check(ds.apply({"v": 1, "id": "s1", "type": "sell", "at": 100.0, "good": "tart", "count": 3, "amount": 27, "recover": 45}) == "", "a sale at the quoted price saves")
+	check(ds.quote("tart", 1, 100.0) == 6, "three sold: the fourth tart is cheaper")
+	check(ds.quote("bread", 1, 100.0) == 5, "other goods keep their price")
+	check(ds.quote("tart", 1, 100.0 + 45.0 * 3) == 10, "demand fully recovers in time")
+	check(ds.quote("tart", 1, 100.0 + 45.0) == 8, "demand recovers one unit at a time")
+	check(ds.apply({"v": 1, "id": "s2", "type": "sell", "at": 101.0, "good": "tart", "count": 1, "amount": 10, "recover": 45}) == "price", "replay rejects a sale above the market price")
+	check(ds.apply({"v": 1, "id": "s3", "type": "sell", "at": 102.0, "good": "tart", "count": 1, "amount": 10}) == "", "older sales keep their saved amount")
+	# Through the game: harvest, sell, and replay reaches the same total.
+	var mhost := MemoryHost.new()
+	var mgame := WorldGame.new(mhost)
+	var mclock := {"t": 9000.0}
+	mgame.clock = func(): return mclock.t
+	mgame.tend(0); mgame.tend(0); mclock.t += WorldCatalogue.FIRST_FIELD_SECONDS; mgame.tend(0)
+	mgame.tend(1); mgame.tend(1); mclock.t += WorldCatalogue.FIELD_SECONDS; mgame.tend(1)
+	check(mgame.state.stock.wheat == 4 and mgame.sell("wheat", 4) == "" and mhost.earned == 4, "cheap goods never drop below 1 coin")
+	check(WorldState.replay(mhost.records).lifetime_sales == 4, "demand sales replay to the same total")
 	print("game rules: %d checks, %d failed" % [checks, failures])
 	host.free()
 	quit(1 if failures > 0 else 0)

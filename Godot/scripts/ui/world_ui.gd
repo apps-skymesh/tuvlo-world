@@ -1984,13 +1984,14 @@ func _fill_more() -> void:
 		row.add_child(words)
 		if market:
 			var sell: Button
-			sell = _button("%d" % C.SELL_PRICE[good], func(): fly_from = sell.get_global_rect().get_center(); _act(game.sell(good, 1)), true, "coin")
-			sell.tooltip_text = "Sell one"
+			var price := game.sell_price(good)
+			sell = _button("%d" % price, func(): fly_from = sell.get_global_rect().get_center(); _act(game.sell(good, 1)), true, "coin")
+			sell.tooltip_text = "Sell one" if price >= C.SELL_PRICE[good] else "Sell one (demand is recovering)"
 			sell.custom_minimum_size = Vector2(88, 46) * s
 			row.add_child(sell)
 			if count > 1:
 				var all: Button
-				all = _button("All", func(): fly_from = all.get_global_rect().get_center(); _act(game.sell(good, count)), true, "", true)
+				all = _button("All · %d" % game.sell_price(good, count), func(): fly_from = all.get_global_rect().get_center(); _act(game.sell(good, count)), true, "", true)
 				all.custom_minimum_size = Vector2(0, 46) * s
 				row.add_child(all)
 		cell.add_child(row)

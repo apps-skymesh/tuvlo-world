@@ -110,6 +110,17 @@ const RECIPES := {
 
 ## SOLO market: coins paid per good sold. Roughly input value plus a little for time.
 const SELL_PRICE := {"wheat": 1, "flour": 3, "bread": 5, "fruit": 1, "tart": 10, "cheese": 3, "meal": 3}
+## SOLO market demand. Each unit sold lowers that good's next price by
+## DEMAND_DROP of its base, down to DEMAND_FLOOR; demand recovers one unit every
+## DEMAND_RECOVER_SECONDS (at normal speed; frozen in each sale record). Other
+## goods are unaffected, so spreading sales across goods and time pays, and
+## dumping one good all at once doesn't. Neighbour orders never move demand.
+const DEMAND_DROP := 0.12
+const DEMAND_FLOOR := 0.4
+const DEMAND_RECOVER_SECONDS := 45.0
+## The price of one more unit of `good` when `glut` units are still unrecovered.
+static func unit_price(good: String, glut: float) -> int:
+	return maxi(1, roundi(SELL_PRICE[good] * maxf(DEMAND_FLOOR, 1.0 - DEMAND_DROP * glut)))
 ## SOLO: coins a new player starts with, and lifetime sales per level.
 const SOLO_STARTING_COINS := 6
 const SOLO_SALES_PER_LEVEL := 5
