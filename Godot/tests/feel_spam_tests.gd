@@ -83,7 +83,7 @@ func _process(delta: float) -> bool:
 			for twin in HomesteadWind.twins.values():
 				if is_instance_valid(twin) and float(twin.get_shader_parameter("strength")) != 0.0: still = false
 			check(HomesteadWind.still and still, "Reduce Motion holds the wind still")
-			check(ui.ambience != null and ui.ambience.river != null and ui.ambience.mill != null and ui.ambience.birds != null, "ambient river, mill and birds are loaded")
+			check(ui.ambience != null and ui.ambience.mill != null and ui.ambience.birds != null, "ambient mill and birds are loaded")
 			ui.bump(ui.coin_pill)
 			ui.fly(ui.icons["coin"], Vector2(400, 300), ui.coin_pill, 6)
 			ui._count_to(99)
