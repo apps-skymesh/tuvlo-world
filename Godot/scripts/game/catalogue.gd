@@ -24,16 +24,16 @@ static func starter_paths() -> Array:
 ## progress count (Tuvlo: approved missions; solo: market level). seconds is the
 ## construction time; land names land that must be owned first.
 const BUILDS := {
-	"pond":       {"price": 4,  "gate": 4,  "seconds": 30, "land": ""},
-	"nook":       {"price": 9,  "gate": 9,  "seconds": 8,  "land": ""},
-	"treehouse":  {"price": 16, "gate": 16, "seconds": 90, "land": ""},
-	"windmill":   {"price": 6,  "gate": 6,  "seconds": 8,  "land": ""},
-	"workshop":   {"price": 6,  "gate": 20, "seconds": 60, "land": ""},
-	"barn":       {"price": 18, "gate": 12, "seconds": 60, "land": ""},
-	"doghouse":   {"price": 8,  "gate": 8,  "seconds": 30, "land": ""},
-	"grill":      {"price": 12, "gate": 10, "seconds": 45, "land": ""},
-	"greenhouse": {"price": 30, "gate": 25, "seconds": 60, "land": "west"},
-	"orchard":    {"price": 35, "gate": 35, "seconds": 45, "land": "west"},
+	"pond":       {"price": 4,  "gate": 4,  "seconds": 60, "land": ""},
+	"nook":       {"price": 9,  "gate": 9,  "seconds": 120,  "land": ""},
+	"treehouse":  {"price": 16, "gate": 16, "seconds": 300, "land": ""},
+	"windmill":   {"price": 6,  "gate": 6,  "seconds": 90,  "land": ""},
+	"workshop":   {"price": 6,  "gate": 20, "seconds": 180, "land": ""},
+	"barn":       {"price": 18, "gate": 12, "seconds": 300, "land": ""},
+	"doghouse":   {"price": 8,  "gate": 8,  "seconds": 120, "land": ""},
+	"grill":      {"price": 12, "gate": 10, "seconds": 180, "land": ""},
+	"greenhouse": {"price": 30, "gate": 25, "seconds": 480, "land": "west"},
+	"orchard":    {"price": 35, "gate": 35, "seconds": 600, "land": "west"},
 	# SOLO: decorations were free sandbox pieces in Tuvlo; small prices here.
 	"flowers":    {"price": 1,  "gate": 0,  "seconds": 0,  "land": ""},
 	"bench":      {"price": 3,  "gate": 2,  "seconds": 0,  "land": ""},
@@ -62,22 +62,42 @@ const SPOTS := {
 	"rocks": [Vector2i(18, 1), Vector2i(1, 19), Vector2i(18, 18), Vector2i(0, 0)],
 }
 
+## Timers, in seconds at normal speed. One ladder for the whole game:
+## - raw goods: wheat 2 min, fruit 6 min;
+## - one step from raw: packing meals 2 min, milling 3 min, bread 5 min;
+## - longer chains and richer goods: grilled meals 6 min, sheep 8 min, tarts 10 min;
+## - building takes about 15–20 s per coin of price, from 1 min (pond) to 10 min
+##   (orchard); decorations are instant.
+## Quick play (project setting tuvlo_world/quick_play, on while testing)
+## runs every new timer 5× faster. Each record freezes the duration it started
+## with, so switching speeds never changes a timer already running.
+const QUICK_PLAY_SPEED := 5.0
+static var speed_override := 0.0
+
+static func speed() -> float:
+	if speed_override > 0: return speed_override
+	return QUICK_PLAY_SPEED if ProjectSettings.get_setting("tuvlo_world/quick_play", false) else 1.0
+
+## A timer's real length at the current speed (whole seconds, at least 1).
+static func duration(seconds: float) -> int:
+	return maxi(1, roundi(seconds / speed())) if seconds > 0 else 0
+
 ## Production (HomesteadFarm).
 const FIELD_COUNT := 2
-const FIELD_SECONDS := 30.0
+const FIELD_SECONDS := 120.0
 const FIELD_YIELD := 2
-const ORCHARD_SECONDS := 60.0
+const ORCHARD_SECONDS := 360.0
 const ORCHARD_YIELD := 3
 const GOODS := ["wheat", "flour", "bread", "fruit", "tart", "meat", "meal"]
 ## station -> the place kind that hosts it
 const STATIONS := {"mill": "windmill", "oven": "cottage", "pantry": "cottage", "barn": "barn", "grill": "grill"}
 const RECIPES := {
-	"flour":       {"station": "mill",   "input": {"wheat": 2},             "output": "flour", "quantity": 1, "seconds": 45},
-	"bread":       {"station": "oven",   "input": {"flour": 1},             "output": "bread", "quantity": 1, "seconds": 60},
-	"tart":        {"station": "oven",   "input": {"flour": 1, "fruit": 2}, "output": "tart",  "quantity": 1, "seconds": 90},
-	"meal":        {"station": "pantry", "input": {"bread": 1},             "output": "meal",  "quantity": 3, "seconds": 30},
-	"livestock":   {"station": "barn",   "input": {"wheat": 2},             "output": "meat",  "quantity": 2, "seconds": 90},
-	"grilledMeal": {"station": "grill",  "input": {"meat": 1, "bread": 1},  "output": "meal",  "quantity": 4, "seconds": 60},
+	"flour":       {"station": "mill",   "input": {"wheat": 2},             "output": "flour", "quantity": 1, "seconds": 180},
+	"bread":       {"station": "oven",   "input": {"flour": 1},             "output": "bread", "quantity": 1, "seconds": 300},
+	"tart":        {"station": "oven",   "input": {"flour": 1, "fruit": 2}, "output": "tart",  "quantity": 1, "seconds": 600},
+	"meal":        {"station": "pantry", "input": {"bread": 1},             "output": "meal",  "quantity": 3, "seconds": 120},
+	"livestock":   {"station": "barn",   "input": {"wheat": 2},             "output": "meat",  "quantity": 2, "seconds": 480},
+	"grilledMeal": {"station": "grill",  "input": {"meat": 1, "bread": 1},  "output": "meal",  "quantity": 4, "seconds": 360},
 }
 
 ## SOLO market: coins paid per good sold. Roughly input value plus a little for time.

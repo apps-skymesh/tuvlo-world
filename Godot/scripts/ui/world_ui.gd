@@ -1129,15 +1129,15 @@ func _update_ring() -> void:
 		for i in st.fields.size():
 			if st.field_stage(i, now) in [2, 3]: left = maxi(left, st.field_remaining(i, now))
 		if left > 0:
-			ring.progress = clampf(1.0 - left / C.FIELD_SECONDS, 0, 1)
+			ring.progress = clampf(1.0 - left / st.field_total(0), 0, 1)
 			ring.label = _time(left)
 	elif item.kind == "orchard" and st.orchard_watered >= 0:
 		var left := st.orchard_remaining(now)
-		ring.progress = clampf(1.0 - left / C.ORCHARD_SECONDS, 0, 1)
+		ring.progress = clampf(1.0 - left / st.orchard_grow, 0, 1)
 		if left > 0: ring.label = _time(left)
 	elif station != "" and st.jobs.has(station):
 		var left := st.job_remaining(station, now)
-		ring.progress = clampf(1.0 - float(left) / C.RECIPES[st.jobs[station].recipe].seconds, 0, 1)
+		ring.progress = clampf(1.0 - float(left) / st.job_total(station), 0, 1)
 		if left > 0: ring.label = _time(left)
 	ring.glow = ring.progress >= 1.0 or (item.kind == "garden" and _any_field(4))
 	ring.queue_redraw()

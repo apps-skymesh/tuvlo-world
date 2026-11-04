@@ -37,6 +37,7 @@ func check(condition: bool, label: String) -> void:
 		printerr("FAIL: ", label)
 
 func _initialize() -> void:
+	WorldCatalogue.speed_override = 1.0  # rules run at normal speed; quick play is checked below
 	var clock := {"t": 1000.0}  # lambdas capture locals by value
 	var host := MemoryHost.new()
 	var game := WorldGame.new(host)
@@ -81,10 +82,10 @@ func _initialize() -> void:
 	check(game.make("flour") == "", "mill starts after construction")
 	check(game.make("flour") == "busy", "one job per station")
 	check(game.collect("mill") == "not-ready", "flour not ready yet")
-	clock.t += 45
+	clock.t += WorldCatalogue.RECIPES.flour.seconds
 	check(game.collect("mill") == "", "collect flour")
 	check(game.make("bread") == "", "oven bakes")
-	clock.t += 60
+	clock.t += WorldCatalogue.RECIPES.bread.seconds
 	check(game.collect("oven") == "" and game.state.stock.bread == 1, "bread collected")
 	check(renderer.apply_snapshot(game.snapshot()), "renderer accepts production snapshot")
 
@@ -129,6 +130,17 @@ func _initialize() -> void:
 	check(game.state.open_orders()[0].nth == 1, "next order in that slot")
 	var again := WorldState.replay(host.records)
 	check(again.orders_filled[0] == 1, "replay keeps delivered orders")
+
+	# Quick play: new timers run 5× faster; a running timer keeps its frozen length.
+	WorldCatalogue.speed_override = WorldCatalogue.QUICK_PLAY_SPEED
+	check(WorldCatalogue.duration(WorldCatalogue.FIELD_SECONDS) == 24, "quick play wheat grows in 24 s")
+	game.state.stock.wheat = 2
+	check(game.make("flour") == "", "quick mill starts")
+	WorldCatalogue.speed_override = 1.0
+	check(game.state.job_remaining("mill", clock.t) == 36, "running job keeps its quick length after the speed changes")
+	check(WorldState.replay(host.records).job_remaining("mill", clock.t) == 36, "replay keeps the frozen length")
+	var legacy := WorldState.replay([{"v": 1, "id": "old", "type": "tend", "at": 0.0, "seq": 1, "field": 0}, {"v": 1, "id": "old2", "type": "tend", "at": 1.0, "seq": 2, "field": 0}])
+	check(legacy.field_remaining(0, 1.0) == int(WorldCatalogue.FIELD_SECONDS), "records without a length use the catalogue time")
 
 	print("game rules: %d checks, %d failed" % [checks, failures])
 	host.free()
