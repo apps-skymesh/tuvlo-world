@@ -198,3 +198,32 @@ Changes:
 - **Timer input buffer** (`TIMER_BUFFER` 0.6 s). A tap on a place whose timer finishes within 0.6 s waits and collects, instead of opening the card. A tap further off still opens the card.
 
 Tests: feel spam 27/0 (3 new checks for the buffer), rules 83/0, runtime and collect pass. Not checked on a device.
+
+## Pass 8 · 2026-11-04 (owner request: UI/UX)
+
+Audit against the 4-second rule. The player should be able to tell what they're working towards, what they can do, and what their last action did.
+
+- **What they're working towards:** clear. The goal ticket and level badge are always visible.
+- **What they can do:** mostly clear.
+  - The dock has two large buttons.
+  - Places on the map open cards.
+  - Before this pass, the Build tray opened on a row of places already built (fixed in #17).
+- **What the last action did:** weak in two places.
+  - A refused action only showed a toast, so the eye had to leave the button to see what happened.
+  - The new market demand was invisible apart from a smaller number.
+- **Ergonomics:**
+  - The dock, Close and Collect targets are 46–78 pt.
+  - No action destroys anything; selling everything is a separate "All" button.
+  - Tapping outside a box closes it (#16).
+- **Immersion:** the Market was a generic dark glass box, the most app-like screen in the game.
+
+Changes:
+- **Market as a stall:**
+  - A striped awning with a scalloped hem across the top.
+  - Neighbour orders are paper notes, each pinned with a red tack, with the name in terracotta and the request in brown ink.
+  - A finished order has a gold border. An unfinished one shows its reward in a pressed paper slot, still readable.
+  - Neither the awning nor the notes add any controls.
+- **Demand shown on the price:** a fixed-width "-24%" tag sits beside a dipped price. Its slot is reserved even when empty, so the row never moves when the tag appears.
+- **Error state:** an action that can't happen now shakes the button that asked for it, as well as playing the soft sound and showing the toast. Spamming the button still settles where it started. Reduce Motion keeps only the sound and the toast. Tuning is in `feel.gd`.
+
+Tests: feel spam 28/0 (a new check that spamming the shake settles at home), rules 83/0, runtime and collect pass. Checked in 1280×720 captures, not on a device or at phone aspect ratios.

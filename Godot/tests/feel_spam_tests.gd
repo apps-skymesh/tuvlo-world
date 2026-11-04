@@ -5,6 +5,7 @@ extends SceneTree
 # godot --headless --path Godot -s res://tests/feel_spam_tests.gd
 const F = preload("res://scripts/ui/feel.gd")
 var main
+var shaken: Button
 var frame := 0
 var elapsed := 0.0
 var phase := 0
@@ -85,11 +86,18 @@ func _process(delta: float) -> bool:
 			# must still land the wallet on the real balance.
 			ui._count_to(10); ui._count_to(25); ui._count_to(7); ui._count_to(60)
 			for i in 30: ui.fly(ui.icons["coin"], Vector2(400, 300), ui.coin_pill, 6)
+			# A refused action shakes its button; spamming it still settles at home.
+			shaken = Button.new()
+			ui.root.add_child(shaken)
+			shaken.position = Vector2(100, 100)
+			for i in 12: ui.shake(shaken)
 			check(ui.fly_layer.get_child_count() <= F.FLY_MAX_ON_SCREEN, "flying sprites stay capped")
 			phase = 2
 		3:
 			check(ui.coin_pill.scale.is_equal_approx(Vector2.ONE), "wallet coin back at rest after spam")
 			check(ui.market_button.scale.is_equal_approx(Vector2.ONE), "dock button back at rest after spam")
+			check(shaken.position.is_equal_approx(Vector2(100, 100)), "a spammed shake settles where it started (at %s)" % shaken.position)
+			shaken.queue_free()
 			check(ui.coins_label.text == str(main.host.wallet()), "wallet settles on the real total (shows %s)" % ui.coins_label.text)
 			var pitch := 0.0
 			for i in 20: pitch = ui._combo_pitch()

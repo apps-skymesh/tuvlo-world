@@ -89,3 +89,8 @@ const BURST_TIME := 0.5
 # Taps on a timer about to finish wait for it instead of opening the card,
 # so a player tapping on "0:01" gets the harvest, not a menu.
 const TIMER_BUFFER := 0.6
+
+# An action that can't happen shakes the button that asked (world_ui.shake).
+const SHAKE_DISTANCE := 7.0
+const SHAKE_STEPS := 5
+const SHAKE_TIME := 0.28
