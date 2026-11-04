@@ -68,6 +68,7 @@ func _on_world_message(json: String) -> void:
 			if game.state.find(str(payload.get("id", ""))).is_empty(): return
 			ui.place_tapped(str(payload.id), str(payload.get("station", "")))
 		"landRequested": ui.open("build")
+		"feedbackAnchor": if str(payload.get("event", "")) == "goal": ui.point_at(float(payload.get("x", 0.5)), float(payload.get("y", 0.5)))
 		"error": push_warning("World renderer: " + str(payload))
 
 func _notification(what: int) -> void:
