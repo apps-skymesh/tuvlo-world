@@ -67,6 +67,23 @@ func _process(delta: float) -> bool:
 			check(awake.parts.size() == HomesteadAwakening.TIERS.size(), "a big level jump wakes every tier")
 			ui.set_reduce_motion(true)
 			check(main.host.player().reduced_motion, "renderer is told about Reduce Motion")
+			# Day cycle: morning keeps the original light, evening lights the windows,
+			# and midnight joins up with no jump.
+			var morning := HomesteadDayCycle.at(8.5)
+			check(is_equal_approx(morning.sun_energy, 0.92) and morning.glow == 0.0, "morning gold is the original light")
+			check(HomesteadDayCycle.at(21.0).glow > 0.9 and HomesteadDayCycle.at(13.0).sun_energy > HomesteadDayCycle.at(19.0).sun_energy, "afternoon is brightest, evening glows")
+			check(HomesteadDayCycle.at(23.999).sun_color.is_equal_approx(HomesteadDayCycle.at(0.0).sun_color), "the cycle joins at midnight")
+			check(HomesteadDayCycle.phase(6.0) == "dawn" and HomesteadDayCycle.phase(18.0) == "dusk", "day phases are named for sound")
+			# Wind: leaves sway in the shader, and Reduce Motion holds them still.
+			var swaying := 0
+			for mesh in main.world.presentation.find_children("*", "MeshInstance3D", true, false):
+				if mesh.material_override is ShaderMaterial and mesh.material_override.shader == HomesteadWind.SHADER: swaying += 1
+			check(swaying > 0, "trees and crops sway in the wind shader (%d surfaces)" % swaying)
+			var still := true
+			for twin in HomesteadWind.twins.values():
+				if is_instance_valid(twin) and float(twin.get_shader_parameter("strength")) != 0.0: still = false
+			check(HomesteadWind.still and still, "Reduce Motion holds the wind still")
+			check(ui.ambience != null and ui.ambience.river != null and ui.ambience.mill != null and ui.ambience.birds != null, "ambient river, mill and birds are loaded")
 			ui.bump(ui.coin_pill)
 			ui.fly(ui.icons["coin"], Vector2(400, 300), ui.coin_pill, 6)
 			ui._count_to(99)

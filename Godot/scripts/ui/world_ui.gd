@@ -75,6 +75,7 @@ var last_level := -1
 var last_coins := -1
 var audio: Dictionary = {}
 var music: AudioStreamPlayer
+var ambience: WorldAmbience
 var sound_on := true
 var music_on := true
 var haptics_on := true
@@ -528,6 +529,10 @@ func _setup_audio() -> void:
 			player.max_polyphony = F.SFX_POLYPHONY
 			add_child(player)
 			audio[name] = player
+	ambience = WorldAmbience.new()
+	ambience.name = "Ambience"
+	ambience.enabled = sound_on
+	add_child(ambience)
 	music = AudioStreamPlayer.new()
 	var stream = load("res://assets/audio/music_world.ogg") if ResourceLoader.exists("res://assets/audio/music_world.ogg") else null
 	if stream is AudioStreamOggVorbis:
@@ -583,6 +588,7 @@ func set_music(on: bool) -> void:
 
 func toggle_sound() -> void:
 	sound_on = not sound_on
+	if ambience: ambience.set_enabled(sound_on)
 	set_music(sound_on)
 
 # --- motion ----------------------------------------------------------------
@@ -1217,6 +1223,8 @@ func show_speech(who: String, line: String) -> void:
 	tween.tween_callback(bubble.queue_free)
 
 func _process(delta: float) -> void:
+	if ambience and main and main.game:
+		ambience.tick(delta, main.game.state.job_remaining("mill", main.game.now()) > 0)
 	if toast_left > 0:
 		toast_left -= delta
 		if toast_left <= 0: toast.text = ""; toast_box.visible = false
@@ -2067,7 +2075,7 @@ func _fill_land() -> void:
 
 func _fill_settings() -> void:
 	var column := _sheet("Settings")
-	var rows := [["Sound effects", sound_on, func(on): sound_on = on; _save_settings()],
+	var rows := [["Sound effects", sound_on, func(on): sound_on = on; ambience.set_enabled(on); _save_settings()],
 		["Music", music_on, func(on): set_music(on)],
 		["Haptics", haptics_on, func(on): haptics_on = on; _save_settings(); haptic(0.6)],
 		["Reduce motion", reduce_motion, func(on): set_reduce_motion(on)]]

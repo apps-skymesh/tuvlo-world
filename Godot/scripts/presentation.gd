@@ -11,6 +11,11 @@ var sails: Array[Node3D]=[]
 var pet_parts: Array[Node3D]=[]
 var clock=0.0
 var reduced_motion=false
+var valley: HomesteadValley
+## Cottage window panes glow amber in the evening (see HomesteadDayCycle).
+var window_panes: Array[StandardMaterial3D]=[]
+var window_glow=0.0
+var daylight_haze=HomesteadValley.HAZE
 var nodes: Dictionary={}
 var preview_node: Node3D
 var highlight_size=Vector2i.ZERO
@@ -54,7 +59,7 @@ func setup(world_data: HomesteadWorldData):
 	well.name="SharedWell"
 	add_child(well)
 	well.place(Vector3.INF)
-	var valley=HomesteadValley.new()
+	valley=HomesteadValley.new()
 	valley.name="Valley"
 	add_child(valley)
 	awakening=HomesteadAwakening.new()
@@ -159,6 +164,8 @@ func rebuild():
 				if group_name=="SeatBook": root.set_meta("seat_book",group)
 		if root.has_meta("build_tool"): animated.append(root.get_meta("build_tool"))
 		HomesteadStaticBatcher.consolidate(root,animated)
+		# Leaves and crops sway in the vertex shader; their pivots stay unbatched.
+		for plant in foliage.slice(foliage_start): HomesteadWind.apply(plant,str(plant.get_meta("wind","tree")))
 		nodes[item.id]=root
 		var size=HomesteadItems.footprint(item.kind,item.rotation)
 		var body=StaticBody3D.new()
@@ -710,6 +717,17 @@ func cottage(root: Node3D):
 	root.add_child(scene)
 	prepare_cottage_materials(scene)
 
+const WINDOW_GLOW=0.9
+func set_daylight(haze: Color,glow: float):
+	daylight_haze=haze
+	window_glow=glow
+	if valley and valley.ground_material: valley.ground_material.set_shader_parameter("haze_color",haze)
+	var live: Array[StandardMaterial3D]=[]
+	for pane in window_panes:
+		if is_instance_valid(pane):
+			pane.emission_energy_multiplier=glow*WINDOW_GLOW
+			live.append(pane)
+	window_panes=live
 func prepare_cottage_materials(node: Node):
 	if node is MeshInstance3D and node.mesh.get_surface_count()==1:
 		var material=node.get_active_material(0)
@@ -717,6 +735,12 @@ func prepare_cottage_materials(node: Node):
 			var copy=material.duplicate()
 			if str(copy.resource_name).begins_with("roof"):
 				copy.albedo_color=copy.albedo_color.lerp(Color("e4532a"),0.45)
+			if str(copy.resource_name).to_lower().contains("glass"):
+				# Emission stays enabled so the evening glow never recompiles a shader.
+				copy.emission_enabled=true
+				copy.emission=Color("ffb35c")
+				copy.emission_energy_multiplier=window_glow*WINDOW_GLOW
+				window_panes.append(copy)
 			node.material_override=copy
 			node.set_meta("cottage_roof",str(copy.resource_name).begins_with("roof"))
 	for child in node.get_children(): prepare_cottage_materials(child)
@@ -897,7 +921,9 @@ func garden(root: Node3D):
 				if data.wheat_garden or stage>=1:
 					var growth=stage if stage>=1 else 4 if data.harvest.values().has("wheat") else 1
 					var stalk=HomesteadHarvestCraft.attach(root,"Wheat%d"%growth,plant)
-					if growth>=2: foliage.append(stalk)
+					if growth>=2:
+						stalk.set_meta("wind","crop")
+						foliage.append(stalk)
 				else:
 					HomesteadHarvestCraft.attach(root,"Greens",plant)
 
@@ -1064,9 +1090,6 @@ func _process(delta):
 		if nodes.has(build.placeID):
 			var tool=nodes[build.placeID].get_meta("build_tool",null)
 			if is_instance_valid(tool): tool.rotation.z=0.0 if reduced_motion else sin(clock*2.4)*0.16
-	for i in foliage.size():
-		var plant=foliage[i]
-		if is_instance_valid(plant): plant.rotation.z=sin(clock*0.8+i*1.7)*0.017 if not reduced_motion else 0
 	for pivot in sails:
 		if is_instance_valid(pivot) and not reduced_motion and data.building(str(pivot.get_meta("item_id",""))).is_empty() and not station_ready("mill"):
 			var camera=get_viewport().get_camera_3d()
@@ -1145,9 +1168,12 @@ func update_character_visibility(camera: Camera3D,feet: Vector3,enabled: bool,in
 		fade_obstruction(well.art,well_hidden)
 func fade_obstruction(node: Node,faded: bool,leaves_only=false):
 	if node is MeshInstance3D:
-		if faded and (not leaves_only or str(node.name).begins_with("Crown")) and node.material_override is StandardMaterial3D:
+		var source=node.material_override
+		# Swaying leaves fade through their matte source; the fade holds them still.
+		if source is ShaderMaterial and node.has_meta("wind_source"): source=node.get_meta("wind_source")
+		if faded and (not leaves_only or str(node.name).begins_with("Crown")) and source is StandardMaterial3D:
 			node.set_meta("camera_original_material",node.material_override)
-			var material=node.material_override.duplicate()
+			var material=source.duplicate()
 			material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
 			material.albedo_color.a=0.24
 			material.depth_draw_mode=BaseMaterial3D.DEPTH_DRAW_DISABLED
