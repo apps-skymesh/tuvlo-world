@@ -1072,7 +1072,8 @@ func _quick(action: Callable) -> void:
 
 func blocks(point: Vector2) -> bool:
 	if title_layer: return true
-	if mode in ["place", "more", "land", "settings"]: return true
+	# With a box open the map takes no taps: a tap outside closes the box instead.
+	if mode not in ["", "build"]: return true
 	if sheet_root and sheet_root.get_global_rect().has_point(point): return true
 	for control in hud:
 		if control.get_global_rect().has_point(point): return true
@@ -1871,6 +1872,7 @@ func _sheet(title: String) -> VBoxContainer:
 	centre.add_child(sheet)
 	root.add_child(holder)
 	root.move_child(wallet_node, -1)
+	holder.set_meta("panel", sheet)  # the visible box; the rest of the holder is outside it
 	sheet_root = holder
 	sheet.custom_minimum_size = Vector2(minf(660 * s, viewport.x - 40 * s), 0)
 	return column
@@ -2144,6 +2146,7 @@ class Ripple extends Control:
 
 var press_at := Vector2(-1, -1)
 var press_time := 0.0
+var press_panel: Control  # the panel open when the finger went down
 func _input(event: InputEvent) -> void:
 	var down := false
 	var up := false
@@ -2157,11 +2160,24 @@ func _input(event: InputEvent) -> void:
 	if down:
 		press_at = at
 		press_time = Time.get_ticks_msec() / 1000.0
+		press_panel = sheet_root
 	elif up and press_at.x >= 0:
 		var quick := Time.get_ticks_msec() / 1000.0 - press_time <= F.TAP_MAX_TIME
 		var still := at.distance_to(press_at) <= F.TAP_SLOP * s
 		press_at = Vector2(-1, -1)
 		if quick and still and mode == "" and not blocks(at): _ripple(at)
+		# A tap outside an open box closes it, like its close button. The Build
+		# tray stays: taps on the map pick where to build. A tap that opened the
+		# panel (it wasn't open at press) never closes it.
+		elif quick and still and mode not in ["", "build"] and sheet_root != null and press_panel == sheet_root and _outside_panel(at):
+			close()
+
+func _outside_panel(at: Vector2) -> bool:
+	var panel: Control = sheet_root.get_meta("panel", sheet_root)
+	if not is_instance_valid(panel) or panel.get_global_rect().has_point(at): return false
+	for control in hud:
+		if control.visible and control.get_global_rect().has_point(at): return false
+	return true
 
 func _ripple(at: Vector2) -> void:
 	if fly_layer.get_child_count() > F.FLY_MAX_ON_SCREEN: return

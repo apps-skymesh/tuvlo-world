@@ -44,6 +44,24 @@ func _process(delta: float) -> bool:
 				ui.open("build"); ui.close()
 				ui.open("more"); ui.close()
 			check(ui.mode == "" and ui.sheet_root == null, "spammed panels end closed")
+			# A tap outside an open box closes it; a tap inside doesn't.
+			var tap := func(at: Vector2):
+				for pressed in [true, false]:
+					var e := InputEventMouseButton.new()
+					e.button_index = MOUSE_BUTTON_LEFT; e.pressed = pressed; e.position = at
+					ui._input(e)
+			ui.open("settings")
+			var panel: Control = ui.sheet_root.get_meta("panel", ui.sheet_root)
+			# Headless windows are tiny, so aim just past the box and the HUD.
+			var corner := panel.get_global_rect().end + Vector2(300, 300)
+			tap.call(panel.get_global_rect().get_center())
+			check(ui.mode == "settings", "a tap inside the box keeps it open")
+			tap.call(corner)
+			check(ui.mode == "" and ui.sheet_root == null, "a tap outside the box closes it")
+			ui.open("build")
+			tap.call(corner)
+			check(ui.mode == "build", "the Build tray stays open for map taps")
+			ui.close()
 			# Totals changing faster than the count can finish; the game's next refresh
 			# must still land the wallet on the real balance.
 			ui._count_to(10); ui._count_to(25); ui._count_to(7); ui._count_to(60)
