@@ -125,7 +125,7 @@ There is one new rule, and it adds one strip under the Market awning.
 The two rules pull in opposite directions, and the answer is a skill, not a lookup:
 
 - The season raises the ceiling on one good.
-- Demand caps how many of it are worth selling: bread in season sells at 8, 7, 6, 5, 5…
+- Demand caps how many of it are worth selling: bread in season sells at 8, 7, 6, 5, 4…
 
 So the best play is to hold a small batch (about three or four) of the next season good and sell it when the window opens. A larger hoard gains nothing.
 
@@ -134,8 +134,8 @@ Worked example, five bread:
 | Plan | Coins |
 |---|---|
 | All five, out of season, at once | 5 + 4 + 4 + 3 + 3 = 19 |
-| All five, in season, at once | 8 + 7 + 6 + 5 + 5 = 31 |
-| Three in season, two after recovery | 8 + 7 + 6 + 8 + 7 = 36 |
+| All five, in season, at once | 8 + 7 + 6 + 5 + 4 = 30 |
+| Three in season, two more after about 2 min of recovery, same window | 8 + 7 + 6 + 8 + 7 = 36 |
 
 ## New decisions per minute
 
