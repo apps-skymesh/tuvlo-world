@@ -24,7 +24,14 @@ static func new_id() -> String:
 	return "%s-%s-%s-%s-%s" % [hex.substr(0, 8), hex.substr(8, 4), hex.substr(12, 4), hex.substr(16, 4), hex.substr(20, 12)]
 
 func _record(type: String, fields := {}) -> Dictionary:
-	var record := {"v": C.SAVE_VERSION, "id": new_id(), "type": type, "at": now()}
+	# Order must survive replay: never earlier than the last record, and a
+	# sequence number breaks ties between records saved in the same instant.
+	var at := now()
+	var seq := 0
+	for r in host.load_records():
+		at = maxf(at, float(r.get("at", 0)))
+		seq = maxi(seq, int(r.get("seq", 0)))
+	var record := {"v": C.SAVE_VERSION, "id": new_id(), "type": type, "at": at, "seq": seq + 1}
 	record.merge(fields)
 	return record
 

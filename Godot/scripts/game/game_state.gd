@@ -31,7 +31,7 @@ func _init() -> void:
 static func replay(records: Array) -> WorldState:
 	var state := WorldState.new()
 	var sorted := records.duplicate()
-	sorted.sort_custom(func(a, b): return [float(a.get("at", 0)), str(a.get("id", ""))] < [float(b.get("at", 0)), str(b.get("id", ""))])
+	sorted.sort_custom(func(a, b): return [float(a.get("at", 0)), int(a.get("seq", 0)), str(a.get("id", ""))] < [float(b.get("at", 0)), int(b.get("seq", 0)), str(b.get("id", ""))])
 	for record in sorted:
 		if state.apply(record) != "": state.rejected += 1
 	state.notice = ""
