@@ -101,3 +101,27 @@ const SHAKE_TIME := 0.28
 const ATMOSPHERE_MOTES := 26
 const ATMOSPHERE_POLLEN := 14  # the rest are fireflies
 const ATMOSPHERE_FPS := 30.0
+
+# Closing a box (world_ui._close_out): a quick shrink and fade; taps pass
+# through to the map on the same frame.
+const CLOSE_TIME := 0.12
+const CLOSE_TO_SCALE := 0.94
+
+# Rewards scale with the gain (world_ui.reward_tier): small, good, big.
+const REWARD_GOOD := 5
+const REWARD_BIG := 15
+const REWARD_COINS := [2, 4, 6]
+const REWARD_FONT := [28, 34, 44]
+const REWARD_HAPTIC := [0.35, 0.5, 0.8]
+const REWARD_BIG_BUMP := 1.32
+const HAPTIC_BIG := 0.9
+
+# Level up (world_ui._level_impact): wind-up, a 70 ms hold with a warm flash
+# on impact, then an elastic settle.
+const LEVEL_WINDUP_SCALE := 0.82
+const LEVEL_WINDUP_TIME := 0.08
+const LEVEL_PUNCH_SCALE := 1.45
+const LEVEL_SETTLE_TIME := 0.6
+const HITSTOP_TIME := 0.07
+const FLASH_ALPHA := 0.22
+const FLASH_TIME := 0.28

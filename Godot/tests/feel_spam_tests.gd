@@ -92,9 +92,15 @@ func _process(delta: float) -> bool:
 			shaken.position = Vector2(100, 100)
 			for i in 12: ui.shake(shaken)
 			check(ui.fly_layer.get_child_count() <= F.FLY_MAX_ON_SCREEN, "flying sprites stay capped")
+			# Rewards scale with the gain; a level-up holds the frame only briefly.
+			check(WorldUI.reward_tier(1) == 0 and WorldUI.reward_tier(F.REWARD_GOOD) == 1 and WorldUI.reward_tier(F.REWARD_BIG) == 2, "reward feedback tiers follow the gain")
+			for i in 5: ui._level_impact()
 			phase = 2
 		3:
 			check(ui.coin_pill.scale.is_equal_approx(Vector2.ONE), "wallet coin back at rest after spam")
+			check(Engine.time_scale == 1.0, "a level-up hit-stop always releases")
+			check(ui.level_badge.scale.is_equal_approx(Vector2.ONE), "the level badge settles after its punch")
+			check(ui.root.get_children().filter(func(c): return c.has_meta("panel")).is_empty(), "closed boxes finish fading and are freed")
 			check(ui.market_button.scale.is_equal_approx(Vector2.ONE), "dock button back at rest after spam")
 			check(shaken.position.is_equal_approx(Vector2(100, 100)), "a spammed shake settles where it started (at %s)" % shaken.position)
 			shaken.queue_free()
