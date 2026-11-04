@@ -13,10 +13,18 @@ Source of truth for behaviour: `reference/tuvlo-swift/` (Tuvlo `b50d5f57`). The 
 
 ## Order
 
-1. **Host and rules.** Add the `Host` autoload with `EditorHost`, then port the catalogue, recipes, timers, spots and the record reducer. Test it headless against recorded Tuvlo saves.
-2. **Core loop UI.** Port the HUD wallet, Build tray, place card (goods → place → product, start and collect) and warehouse. Playable on a Mac.
-3. **Solo shell.** Add a minimal Xcode app with SwiftGodotKit: `SoloHost` with local saves and first-run. Playable on iPhone.
-4. **Market.** Sell goods for coins and add level progression. This is solo-only.
+1. ✅ **Host and rules** (2026-11-04). What landed:
+   - `scripts/game/catalogue.gd`: places, prices, gates, spots, recipes, timers and market prices.
+   - `game_state.gd`: the replayable state and the renderer snapshot.
+   - `world_game.gd`: the actions.
+   - `scripts/host/`: `WorldHost` and `LocalHost`.
+   - A plain playable UI (`scripts/ui/world_ui.gd`): wallet and level, goods, Build tray, place panel and market.
+   - 37 headless checks.
+
+   Importing Tuvlo's saved records waits for convergence.
+2. **Designed core loop UI.** Port the HUD wallet, Build tray, place card (goods → place → product, start and collect) and warehouse. Playable on a Mac.
+3. **iPhone and iPad.** The export presets are in (`Godot/export_presets.cfg`). The first device run happens on the owner's Mac (see [Run](RUN.md)). A Swift shell is only needed later, for StoreKit.
+4. **Market.** Basic selling and levels landed in step 1. Still to do: market design, balancing and orders. This is solo-only.
 5. **Later.** Speed-up purchases, iCloud saves and Game Center. Then delete `reference/`.
 
 Building the iOS libgodot and packs currently uses Tuvlo's scripts (`scripts/build-libgodot-ios.sh`, `scripts/prepare-godot-world.py`, `Vendor/SwiftGodotKit`); step 3 brings the parts it needs into this repo.

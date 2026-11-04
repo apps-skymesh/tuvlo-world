@@ -9,6 +9,9 @@ Owner decision (2026-11-04): **all-Godot game, thin Swift shell.** Godot holds t
 | `Godot/` | The game project (Godot 4.7). Imported from Tuvlo's `WorldRuntime/Godot` with its history. |
 | `Authoring/` | Reproducible art sources (Blender scripts) for the models in `Godot/assets`. |
 | `reference/tuvlo-swift/` | A **read-only** copy of Tuvlo's SwiftUI World menus and rules (Tuvlo `b50d5f57`). It's the spec for porting into Godot, it isn't built, and it gets deleted once the port is done. |
-| `docs/` | [Architecture and host interface](docs/ARCHITECTURE.md) and the [porting plan](docs/PORTING-PLAN.md). |
+| `docs/` | [Architecture and host interface](docs/ARCHITECTURE.md), the [porting plan](docs/PORTING-PLAN.md) and how to [run and test](docs/RUN.md). |
+| `scripts/` | `run-mac.sh` to play and `test.sh` to run the rules tests. |
+
+![The solo game at the start](docs/images/step1-start.png)
 
 Tuvlo keeps its own World unchanged until the owner decides to converge the two. See Tuvlo's `docs/design/STANDALONE-WORLD-PLAN.md`.
