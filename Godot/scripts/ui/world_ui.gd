@@ -87,6 +87,7 @@ var sound_on := true
 var music_on := true
 var haptics_on := true
 var reduce_motion := false
+var atmosphere: Control
 const SETTINGS_PATH := "user://settings.cfg"
 var fly_from := Vector2(-1, -1)
 var last_stock := {}
@@ -332,6 +333,69 @@ class Motes extends Control:
 			draw_circle(at, r * 3.0, Color(1, 0.85, 0.5, 0.06 * twinkle))
 			draw_circle(at, r, Color(1, 0.93, 0.72, 0.25 + 0.55 * twinkle))
 
+## Living air over the map: a few drifting pollen motes by day and amber,
+## blinking fireflies as the hearth-glow comes up. One Control, one _draw,
+## redrawn at a capped rate with no nodes, materials or extra passes, so it
+## costs a handful of 2D circles. It sits under the HUD and ignores input.
+class Atmosphere extends Control:
+	const FEEL = preload("res://scripts/ui/feel.gd")
+	var seeds: Array = []
+	var since := 0.0
+	var sampled := -1.0
+	var night := 0.0
+	func _ready() -> void:
+		for i in FEEL.ATMOSPHERE_MOTES: seeds.append(Vector4(randf(), randf(), randf_range(0.4, 1.0), randf() * TAU))
+	func _process(delta: float) -> void:
+		since += delta
+		if since < 1.0 / FEEL.ATMOSPHERE_FPS: return
+		since = 0.0
+		var t := Time.get_ticks_msec() / 1000.0
+		if sampled < 0.0 or t - sampled > HomesteadDayCycle.SAMPLE_SECONDS:
+			sampled = t
+			night = clampf(float(HomesteadDayCycle.at(HomesteadDayCycle.local_hour()).glow), 0.0, 1.0)
+		queue_redraw()
+	func _draw() -> void:
+		var t := Time.get_ticks_msec() / 1000.0
+		var k := size.y / 720.0
+		var day := 1.0 - night
+		var points := PackedVector2Array()
+		var colors := PackedColorArray()
+		var indices := PackedInt32Array()
+		for i in seeds.size():
+			var m: Vector4 = seeds[i]
+			if i < FEEL.ATMOSPHERE_POLLEN and day > 0.05:
+				# Pollen: slow sideways drift on the wind with a gentle rise.
+				var y := fposmod(m.y - t * 0.006 * m.z, 1.0)
+				var x := fposmod(m.x + t * 0.012 * m.z + sin(t * 0.4 * m.z + m.w) * 0.02, 1.0)
+				var r := (1.2 + 1.6 * m.z) * k
+				_glow(points, colors, indices, Vector2(x * size.x, y * size.y), r, r * 2.6, Color(1, 0.98, 0.88, day * (0.2 + 0.25 * m.z)))
+			elif i >= FEEL.ATMOSPHERE_POLLEN and night > 0.05:
+				# Fireflies keep to the lower, nearer half and wander in loops.
+				var x := m.x + sin(t * 0.33 * m.z + m.w) * 0.05
+				var y := 0.42 + m.y * 0.5 + sin(t * 0.5 * m.z + m.w * 2.0) * 0.04
+				var blink := pow(maxf(0.0, sin(t * (0.9 + m.z) + m.w * 3.0)), 2.0)
+				var r := (2.0 + 1.6 * m.z) * k
+				if blink > 0.02: _glow(points, colors, indices, Vector2(x * size.x, y * size.y), r, r * 6.0, Color(1, 0.86, 0.45, night * blink))
+		# Every mote goes out in one triangle list: a single canvas draw call.
+		if not indices.is_empty():
+			RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), indices, points, colors)
+	## A soft dot: a bright core fading to nothing at the halo edge, done with
+	## vertex colours instead of stacked circles or a texture.
+	static func _glow(points: PackedVector2Array, colors: PackedColorArray, indices: PackedInt32Array, at: Vector2, core: float, halo: float, color: Color) -> void:
+		var steps := 10
+		var base := points.size()
+		points.append(at); colors.append(color)
+		var edge := Color(color, color.a * 0.75)
+		var clear := Color(color, 0.0)
+		for j in steps:
+			var dir := Vector2.from_angle(TAU * j / steps)
+			points.append(at + dir * core); colors.append(edge)
+			points.append(at + dir * halo); colors.append(clear)
+		for j in steps:
+			var c0 := base + 1 + j * 2
+			var c1 := base + 1 + ((j + 1) % steps) * 2
+			indices.append_array([base, c0, c1, c0, c0 + 1, c1 + 1, c0, c1 + 1, c1])
+
 ## Field tools drawn in code (no art yet): a seed pouch and a water drop.
 class ToolIcon extends Control:
 	var tool := "seed"
@@ -390,8 +454,13 @@ func setup(owner_main) -> void:
 	root.theme = _theme()
 	add_child(root)
 	# A soft vignette gives the bright map depth and keeps the HUD legible.
-	var vignette := _gradient_rect([[0.0, Color(0, 0, 0, 0)], [0.62, Color(0, 0, 0, 0)], [1.0, Color(0.02, 0.06, 0.05, 0.34)]], true)
+	var vignette := _gradient_rect([[0.0, Color(0, 0, 0, 0)], [0.62, Color(0, 0, 0, 0)], [1.0, Color(0.02, 0.06, 0.05, 0.42)]], true)
 	root.add_child(vignette)
+	atmosphere = Atmosphere.new()
+	atmosphere.set_anchors_preset(Control.PRESET_FULL_RECT)
+	atmosphere.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	atmosphere.visible = not reduce_motion
+	root.add_child(atmosphere)
 	_build_hud()
 	toast_box = PanelContainer.new()
 	var toast_style := glass(22, GLASS_DEEP)
@@ -419,6 +488,7 @@ func setup(owner_main) -> void:
 	root.add_child(pointer)
 	root.move_child(pointer, 1)
 	_load_settings()
+	if atmosphere: atmosphere.visible = not reduce_motion
 	if main.host.has_method("set_reduced_motion"): main.host.set_reduced_motion(reduce_motion)
 	_setup_audio()
 	_show_title()
@@ -1297,6 +1367,11 @@ func show_speech(who: String, line: String) -> void:
 	tween.tween_callback(bubble.queue_free)
 
 func _process(delta: float) -> void:
+	if is_instance_valid(season_clock) and main and main.game:
+		var season: Dictionary = main.game.season()
+		season_clock.text = _time(int(season.left))
+		# A new window reprices everything on the stall.
+		if int(season.window) != season_shown: refresh()
 	if ambience and main and main.game:
 		ambience.tick(delta, main.game.state.job_remaining("mill", main.game.now()) > 0)
 	if toast_left > 0:
@@ -1378,6 +1453,10 @@ func _signature() -> String:
 		for i in st.fields.size(): parts.append(st.field_stage(i, now))
 		parts.append(st.orchard_watered >= 0 and st.orchard_remaining(now) == 0)
 		parts.append(st.orchard_watered >= 0)
+	if mode == "more":
+		# Prices move with the season and as demand recovers.
+		parts.append(game.season().window)
+		for good in st.stock: if st.stock[good] > 0: parts.append(game.sell_price(good))
 	return JSON.stringify(parts)
 
 func open(next_mode: String, arg := "", arg_station := "") -> void:
@@ -2053,6 +2132,57 @@ func _eyebrow(text: String) -> Label:
 	label.add_theme_color_override("font_color", GOLD)
 	return label
 
+var season_clock: Label
+var season_shown := -1
+
+## The market's favourite under the awning: what sells high now, for how
+## long, and what comes next, so a batch can be timed to the window.
+func _season_strip(season: Dictionary) -> Control:
+	season_shown = int(season.get("window", -1))
+	if str(season.good) == "": return null
+	var strip := PanelContainer.new()
+	var box := tile_box(18, true)
+	box.set_content_margin_all(8 * s)
+	strip.add_theme_stylebox_override("panel", box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", int(10 * s))
+	row.add_child(_icon(icons[season.good], 40))
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", int(-4 * s))
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.alignment = BoxContainer.ALIGNMENT_CENTER
+	var head := Label.new()
+	head.text = "In season"
+	head.add_theme_font_size_override("font_size", int(13 * s))
+	head.add_theme_color_override("font_color", MUTED)
+	words.add_child(head)
+	var name_line := Label.new()
+	name_line.text = "%s  +%d%%" % [C.title(season.good), roundi(C.SEASON_BONUS * 100)]
+	name_line.add_theme_font_override("font", DISPLAY_SEMI)
+	name_line.add_theme_font_size_override("font_size", int(19 * s))
+	name_line.add_theme_color_override("font_color", GOLD)
+	words.add_child(name_line)
+	row.add_child(words)
+	season_clock = _number(20)
+	season_clock.text = _time(int(season.left))
+	season_clock.custom_minimum_size = Vector2(64, 0) * s
+	season_clock.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	season_clock.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(season_clock)
+	if str(season.next) != "" and season.next != season.good:
+		var next := Label.new()
+		next.text = "Next"
+		next.add_theme_font_size_override("font_size", int(13 * s))
+		next.add_theme_color_override("font_color", MUTED)
+		next.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(next)
+		var next_icon := _icon(icons[season.next], 32)
+		next_icon.tooltip_text = "Next in season: %s" % C.title(season.next)
+		next_icon.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.add_child(next_icon)
+	strip.add_child(row)
+	return strip
+
 func _fill_more() -> void:
 	var game: WorldGame = main.game
 	var market: bool = game.host.features().get("market", false)
@@ -2064,6 +2194,8 @@ func _fill_more() -> void:
 		awning.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		column.add_child(awning)
 		column.move_child(awning, 0)
+		var strip := _season_strip(game.season())
+		if strip: column.add_child(strip)
 	var orders := game.state.open_orders()
 	if market and not orders.is_empty():
 		column.add_child(_eyebrow("Orders"))
@@ -2112,14 +2244,14 @@ func _fill_more() -> void:
 			# How far demand has dipped, in a fixed-width slot so nothing shifts.
 			var dip := Label.new()
 			var drop := roundi(100.0 * (1.0 - float(price) / C.SELL_PRICE[good]))
-			dip.text = "-%d%%" % drop if drop > 0 else ""
+			dip.text = "-%d%%" % drop if drop > 0 else ("+%d%%" % -drop if drop < 0 else "")
 			dip.custom_minimum_size = Vector2(44, 0) * s
 			dip.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 			dip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			dip.add_theme_font_override("font", DISPLAY_SEMI)
 			dip.add_theme_font_size_override("font_size", int(15 * s))
-			dip.add_theme_color_override("font_color", SHORT)
-			dip.tooltip_text = "Demand is recovering"
+			dip.add_theme_color_override("font_color", SHORT if drop > 0 else GOLD)
+			dip.tooltip_text = "Demand is recovering" if drop > 0 else "In season"
 			row.add_child(dip)
 			row.add_child(sell)
 			if count > 1:
@@ -2287,6 +2419,7 @@ func _fill_settings() -> void:
 ## gets the same flag for its camera and scenery.
 func set_reduce_motion(on: bool) -> void:
 	reduce_motion = on
+	if atmosphere: atmosphere.visible = not on
 	_save_settings()
 	if main.host.has_method("set_reduced_motion"): main.host.set_reduced_motion(on)
 	main.push()

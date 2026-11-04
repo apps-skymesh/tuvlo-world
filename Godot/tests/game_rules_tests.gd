@@ -216,6 +216,32 @@ func _initialize() -> void:
 	mgame.tend(1); mgame.tend(1); mclock.t += WorldCatalogue.FIELD_SECONDS; mgame.tend(1)
 	check(mgame.state.stock.wheat == 4 and mgame.sell("wheat", 4) == "" and mhost.earned == 4, "cheap goods never drop below 1 coin")
 	check(WorldState.replay(mhost.records).lifetime_sales == 4, "demand sales replay to the same total")
+	# In season: one makeable good sells for more each window, the next one is
+	# known ahead, and replay holds the season frozen in the sale.
+	var ss := WorldState.new()
+	check(ss.season_good(0.0, 600.0) == "", "no season while only wheat can be made")
+	ss.items.append({"id": "w", "kind": "windmill", "cell": Vector2i(1, 13), "rotation": 0, "style": ""})
+	ss.items.append({"id": "g", "kind": "garden", "cell": Vector2i(2, 10), "rotation": 0, "style": ""})
+	check(ss.makeable_goods() == ["wheat", "flour", "bread", "meal"], "makeable goods follow the places owned")
+	var seen_goods := {}
+	var last_good := ""
+	var repeats := 0
+	for w in 8:
+		var g := ss.season_good(w * 600.0 + 1.0, 600.0)
+		seen_goods[g] = true
+		if g == last_good: repeats += 1
+		last_good = g
+	check(seen_goods.size() == 4 and repeats == 0, "every makeable good comes into season and none repeats")
+	var hot := ss.season_good(1000.0, 600.0)
+	check(ss.season_good(1000.0, 600.0, 1) == ss.season_good(1300.0, 600.0), "the next good is the one after the window turns")
+	check(ss.season_left(1000.0, 600.0) == 200, "time left counts to the window's end")
+	ss.stock[hot] = 10
+	var base_price: int = WorldCatalogue.SELL_PRICE[hot]
+	var hot_price := ss.quote(hot, 1, 1000.0, 600.0)
+	check(hot_price == maxi(1, roundi(base_price * 1.5)) and ss.quote(hot, 1, 1000.0) == base_price, "the season good sells for half again; older quotes ignore it")
+	check(ss.quote(hot, 4, 1000.0, 600.0) < hot_price * 4, "demand still drops a season good per unit")
+	check(ss.apply({"v": 1, "id": "h1", "type": "sell", "at": 1000.0, "good": hot, "count": 1, "amount": base_price, "recover": 45}) == "", "a demand-era sale without a season keeps the plain price")
+	check(ss.apply({"v": 1, "id": "h2", "type": "sell", "at": 1001.0, "good": hot, "count": 1, "amount": base_price, "recover": 45, "season": 600}) == "price", "replay rejects a season sale at the plain price")
 	print("game rules: %d checks, %d failed" % [checks, failures])
 	host.free()
 	quit(1 if failures > 0 else 0)

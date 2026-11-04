@@ -122,12 +122,25 @@ func glut_at(good: String, at: float) -> float:
 	var g: Dictionary = glut[good]
 	return maxf(0.0, g.units - maxf(0.0, at - g.at) / maxf(1.0, g.recover))
 ## Coins for selling `count` of `good` at `at`, each unit priced after the last.
-func quote(good: String, count: int, at: float) -> int:
+## `season` is the season window length in force (0: before seasons existed).
+func quote(good: String, count: int, at: float, season := 0.0) -> int:
 	if not C.SELL_PRICE.has(good): return 0
 	var base := glut_at(good, at)
+	var hot := season > 0.0 and season_good(at, season) == good
 	var total := 0
-	for i in count: total += C.unit_price(good, base + i)
+	for i in count: total += C.unit_price(good, base + i, hot)
 	return total
+
+## Goods the homestead can make now, in GOODS order.
+func makeable_goods() -> Array:
+	var kinds := owned_kinds()
+	return C.GOODS.filter(func(g): return kinds.has(C.GOOD_SOURCE.get(g, "")))
+func season_window(at: float, season: float) -> int: return floori(at / maxf(1.0, season))
+## The good in season at `at`; `ahead` 1 gives the next window's good.
+func season_good(at: float, season: float, ahead := 0) -> String:
+	return C.season_good(season_window(at, season) + ahead, makeable_goods())
+func season_left(at: float, season: float) -> int:
+	return ceili((season_window(at, season) + 1) * maxf(1.0, season) - at)
 
 # --- records ---------------------------------------------------------------
 
@@ -205,8 +218,9 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			if not C.SELL_PRICE.has(good) or count < 1 or stock.get(good, 0) < count or amount < 0: return "short"
 			# Sales saved with demand must match the price at that moment; older
 			# sales keep their saved amount.
+			# Sales saved since seasons also carry the season length.
 			var current := r.has("recover")
-			if current and amount != quote(good, count, at): return "price"
+			if current and amount != quote(good, count, at, float(r.get("season", 0.0))): return "price"
 			var recover := float(r.get("recover", C.DEMAND_RECOVER_SECONDS))
 			glut[good] = {"units": glut_at(good, at) + count, "at": at, "recover": recover}
 			stock[good] -= count

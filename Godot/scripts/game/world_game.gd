@@ -85,13 +85,19 @@ func tend_orchard() -> String: return _commit(_record("orchard", {"seconds": C.d
 func sell(good: String, count: int) -> String:
 	if not host.features().get("market", false): return "unavailable"
 	if not C.SELL_PRICE.has(good) or count < 1 or state.stock.get(good, 0) < count: return "short"
-	var record := _record("sell", {"good": good, "count": count, "recover": C.duration(C.DEMAND_RECOVER_SECONDS)})
+	var record := _record("sell", {"good": good, "count": count, "recover": C.duration(C.DEMAND_RECOVER_SECONDS), "season": C.duration(C.SEASON_SECONDS)})
 	# Priced at the record's own time, so replay reaches the same amount.
-	record.amount = state.quote(good, count, record.at)
+	record.amount = state.quote(good, count, record.at, record.season)
 	return _commit(record, 0, record.amount)
 
 ## What selling `count` of `good` would pay right now.
-func sell_price(good: String, count := 1) -> int: return state.quote(good, count, now())
+func sell_price(good: String, count := 1) -> int: return state.quote(good, count, now(), C.duration(C.SEASON_SECONDS))
+## The market's favourite now and next, and seconds until it changes.
+func season() -> Dictionary:
+	var length := C.duration(C.SEASON_SECONDS)
+	var at := now()
+	return {"good": state.season_good(at, length), "next": state.season_good(at, length, 1), "left": state.season_left(at, length),
+		"window": state.season_window(at, length)}
 
 func deliver(slot: int) -> String:
 	if not host.features().get("market", false): return "unavailable"

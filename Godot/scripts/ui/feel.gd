@@ -94,3 +94,10 @@ const TIMER_BUFFER := 0.6
 const SHAKE_DISTANCE := 7.0
 const SHAKE_STEPS := 5
 const SHAKE_TIME := 0.28
+
+# Living air over the map (world_ui.Atmosphere): pollen by day, fireflies
+# with the hearth-glow. Drawn as 2D circles at a capped rate; hidden under
+# Reduce Motion.
+const ATMOSPHERE_MOTES := 26
+const ATMOSPHERE_POLLEN := 14  # the rest are fireflies
+const ATMOSPHERE_FPS := 30.0
