@@ -1044,7 +1044,7 @@ func place_tapped(id: String, tapped_station := "") -> void:
 			var stages := []
 			for i in st.fields.size(): stages.append(st.field_stage(i, now))
 			if 4 in stages or 0 in stages or 1 in stages:
-				_quick(func():
+				_quick(id, func():
 					var target := 4 if 4 in stages else (0 if 0 in stages else 1)
 					var result := ""
 					for i in stages.size():
@@ -1055,20 +1055,57 @@ func place_tapped(id: String, tapped_station := "") -> void:
 				return
 		elif item.kind == "orchard":
 			if st.orchard_watered < 0 or st.orchard_remaining(now) == 0:
-				_quick(func(): return game.tend_orchard())
+				_quick(id, func(): return game.tend_orchard())
 				return
 		else:
 			for each in C.stations_for(item.kind):
 				if tapped_station != "" and each != tapped_station: continue
 				if st.jobs.has(each) and st.job_remaining(each, now) == 0:
-					_quick(func(): return game.collect(each))
+					_quick(id, func(): return game.collect(each))
 					return
+		# Input buffer: a tap just before a timer finishes waits for it.
+		var wait := _ready_in(item, tapped_station, now)
+		if wait > 0.0 and wait <= F.TIMER_BUFFER:
+			if not buffered.has(id):
+				buffered[id] = true
+				get_tree().create_timer(wait + 0.05).timeout.connect(func():
+					buffered.erase(id)
+					if mode == "": place_tapped(id, tapped_station))
+			return
 	open("place", id, tapped_station)
 
-func _quick(action: Callable) -> void:
+var buffered := {}  # place ids with a tap waiting for their timer
+## Seconds until this place has something to collect, or -1 when nothing is running.
+func _ready_in(item: Dictionary, tapped_station: String, now: float) -> float:
+	var st: WorldState = main.game.state
+	var soonest := -1.0
+	match item.kind:
+		"garden":
+			for i in st.fields.size():
+				if st.field_stage(i, now) in [2, 3]: soonest = _min_positive(soonest, st.fields[i].watered + st.field_total(i) - now)
+		"orchard":
+			if st.orchard_watered >= 0: soonest = _min_positive(soonest, st.orchard_watered + st.orchard_grow - now)
+		_:
+			for each in C.stations_for(item.kind):
+				if tapped_station != "" and each != tapped_station: continue
+				if st.jobs.has(each): soonest = _min_positive(soonest, st.jobs[each].started + st.job_total(each) - now)
+	return soonest
+static func _min_positive(a: float, b: float) -> float:
+	if b <= 0: return a
+	return b if a < 0 or b < a else a
+
+## A map action: on success the place squashes and throws flecks of what it
+## made on the same frame as the sound and haptic; on failure, a soft thud.
+func _quick(id: String, action: Callable) -> void:
+	var before: Dictionary = main.game.state.stock.duplicate()
 	var result: String = action.call()
 	main.after_action(result)
-	if result != "": sfx("soft_fail")
+	if result != "": sfx("soft_fail"); return
+	var good := ""
+	for each in main.game.state.stock:
+		if main.game.state.stock[each] > before.get(each, 0): good = each; break
+	main.send("punch", {"id": id, "good": good if good != "" else "wheat", "strength": 1.0 if good != "" else 0.6})
+	if good == "": haptic(F.HAPTIC_TAP)
 
 func blocks(point: Vector2) -> bool:
 	if title_layer: return true

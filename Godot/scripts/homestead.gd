@@ -303,6 +303,7 @@ func receive_host_json(json: String):
   return
  if packet.get("session")!=session or session=="": return
  match type:
+  "punch": presentation.punch(str(payload.get("id","")),clampf(float(payload.get("strength",1.0)),0.5,2.0),str(payload.get("good","")))
   "feedbackAnchor":
    var item_id=str(payload.get("id",""))
    var event=str(payload.get("event",""))

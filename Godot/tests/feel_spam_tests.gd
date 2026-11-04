@@ -44,6 +44,21 @@ func _process(delta: float) -> bool:
 				ui.open("build"); ui.close()
 				ui.open("more"); ui.close()
 			check(ui.mode == "" and ui.sheet_root == null, "spammed panels end closed")
+			# A tap on a timer about to finish waits for it; one further off opens the card.
+			var garden: Dictionary = main.game.state.first_of("garden")
+			var st: WorldState = main.game.state
+			var now: float = main.game.now()
+			st.fields[0] = {"planted": true, "watered": now - 100.0, "grow": 100.3}
+			st.fields[1] = {"planted": true, "watered": now, "grow": 100.0}
+			check(is_equal_approx(snappedf(ui._ready_in(garden, "", now), 0.01), 0.3), "the garden reports when its wheat is ready")
+			ui.place_tapped(garden.id)
+			check(ui.mode == "" and ui.buffered.has(garden.id), "an early tap is buffered, not a menu")
+			ui.buffered.clear()
+			st.fields[0] = {"planted": true, "watered": now, "grow": 100.0}
+			ui.place_tapped(garden.id)
+			check(ui.mode == "place", "a tap well before ready opens the card")
+			ui.close()
+			main.game.refresh()
 			# A tap outside an open box closes it; a tap inside doesn't.
 			var tap := func(at: Vector2):
 				for pressed in [true, false]:
