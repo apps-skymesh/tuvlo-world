@@ -9,6 +9,8 @@ var guests: Array[HomesteadResident]=[]
 var creature: HomesteadCreature
 var camera=Camera3D.new()
 var session=""
+# Optional host hook: returns true when a screen point belongs to the host UI.
+var input_blocker: Callable
 var layout_signature=""
 var navigation_signature=""
 var camera_mode="arrival"
@@ -692,6 +694,7 @@ func wake_menu_preview():
 func _input(event):
  if paused or session=="": return
  wake_frame_rate()
+ if input_blocker.is_valid() and ((event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed)) and input_blocker.call(event.position): return
  if event is InputEventScreenTouch:
   if not event.pressed:
    touches.erase(event.index)

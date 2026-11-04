@@ -1,13 +1,14 @@
 config_version=5
 [application]
-config/name="Tuvlo Homestead Runtime"
+config/name="Tuvlo World"
 boot_splash/show_image=false
 boot_splash/bg_color=Color(0.898039,0.886275,0.831373,1)
-run/main_scene="res://scenes/homestead.tscn"
+run/main_scene="res://scenes/game.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 [display]
-window/size/viewport_width=900
-window/size/viewport_height=700
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/handheld/orientation=4
 window/stretch/mode="disabled"
 [rendering]
 renderer/rendering_method="gl_compatibility"
