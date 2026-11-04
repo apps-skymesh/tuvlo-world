@@ -21,7 +21,7 @@ var farm_fruit_stage := -1
 var production: Array[Dictionary] = []
 var construction: Array[Dictionary] = []
 const STATION_KINDS={"field":"garden","mill":"windmill","oven":"cottage","pantry":"cottage","orchard":"orchard","barn":"barn","grill":"grill"}
-const STATION_GOODS={"field":["wheat"],"mill":["flour"],"oven":["bread","tart"],"pantry":["meal"],"orchard":["fruit"],"barn":["meat"],"grill":["meal"]}
+const STATION_GOODS={"field":["wheat"],"mill":["flour"],"oven":["bread","tart"],"pantry":["meal"],"orchard":["fruit"],"barn":["cheese","meat"],"grill":["meal"]}
 const HARVEST_MATERIALS=["wood","stone","food","wheat"]
 const EDGE_PRODUCERS=["woods","quarry","waterside"]
 

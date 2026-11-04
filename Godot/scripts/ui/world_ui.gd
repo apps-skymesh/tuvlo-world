@@ -1180,6 +1180,42 @@ func show_toast(text: String) -> void:
 		toast_box.visible = true
 		pop_in(toast_box)
 
+## A neighbour's words after a delivery: their name over the line, briefly.
+var speech_box: Control
+func show_speech(who: String, line: String) -> void:
+	if is_instance_valid(speech_box): speech_box.queue_free()
+	var bubble := PanelContainer.new()
+	var box := glass(24, GLASS_DEEP)
+	box.border_color = Color(GOLD, 0.55)
+	box.set_border_width_all(int(2 * s))
+	box.content_margin_left = 26 * s; box.content_margin_right = 26 * s
+	box.content_margin_top = 12 * s; box.content_margin_bottom = 14 * s
+	bubble.add_theme_stylebox_override("panel", box)
+	bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", int(2 * s))
+	column.add_child(_eyebrow(who))
+	var words := Label.new()
+	words.text = "“%s”" % line
+	words.add_theme_font_override("font", DISPLAY_SEMI)
+	words.add_theme_font_size_override("font_size", int(20 * s))
+	words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	words.custom_minimum_size.x = minf(520 * s, root.get_viewport_rect().size.x - 80 * s)
+	column.add_child(words)
+	bubble.add_child(column)
+	fly_layer.add_child(bubble)
+	speech_box = bubble
+	await get_tree().process_frame
+	if not is_instance_valid(bubble): return
+	bubble.reset_size()
+	# Along the bottom edge, clear of the wallet and the level-up banner.
+	bubble.position = Vector2((root.size.x - bubble.size.x) / 2, root.size.y - safe.size.y - bubble.size.y - 18 * s)
+	pop_in(bubble)
+	var tween := bubble.create_tween()
+	tween.tween_interval(F.SPEECH_TIME)
+	tween.tween_property(bubble, "modulate:a", 0.0, 0.4)
+	tween.tween_callback(bubble.queue_free)
+
 func _process(delta: float) -> void:
 	if toast_left > 0:
 		toast_left -= delta
@@ -1976,7 +2012,18 @@ func _order_ticket(order: Dictionary) -> Control:
 	var column := VBoxContainer.new()
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_theme_constant_override("separation", int(8 * s))
-	column.custom_minimum_size = Vector2(170, 0) * s
+	column.custom_minimum_size = Vector2(176, 0) * s
+	var who := _eyebrow(order.name)
+	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(who)
+	var ask := Label.new()
+	ask.text = order.ask
+	ask.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ask.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ask.custom_minimum_size.x = 176 * s
+	ask.add_theme_font_size_override("font_size", int(14 * s))
+	ask.add_theme_color_override("font_color", MUTED)
+	column.add_child(ask)
 	var crate := HBoxContainer.new()
 	crate.alignment = BoxContainer.ALIGNMENT_CENTER
 	crate.add_theme_constant_override("separation", int(8 * s))
@@ -1986,6 +2033,19 @@ func _order_ticket(order: Dictionary) -> Control:
 	count.add_theme_color_override("font_color", MINT if ready else SHORT)
 	crate.add_child(count)
 	column.add_child(crate)
+	if not order.keepsake.is_empty():
+		var gift := HBoxContainer.new()
+		gift.alignment = BoxContainer.ALIGNMENT_CENTER
+		gift.add_theme_constant_override("separation", int(4 * s))
+		var plus := Label.new()
+		plus.text = "+"
+		plus.add_theme_font_override("font", DISPLAY)
+		plus.add_theme_font_size_override("font_size", int(18 * s))
+		plus.add_theme_color_override("font_color", GOLD)
+		gift.add_child(plus)
+		for good in order.keepsake: gift.add_child(_icon(icons.get(good), 30))
+		gift.tooltip_text = "Keepsake"
+		column.add_child(gift)
 	var deliver := _button("%d" % order.reward, func():
 		var at := ticket.get_global_rect().get_center()
 		fly_from = at

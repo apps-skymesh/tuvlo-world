@@ -109,8 +109,8 @@ void fragment() {
 		vec3 tint = col;
 		if (kind == 9) {
 			icon = length(q * vec2(0.9, 1.3)) - 0.47;
-			tint = vec3(0.67, 0.37, 0.30);
-			if (icon < -0.025 && length(q - vec2(0.18, -0.04)) < 0.12) tint = vec3(0.96, 0.88, 0.72);
+			tint = vec3(0.98, 0.78, 0.33); // cheese
+			if (icon < -0.025 && length(q - vec2(0.18, -0.04)) < 0.12) tint = vec3(0.86, 0.6, 0.2);
 		} else if (kind == 8) {
 			icon = capsule(q, vec2(-0.22, -0.37), vec2(0.18, 0.23), 0.07);
 			icon = min(icon, capsule(q, vec2(-0.12, 0.32), vec2(0.35, 0.02), 0.12));

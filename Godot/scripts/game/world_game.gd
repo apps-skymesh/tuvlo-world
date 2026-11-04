@@ -91,9 +91,11 @@ func sell(good: String, count: int) -> String:
 func deliver(slot: int) -> String:
 	if not host.features().get("market", false): return "unavailable"
 	if slot < 0 or slot >= C.ORDER_SLOTS.size() or not state.owns(C.ORDER_SLOTS[slot].opens): return "invalid"
-	var want := C.order(slot, state.orders_filled[slot])
-	if state.stock.get(want.good, 0) < want.count: return "short"
-	return _commit(_record("order", {"slot": slot, "nth": want.nth, "good": want.good, "count": want.count, "amount": want.reward}), 0, want.reward)
+	var want := state.open_orders().filter(func(o): return o.slot == slot)
+	if want.is_empty(): return "invalid"
+	var order: Dictionary = want[0]
+	if state.stock.get(order.good, 0) < order.count: return "short"
+	return _commit(_record("order", {"slot": slot, "nth": order.nth, "folk": order.folk, "good": order.good, "count": order.count, "amount": order.reward}), 0, order.reward)
 
 func today() -> int: return C.local_day(now())
 func gift_ready() -> bool: return state.gift_ready(today())

@@ -109,3 +109,23 @@ Not checked on a device.
 
 1. **Economy pacing**: orders count toward levels and the early level curve is tuned, so a new tier or unlock arrives every few minutes at first.
 2. **Adaptive music**: a music layer that adds instruments as valley tiers wake.
+
+## Pass 4 · 2026-11-04 (owner request)
+
+Saeed asked for named neighbours in place of generic market orders, and cheese in place of meat.
+
+- **Valley folk** (`FOLK` in `catalogue.gd`, still reachable as `ORDER_SLOTS`). Each neighbour has their own wish sequence, request lines, thank-you lines, and a keepsake on every third delivery.
+  - **Old Maeve**, weaver and baker: wheat, flour and bread. Keepsake: a warm loaf.
+  - **Rowan the Bargeman**, river courier: bread, fruit and tarts for the journey. Keepsake: 2 pears.
+  - **Bramble**, forager and herbalist: cheese, fruit, meals and tarts. Keepsake: a tart.
+  - A neighbour only asks for goods the homestead can already make (`GOOD_SOURCE`).
+  - The ticket shows who is asking and why.
+  - After a delivery, their thank-you appears along the bottom.
+- **Cheese replaces meat.** The barn's flock now makes sheep's cheese, and the grill makes grilled cheese meals. Recipe ids are unchanged.
+- **Saves.** Schema `v: 1` is unchanged.
+  - Replay reads the old good "meat" as "cheese" (`LEGACY_GOODS`).
+  - Orders saved before the folk carry no `folk` field. They replay on their own saved terms and give no keepsake.
+  - New order records add `folk` and are checked against that neighbour's sequence.
+- **Renderer.** It accepts barn production as "cheese", or "meat" from older hosts, and shows the new cheese art.
+
+Tests: rules 71/0 (9 new checks for folk, keepsakes and legacy saves), feel spam 13/0, runtime and collect pass.

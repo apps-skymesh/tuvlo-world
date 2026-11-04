@@ -49,6 +49,7 @@ func after_action(result: String) -> void:
 	if result == "":
 		# Gains fly to the HUD and fields change in place; only builds need words.
 		if game.state.notice.ends_with("built") or game.state.notice.ends_with("is yours"): ui.show_toast(game.state.notice)
+		if not game.state.speech.is_empty(): ui.show_speech(game.state.speech.name, game.state.speech.line)
 		push()
 	else:
 		ui.show_toast(REASONS.get(result, "Can't do that now"))

@@ -46,7 +46,7 @@ var awakening: HomesteadAwakening
 # Bubbles the child just tapped, by producer key, with the clock time of the tap.
 var collecting: Dictionary={}
 const BUBBLE_SHADER=preload("res://scripts/harvest_bubble.gdshader")
-const PRODUCT_ART={"wheat":preload("res://assets/goods/wheat.png"),"flour":preload("res://assets/goods/flour.png"),"bread":preload("res://assets/goods/bread.png"),"meal":preload("res://assets/goods/meal.png"),"fruit":preload("res://assets/goods/fruit.png"),"tart":preload("res://assets/goods/tart.png"),"meat":preload("res://assets/goods/meat.png")}
+const PRODUCT_ART={"wheat":preload("res://assets/goods/wheat.png"),"flour":preload("res://assets/goods/flour.png"),"bread":preload("res://assets/goods/bread.png"),"meal":preload("res://assets/goods/meal.png"),"fruit":preload("res://assets/goods/fruit.png"),"tart":preload("res://assets/goods/tart.png"),"meat":preload("res://assets/goods/cheese.png"),"cheese":preload("res://assets/goods/cheese.png")}
 
 func setup(world_data: HomesteadWorldData):
 	data=world_data
@@ -446,7 +446,7 @@ func update_production():
 		bubble.set_meta("state",int(status.state))
 		if int(status.state)==2 and was!=-1 and was!=2 and not reduced_motion: pop_in(bubble.get_child(0))
 		var material: ShaderMaterial=bubble.get_meta("material")
-		material.set_shader_parameter("kind",(9 if status.good=="meat" else ["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good)))
+		material.set_shader_parameter("kind",(9 if status.good in ["meat","cheese"] else ["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good)))
 		material.set_shader_parameter("production_state",status.state)
 		material.set_shader_parameter("progress",status.progress)
 		material.set_shader_parameter("sample_time",fmod(Time.get_ticks_msec()/1000.0,3600.0))

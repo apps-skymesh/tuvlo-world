@@ -133,6 +133,30 @@ func _initialize() -> void:
 	var again := WorldState.replay(host.records)
 	check(again.orders_filled[0] == 1, "replay keeps delivered orders")
 
+	# Valley folk: named neighbours, wishes the farm can make, keepsakes.
+	var fresh := WorldState.new()
+	var asks_ok := true
+	for n in 12: asks_ok = asks_ok and WorldCatalogue.order(0, n, fresh.owned_kinds()).good == "wheat"
+	check(asks_ok, "Maeve only asks for wheat before the windmill")
+	var rowan_ok := true
+	for n in 12: rowan_ok = rowan_ok and not WorldCatalogue.order(1, n, ["garden", "windmill"]).good in ["fruit", "tart"]
+	check(rowan_ok, "Rowan never asks for orchard goods without an orchard")
+	fresh.stock.wheat = 99
+	for n in 3:
+		var wish := WorldCatalogue.order(0, n, fresh.owned_kinds())
+		fresh.apply({"v": 1, "id": "folk-%d" % n, "type": "order", "at": 10.0 + n, "slot": 0, "nth": n, "folk": wish.folk, "good": wish.good, "count": wish.count, "amount": wish.reward})
+	check(fresh.orders_filled[0] == 3 and fresh.stock.bread == 1, "every third delivery brings Maeve's keepsake")
+	check(fresh.speech.get("name", "") == "Old Maeve" and fresh.speech.line != "", "the neighbour says thank you")
+	var wrong := WorldCatalogue.order(0, 3, fresh.owned_kinds())
+	check(fresh.apply({"v": 1, "id": "folk-bad", "type": "order", "at": 20.0, "slot": 0, "nth": 3, "folk": "rowan", "good": wrong.good, "count": wrong.count, "amount": 1}) == "invalid", "an order for the wrong neighbour is refused")
+	# Saves from before the folk and the cheese: meat reads as cheese, old orders keep their terms.
+	var legacy_state := WorldState.new()
+	legacy_state.stock.cheese = 3
+	check(legacy_state.apply({"v": 1, "id": "old-sell", "type": "sell", "at": 30.0, "good": "meat", "count": 1, "amount": 3}) == "", "an old meat sale replays as cheese")
+	check(legacy_state.apply({"v": 1, "id": "old-order", "type": "order", "at": 31.0, "slot": 2, "nth": 0, "good": "meat", "count": 2, "amount": 11}) == "", "an old meat order replays on its saved terms")
+	check(legacy_state.stock.cheese == 0 and legacy_state.orders_filled[2] == 1 and legacy_state.speech.is_empty(), "old orders advance the slot without a keepsake")
+	check(WorldCatalogue.RECIPES.livestock.output == "cheese" and not WorldCatalogue.GOODS.has("meat"), "the barn makes cheese")
+
 	# Daily gift: none on the first day, one per later day, streak grows it.
 	check(not game.gift_ready(), "no gift on the first day")
 	clock.t += 86400.0
@@ -140,7 +164,8 @@ func _initialize() -> void:
 	check(game.gift_basket() == WorldCatalogue.GIFT_BASKETS[0], "first gift is day 1's basket")
 	var wheat_before: int = game.state.stock.wheat
 	var coins_before_gift := host.coins
-	check(game.claim_gift() == "", "claim the gift")
+	var claim_result := game.claim_gift()
+	check(claim_result == "", "claim the gift (%s)" % claim_result)
 	check(game.state.stock.wheat == wheat_before + 2 and host.coins == coins_before_gift, "gift adds goods, never coins")
 	check(game.claim_gift() == "claimed" and not game.gift_ready(), "one gift per day")
 	var twin := {"v": 1, "id": "twin-gift", "type": "gift", "at": clock.t + 5, "seq": 9999, "day": game.today()}
