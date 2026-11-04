@@ -19,6 +19,7 @@ var construction := {}
 var seen := {}
 var rejected := 0
 var lifetime_sales := 0
+var harvests := 0
 var orders_filled := [0, 0, 0]
 var notice := ""
 
@@ -150,6 +151,7 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 				4:
 					fields[index] = {"planted": false, "watered": -1.0}
 					stock.wheat += C.FIELD_YIELD
+					harvests += 1
 					notice = "+%d wheat" % C.FIELD_YIELD
 				_: return "growing"
 		"make":

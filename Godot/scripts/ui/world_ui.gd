@@ -11,6 +11,7 @@ extends CanvasLayer
 ## Words appear only where a picture can't carry the meaning.
 
 const C = preload("res://scripts/game/catalogue.gd")
+const F = preload("res://scripts/ui/feel.gd")
 ## Design tokens: deep forest glass over the bright world, ivory type, gold
 ## for money and progress, mint for growth.
 const GLASS := Color(0.075, 0.15, 0.14, 0.86)
@@ -77,6 +78,7 @@ var music: AudioStreamPlayer
 var sound_on := true
 var music_on := true
 var haptics_on := true
+var reduce_motion := false
 const SETTINGS_PATH := "user://settings.cfg"
 var fly_from := Vector2(-1, -1)
 var last_stock := {}
@@ -97,7 +99,7 @@ class WorldRing extends Control:
 		var c := size / 2.0
 		var k: float = ui.s
 		if glow:
-			var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0)
+			var pulse := 1.0 if ui.reduce_motion else 0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0)
 			for i in 7:
 				draw_arc(c, r + (3 + i * 4) * k, 0, TAU, 96, Color(WorldUI.GOLD, (0.34 - i * 0.045) * (0.5 + 0.5 * pulse)), 5 * k, true)
 		# A thin double rim: dark for contrast on bright turf, ivory on top.
@@ -226,7 +228,7 @@ class Pointer extends Control:
 	func _draw() -> void:
 		var k: float = ui.s
 		var t := Time.get_ticks_msec() / 1000.0
-		var bob: float = sin(t * 5.5) * 7 * k
+		var bob: float = 0.0 if ui.reduce_motion else sin(t * 5.5) * 7 * k
 		var c := Vector2(size.x / 2, size.y / 2 + bob)
 		# A soft ground halo that breathes under the marker.
 		var halo := 0.5 + 0.5 * sin(t * 5.5)
@@ -379,6 +381,7 @@ func setup(owner_main) -> void:
 	root.add_child(pointer)
 	root.move_child(pointer, 1)
 	_load_settings()
+	if main.host.has_method("set_reduced_motion"): main.host.set_reduced_motion(reduce_motion)
 	_setup_audio()
 	_show_title()
 	refresh()
@@ -438,6 +441,7 @@ func _show_title() -> void:
 	var motes := Motes.new()
 	motes.set_anchors_preset(Control.PRESET_FULL_RECT)
 	motes.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	motes.visible = not reduce_motion
 	title_layer.add_child(motes)
 	var column := VBoxContainer.new()
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -491,6 +495,7 @@ func _show_title() -> void:
 	get_tree().process_frame.connect(func():
 		if not is_instance_valid(play): return
 		play.pivot_offset = play.size / 2
+		if reduce_motion: return
 		var pulse := play.create_tween().set_loops()
 		pulse.tween_property(play, "scale", Vector2(1.04, 1.04), 0.9).set_trans(Tween.TRANS_SINE)
 		pulse.tween_property(play, "scale", Vector2.ONE, 0.9).set_trans(Tween.TRANS_SINE), CONNECT_ONE_SHOT)
@@ -519,6 +524,7 @@ func _setup_audio() -> void:
 			var player := AudioStreamPlayer.new()
 			player.stream = effect
 			player.volume_db = -6.0
+			player.max_polyphony = F.SFX_POLYPHONY
 			add_child(player)
 			audio[name] = player
 	music = AudioStreamPlayer.new()
@@ -530,12 +536,26 @@ func _setup_audio() -> void:
 		add_child(music)
 		if music_on: music.play()
 
-func sfx(name: String) -> void:
-	if sound_on and audio.has(name): audio[name].play()
+## Every effect varies a little in pitch so repeats never sound mechanical;
+## pass a pitch to climb (see _combo_pitch).
+func sfx(name: String, pitch := 1.0) -> void:
+	if not sound_on or not audio.has(name): return
+	var player: AudioStreamPlayer = audio[name]
+	player.pitch_scale = pitch * (1.0 + randf_range(-F.PITCH_JITTER, F.PITCH_JITTER))
+	player.play()
+
+var combo := 0
+var combo_at := -100.0
+## Gains in quick succession climb a step each, up to a ceiling; a pause resets.
+func _combo_pitch() -> float:
+	var now := Time.get_ticks_msec() / 1000.0
+	combo = mini(combo + 1, F.COMBO_MAX_STEPS) if now - combo_at <= F.COMBO_WINDOW else 0
+	combo_at = now
+	return 1.0 + combo * F.COMBO_STEP
 
 ## A light tap on phones and iPads; nothing elsewhere.
-func haptic(strength := 0.35) -> void:
-	if haptics_on and OS.has_feature("mobile"): Input.vibrate_handheld(12, strength)
+func haptic(strength := F.HAPTIC_TAP) -> void:
+	if haptics_on and OS.has_feature("mobile"): Input.vibrate_handheld(F.HAPTIC_MS, strength)
 
 func _load_settings() -> void:
 	var config := ConfigFile.new()
@@ -543,12 +563,14 @@ func _load_settings() -> void:
 	sound_on = config.get_value("audio", "effects", true)
 	music_on = config.get_value("audio", "music", true)
 	haptics_on = config.get_value("feel", "haptics", true)
+	reduce_motion = config.get_value("feel", "reduce_motion", false)
 
 func _save_settings() -> void:
 	var config := ConfigFile.new()
 	config.set_value("audio", "effects", sound_on)
 	config.set_value("audio", "music", music_on)
 	config.set_value("feel", "haptics", haptics_on)
+	config.set_value("feel", "reduce_motion", reduce_motion)
 	config.save(SETTINGS_PATH)
 
 func set_music(on: bool) -> void:
@@ -566,52 +588,91 @@ func toggle_sound() -> void:
 
 func pop_in(control: Control) -> void:
 	control.pivot_offset = control.size / 2
-	control.scale = Vector2(0.86, 0.86)
 	control.modulate.a = 0.0
 	var tween := create_tween().set_parallel()
-	tween.tween_property(control, "scale", Vector2.ONE, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(control, "modulate:a", 1.0, 0.18)
+	if not reduce_motion:
+		control.scale = Vector2.ONE * F.POP_FROM_SCALE
+		tween.tween_property(control, "scale", Vector2.ONE, F.POP_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(control, "modulate:a", 1.0, F.FADE_IN_TIME)
+
+## A one-shot tween per control and purpose: a new one replaces the old, so
+## rapid taps never stack scales or leave a control stuck mid-animation.
+func _solo_tween(control: Node, key: String) -> Tween:
+	var meta := "tween_" + key
+	if control.has_meta(meta):
+		var old: Tween = control.get_meta(meta)
+		if old and old.is_valid(): old.kill()
+	var tween := control.create_tween()
+	control.set_meta(meta, tween)
+	return tween
 
 func bump(control: Control) -> void:
-	if not is_instance_valid(control): return
+	if not is_instance_valid(control) or reduce_motion: return
 	control.pivot_offset = control.size / 2
-	var tween := create_tween()
-	tween.tween_property(control, "scale", Vector2(1.18, 1.18), 0.09).set_trans(Tween.TRANS_QUAD)
-	tween.tween_property(control, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	control.scale = Vector2.ONE
+	var tween := _solo_tween(control, "bump")
+	tween.tween_property(control, "scale", Vector2.ONE * F.BUMP_SCALE, F.BUMP_UP_TIME).set_trans(Tween.TRANS_QUAD)
+	tween.tween_property(control, "scale", Vector2.ONE, F.BUMP_SETTLE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _juice(button: BaseButton) -> void:
 	button.button_down.connect(func():
+		if reduce_motion or button.disabled: return
 		button.pivot_offset = button.size / 2
-		create_tween().tween_property(button, "scale", Vector2(0.93, 0.93), 0.06))
-	button.button_up.connect(func(): create_tween().tween_property(button, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
+		_solo_tween(button, "press").tween_property(button, "scale", Vector2.ONE * F.PRESS_SCALE, F.PRESS_TIME))
+	button.button_up.connect(func():
+		if not is_instance_valid(button): return
+		if reduce_motion: button.scale = Vector2.ONE; return
+		_solo_tween(button, "press").tween_property(button, "scale", Vector2.ONE, F.RELEASE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
 	button.pressed.connect(func(): sfx("tap"); haptic())
 
 ## Icons fly from a screen point to a HUD target along an arc, then the target bumps.
+## With Reduce Motion the target only acknowledges the gain.
 func fly(texture: Texture2D, from: Vector2, target: Control, count := 3, side := 44.0) -> void:
 	if texture == null or not is_instance_valid(target): return
+	if reduce_motion: return
 	var to := target.get_global_rect().get_center()
-	for i in mini(count, 6):
+	var room := F.FLY_MAX_ON_SCREEN - fly_layer.get_child_count()
+	if room <= 0: return
+	for i in mini(mini(count, F.FLY_MAX_PER_GAIN), room):
 		var sprite := TextureRect.new()
 		sprite.texture = texture
 		sprite.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		sprite.size = Vector2(side, side) * s
 		sprite.pivot_offset = sprite.size / 2
 		sprite.position = from - sprite.size / 2 + Vector2(randf_range(-18, 18), randf_range(-12, 12)) * s
 		fly_layer.add_child(sprite)
 		var start := sprite.position
 		var end := to - sprite.size / 2
-		var lift := Vector2(0, -140 * s) + Vector2(randf_range(-60, 60), 0) * s
-		var tween := create_tween()
-		tween.tween_interval(i * 0.07)
-		tween.tween_property(sprite, "scale", Vector2(1.25, 1.25), 0.12)
+		var lift := Vector2(randf_range(-F.FLY_SPREAD, F.FLY_SPREAD), -F.FLY_LIFT) * s
+		var tween := sprite.create_tween()
+		tween.tween_interval(i * F.FLY_STAGGER)
+		tween.tween_property(sprite, "scale", Vector2.ONE * F.FLY_GROW_SCALE, F.FLY_GROW_TIME)
 		tween.tween_method(func(t: float):
 			var a := start.lerp(start + lift, t)
 			var b := (start + lift).lerp(end, t)
 			sprite.position = a.lerp(b, t)
-			sprite.scale = Vector2.ONE * lerpf(1.25, 0.6, t), 0.0, 1.0, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+			sprite.scale = Vector2.ONE * lerpf(F.FLY_GROW_SCALE, F.FLY_LAND_SCALE, t), 0.0, 1.0, F.FLY_TRAVEL_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 		tween.tween_callback(func():
 			sprite.queue_free()
 			bump(target))
+
+## The wallet rolls to its new total as the coins land; a newer change
+## retargets from whatever is showing, so rapid sales never skip or rewind.
+var shown_coins := -1.0
+func _count_to(coins: int) -> void:
+	if shown_coins < 0 or reduce_motion:
+		shown_coins = coins
+		coins_label.text = str(coins)
+		return
+	var gap := absf(coins - shown_coins)
+	if gap < 0.5: return
+	var time := clampf(gap * F.COUNT_TIME_PER_COIN, F.COUNT_MIN_TIME, F.COUNT_MAX_TIME)
+	var tween := _solo_tween(coins_label, "count")
+	if coins > shown_coins: tween.tween_interval(F.COUNT_DELAY)
+	tween.tween_method(func(value: float):
+		shown_coins = value
+		coins_label.text = str(roundi(value)), shown_coins, float(coins), time).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 ## A rising "+N" label at a screen point.
 func float_text(text: String, at: Vector2, color := IVORY) -> void:
@@ -625,11 +686,12 @@ func float_text(text: String, at: Vector2, color := IVORY) -> void:
 	fly_layer.add_child(label)
 	label.position = at - Vector2(30, 20) * s
 	label.pivot_offset = Vector2(30, 20) * s
-	label.scale = Vector2(0.6, 0.6)
 	var tween := create_tween().set_parallel()
-	tween.tween_property(label, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(label, "position:y", label.position.y - 74 * s, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(label, "modulate:a", 0.0, 0.9).set_delay(0.35)
+	if not reduce_motion:
+		label.scale = Vector2(0.6, 0.6)
+		tween.tween_property(label, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	if not reduce_motion: tween.tween_property(label, "position:y", label.position.y - F.FLOAT_RISE * s, F.FLOAT_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "modulate:a", 0.0, F.FLOAT_TIME).set_delay(F.FLOAT_FADE_DELAY)
 	tween.chain().tween_callback(label.queue_free)
 
 ## Letter-spaced type for small caps eyebrows and taglines.
@@ -1015,6 +1077,7 @@ func point_at(x: float, y: float) -> void:
 	pointer.visible = true
 
 func _confetti() -> void:
+	if reduce_motion: return
 	var viewport := root.get_viewport_rect().size
 	var colors := [GOLD, LEAF, Color("D9573E"), Color("5BA8D8"), CREAM]
 	for i in 70:
@@ -1114,7 +1177,7 @@ func refresh() -> void:
 	var game: WorldGame = main.game
 	var coins := game.host.wallet()
 	var level := game.host.progress()
-	coins_label.text = str(coins)
+	_count_to(coins)
 	level_label.text = str(level)
 	var bar := game.next_level_progress()
 	level_badge.level = level
@@ -1123,8 +1186,8 @@ func refresh() -> void:
 	var from := fly_from if fly_from.x >= 0 else root.get_viewport_rect().size / 2
 	if ring and is_instance_valid(ring): from = ring.get_global_rect().get_center()
 	if last_coins >= 0 and coins > last_coins:
-		sfx("coins")
-		haptic(0.5)
+		sfx("coins", _combo_pitch())
+		haptic(F.HAPTIC_REWARD)
 		fly(icons["coin"], from, coin_pill, clampi(coins - last_coins, 1, 6))
 		float_text("+%d" % (coins - last_coins), from + Vector2(0, -50 * s), GOLD)
 	elif last_coins >= 0 and coins < last_coins: sfx("world_build_complete")
@@ -1136,7 +1199,7 @@ func refresh() -> void:
 				gained = true
 				fly(icons.get(good), from, market_button, diff)
 				float_text("+%d" % diff, from + Vector2(0, -60 * s))
-		if gained: sfx("world_harvest")
+		if gained: sfx("world_harvest", _combo_pitch()); haptic(F.HAPTIC_REWARD)
 		elif coins == last_coins and game.state.stock.hash() != last_stock.hash(): sfx("world_plant")
 	last_stock = game.state.stock.duplicate()
 	fly_from = Vector2(-1, -1)
@@ -1874,7 +1937,8 @@ func _fill_settings() -> void:
 	var column := _sheet("Settings")
 	var rows := [["Sound effects", sound_on, func(on): sound_on = on; _save_settings()],
 		["Music", music_on, func(on): set_music(on)],
-		["Haptics", haptics_on, func(on): haptics_on = on; _save_settings(); haptic(0.6)]]
+		["Haptics", haptics_on, func(on): haptics_on = on; _save_settings(); haptic(0.6)],
+		["Reduce motion", reduce_motion, func(on): set_reduce_motion(on)]]
 	var list := PanelContainer.new()
 	var box := tile_box(20)
 	box.set_content_margin_all(6 * s)
@@ -1916,3 +1980,59 @@ func _fill_settings() -> void:
 		note.add_theme_font_size_override("font_size", int(14 * s))
 		note.add_theme_color_override("font_color", MUTED)
 		column.add_child(note)
+
+## Reduce Motion: interface movement stops (fades stay) and the renderer
+## gets the same flag for its camera and scenery.
+func set_reduce_motion(on: bool) -> void:
+	reduce_motion = on
+	_save_settings()
+	if main.host.has_method("set_reduced_motion"): main.host.set_reduced_motion(on)
+	main.push()
+
+# --- tap acknowledgement ---------------------------------------------------------
+
+## A soft expanding ring where a finger lifts on the open map.
+class Ripple extends Control:
+	var t := 0.0
+	var ui
+	func _draw() -> void:
+		var k: float = ui.s
+		var r: float = lerpf(WorldFeel.RIPPLE_FROM, WorldFeel.RIPPLE_TO, t if not ui.reduce_motion else 0.6) * k
+		var a := 1.0 - t
+		draw_arc(Vector2.ZERO, r, 0, TAU, 48, Color(1, 1, 1, 0.75 * a), 3 * k, true)
+		draw_circle(Vector2.ZERO, r * 0.55, Color(1, 1, 1, 0.16 * a))
+
+var press_at := Vector2(-1, -1)
+var press_time := 0.0
+func _input(event: InputEvent) -> void:
+	var down := false
+	var up := false
+	var at := Vector2.ZERO
+	if event is InputEventScreenTouch:
+		down = event.pressed; up = not event.pressed; at = event.position
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		down = event.pressed; up = not event.pressed; at = event.position
+	else:
+		return
+	if down:
+		press_at = at
+		press_time = Time.get_ticks_msec() / 1000.0
+	elif up and press_at.x >= 0:
+		var quick := Time.get_ticks_msec() / 1000.0 - press_time <= F.TAP_MAX_TIME
+		var still := at.distance_to(press_at) <= F.TAP_SLOP * s
+		press_at = Vector2(-1, -1)
+		if quick and still and mode == "" and not blocks(at): _ripple(at)
+
+func _ripple(at: Vector2) -> void:
+	if fly_layer.get_child_count() > F.FLY_MAX_ON_SCREEN: return
+	var live := 0
+	for child in fly_layer.get_children(): if child is Ripple: live += 1
+	if live >= F.RIPPLE_MAX_ON_SCREEN: return
+	var ring_mark := Ripple.new()
+	ring_mark.ui = self
+	ring_mark.position = at
+	ring_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fly_layer.add_child(ring_mark)
+	var tween := ring_mark.create_tween()
+	tween.tween_method(func(v: float): ring_mark.t = v; ring_mark.queue_redraw(), 0.0, 1.0, F.RIPPLE_TIME).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(ring_mark.queue_free)

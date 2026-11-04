@@ -73,7 +73,9 @@ func buy_land(side: String) -> String:
 	if host.wallet() < price: return "short"
 	return _commit(_record("land", {"side": side, "price": price}), price)
 
-func tend(field: int) -> String: return _commit(_record("tend", {"field": field, "seconds": C.duration(C.FIELD_SECONDS)}))
+func tend(field: int) -> String:
+	var grow := C.FIRST_FIELD_SECONDS if state.harvests == 0 else C.FIELD_SECONDS
+	return _commit(_record("tend", {"field": field, "seconds": C.duration(grow)}))
 func make(recipe: String) -> String:
 	if not C.RECIPES.has(recipe): return "invalid"
 	return _commit(_record("make", {"recipe": recipe, "seconds": C.duration(C.RECIPES[recipe].seconds)}))

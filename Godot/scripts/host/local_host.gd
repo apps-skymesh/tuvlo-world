@@ -35,6 +35,11 @@ func _save(next: Dictionary) -> bool:
 	changed.emit()
 	return true
 
+## The player's Reduce Motion choice, passed to the renderer through the snapshot.
+var reduced_motion := false
+func set_reduced_motion(on: bool) -> void: reduced_motion = on
+func player() -> Dictionary: return {"id": "local", "name": "", "reduced_motion": reduced_motion}
+
 func wallet() -> int: return int(data.coins)
 func earned() -> int: return int(data.earned)
 func progress() -> int: return int(data.earned) / C.SOLO_SALES_PER_LEVEL

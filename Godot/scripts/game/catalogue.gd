@@ -85,6 +85,9 @@ static func duration(seconds: float) -> int:
 ## Production (HomesteadFarm).
 const FIELD_COUNT := 2
 const FIELD_SECONDS := 120.0
+## The very first wheat grows fast, so a new player gets a harvest within
+## the first minute (frozen in the watering record like every other time).
+const FIRST_FIELD_SECONDS := 20.0
 const FIELD_YIELD := 2
 const ORCHARD_SECONDS := 360.0
 const ORCHARD_YIELD := 3
