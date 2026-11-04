@@ -11,15 +11,30 @@ extends CanvasLayer
 ## Words appear only where a picture can't carry the meaning.
 
 const C = preload("res://scripts/game/catalogue.gd")
-const CREAM := Color("FFF5DC")
-const PARCHMENT := Color("F5E4BE")
-const WELL := Color("E7D1A3")
-const RIM := Color("B98547")
-const WALNUT := Color("5C3A1B")
-const INK := Color("3B2A17")
-const GOLD := Color("F2B632")
-const LEAF := Color("6FA850")
-const SHORT := Color("C85A3C")
+## Design tokens: deep forest glass over the bright world, ivory type, gold
+## for money and progress, mint for growth.
+const GLASS := Color(0.075, 0.15, 0.14, 0.86)
+const GLASS_DEEP := Color(0.04, 0.09, 0.085, 0.92)
+const EDGE := Color(1, 1, 1, 0.16)
+const TILE := Color(1, 1, 1, 0.075)
+const IVORY := Color("FFF8EA")
+const MUTED := Color(1, 0.97, 0.9, 0.62)
+const GOLD := Color("F7C04A")
+const GOLD_DEEP := Color("C98A1C")
+const GOLD_INK := Color("3D2805")
+const MINT := Color("7EDB9C")
+const SHORT := Color("FF8E72")
+# Older names, kept so the art helpers below read the same.
+const CREAM := IVORY
+const INK := IVORY
+const WALNUT := GOLD_INK
+const RIM := EDGE
+const LEAF := MINT
+const WELL := TILE
+const PARCHMENT := GLASS
+const DISPLAY := preload("res://assets/fonts/Fredoka-700.ttf")
+const DISPLAY_SEMI := preload("res://assets/fonts/Fredoka-600.ttf")
+const BODY := preload("res://assets/fonts/Nunito-800.ttf")
 const RING_DIAMETER := 212.0
 
 signal panel_changed(open: bool)
@@ -30,6 +45,7 @@ var root: Control
 var coins_label: Label
 var level_label: Label
 var toast: Label
+var toast_box: PanelContainer
 var toast_left := 0.0
 var hud: Array[Control] = []
 var sheet_root: Control  # the open card or tray
@@ -46,12 +62,13 @@ var goal_box: PanelContainer
 var goal_icon: TextureRect
 var goal_label: Label
 var goal_action := Callable()
-var level_bar: ProgressBar
 var level_badge: LevelBadge
 var pointer: Pointer
 var pointer_id := ""
 var coin_pill: Control
 var market_button: Button
+var dock_node: Control
+var wallet_node: Control
 var fly_layer: Control
 var last_level := -1
 var last_coins := -1
@@ -75,57 +92,51 @@ class WorldRing extends Control:
 	func _draw() -> void:
 		var r := size.x / 2.0
 		var c := size / 2.0
+		var k: float = ui.s
 		if glow:
 			var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0)
-			for i in 6:
-				draw_arc(c, r + (4 + i * 4) * ui.s, 0, TAU, 96, Color(WorldUI.GOLD, (0.42 - i * 0.07) * (0.55 + 0.45 * pulse)), 5 * ui.s, true)
-		draw_arc(c, r - 5 * ui.s, 0, TAU, 96, Color(1, 0.96, 0.86, 0.95), 10 * ui.s, true)
-		draw_arc(c, r - 1 * ui.s, 0, TAU, 96, WorldUI.RIM, 3 * ui.s, true)
-		draw_arc(c, r - 10 * ui.s, 0, TAU, 96, Color(WorldUI.RIM, 0.55), 2 * ui.s, true)
+			for i in 7:
+				draw_arc(c, r + (3 + i * 4) * k, 0, TAU, 96, Color(WorldUI.GOLD, (0.34 - i * 0.045) * (0.5 + 0.5 * pulse)), 5 * k, true)
+		# A thin double rim: dark for contrast on bright turf, ivory on top.
+		draw_arc(c, r - 4 * k, 0, TAU, 128, Color(0, 0, 0, 0.28), 9 * k, true)
+		draw_arc(c, r - 4 * k, 0, TAU, 128, Color(1, 1, 1, 0.22), 7 * k, true)
+		draw_arc(c, r - 0.5 * k, 0, TAU, 128, Color(1, 1, 1, 0.9), 2 * k, true)
+		draw_arc(c, r - 8 * k, 0, TAU, 128, Color(1, 1, 1, 0.45), 1.2 * k, true)
 		if progress >= 0:
-			draw_arc(c, r - 5 * ui.s, -PI / 2, -PI / 2 + TAU * progress, 96, WorldUI.LEAF, 8 * ui.s, true)
+			var tip := -PI / 2 + TAU * progress
+			draw_arc(c, r - 4 * k, -PI / 2, tip, 128, WorldUI.MINT, 7 * k, true)
+			draw_circle(c + Vector2.from_angle(tip) * (r - 4 * k), 6 * k, WorldUI.IVORY)
 		if label != "":
-			var font := get_theme_default_font()
-			var fs := int(20 * ui.s)
+			var font: Font = WorldUI.DISPLAY_SEMI
+			var fs := int(19 * k)
 			var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
-			var pill := Rect2(c.x - w / 2 - 12 * ui.s, size.y - 46 * ui.s, w + 24 * ui.s, 32 * ui.s)
-			draw_style_box(ui.pill_box(WorldUI.CREAM), pill)
-			draw_string(font, Vector2(c.x - w / 2, pill.position.y + 23 * ui.s), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.INK)
+			var pill := Rect2(c.x - w / 2 - 14 * k, size.y - 44 * k, w + 28 * k, 32 * k)
+			draw_style_box(ui.glass(16, WorldUI.GLASS_DEEP, false), pill)
+			draw_string(font, Vector2(c.x - w / 2, pill.position.y + 23 * k), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.IVORY)
 	func _gui_input(event: InputEvent) -> void:
 		var press: bool = (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed) or (event is InputEventScreenTouch and not event.pressed)
 		if press and event.position.distance_to(size / 2) <= size.x / 2: tapped.emit()
 	func _can_drop_data(_at: Vector2, data: Variant) -> bool: return data is Dictionary and data.has("good")
 	func _drop_data(_at: Vector2, data: Variant) -> void: dropped.emit(str(data.good))
 
-## A gold banner with notched tails, for card and sheet titles.
+## A card or sheet title: display type on a glass chip with gold diamonds.
 class Ribbon extends Control:
 	var text := ""
 	var ui
 	func _draw() -> void:
+		var k: float = ui.s
 		var h := size.y
-		var w := size.x
-		var tail := h * 0.55
-		var dark := Color("C98A1C")
-		for side in [-1, 1]:
-			var x0 := 0.0 if side < 0 else w
-			var points := PackedVector2Array([Vector2(x0 + side * -tail * 0.2, h * 0.28), Vector2(x0 + side * tail, h * 0.28), Vector2(x0 + side * tail * 0.62, h * 0.72), Vector2(x0 + side * tail, h * 1.12), Vector2(x0 + side * -tail * 0.2, h * 1.12)])
-			draw_colored_polygon(points, dark)
-		var body := StyleBoxFlat.new()
-		body.bg_color = WorldUI.GOLD
-		body.set_corner_radius_all(int(h * 0.3))
-		body.border_color = Color("A86E12")
-		body.set_border_width_all(int(2 * ui.s))
-		body.shadow_color = Color(0, 0, 0, 0.25)
-		body.shadow_size = int(5 * ui.s)
-		body.shadow_offset = Vector2(0, 3 * ui.s)
-		draw_style_box(body, Rect2(Vector2.ZERO, Vector2(w, h * 0.9)))
-		draw_rect(Rect2(Vector2(h * 0.25, h * 0.12), Vector2(w - h * 0.5, h * 0.12)), Color(1, 1, 1, 0.28))
-		var font := get_theme_default_font()
+		draw_style_box(ui.glass(int(h / 2 / k), WorldUI.GLASS_DEEP), Rect2(Vector2.ZERO, size))
+		var font: Font = WorldUI.DISPLAY
 		var fs := int(h * 0.5)
 		var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		var at := Vector2((w - tw) / 2, h * 0.45 + fs * 0.36)
-		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(7 * ui.s), WorldUI.WALNUT)
-		draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.CREAM)
+		var at := Vector2((size.x - tw) / 2, h * 0.5 + fs * 0.36)
+		draw_string(font, at + Vector2(0, 2 * k), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.35))
+		draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.IVORY)
+		for side in [-1, 1]:
+			var x: float = size.x / 2 + side * (tw / 2 + 16 * k)
+			var d := 4.5 * k
+			draw_colored_polygon(PackedVector2Array([Vector2(x, h / 2 - d), Vector2(x + d, h / 2), Vector2(x, h / 2 + d), Vector2(x - d, h / 2)]), WorldUI.GOLD)
 
 ## The card's band, with a round window so the real place shows through the ring.
 class Band extends Control:
@@ -138,126 +149,117 @@ class Band extends Control:
 			for k in 9: points.append(corner[0] + Vector2.from_angle(corner[1] + k * PI / 16) * radius)
 		return points
 	func _draw() -> void:
+		var k: float = ui.s
 		var circle := PackedVector2Array()
-		for k in 64: circle.append(size / 2 + Vector2.from_angle(k * TAU / 64) * hole_radius)
-		var outer := _rounded(Rect2(Vector2.ZERO, size), minf(40 * ui.s, size.y / 2))
-		var shadow := Transform2D(0, Vector2(0, 4 * ui.s))
-		var shapes: Array = Geometry2D.clip_polygons(outer, circle)
+		for i in 72: circle.append(size / 2 + Vector2.from_angle(i * TAU / 72) * hole_radius)
+		var outer := _rounded(Rect2(Vector2.ZERO, size), minf(36 * k, size.y / 2))
 		# clip_polygons returns the outer ring and the hole separately; split into halves instead.
 		var halves := []
 		for side in [0, 1]:
 			var clip := PackedVector2Array([Vector2(size.x / 2 * side, -10), Vector2(size.x / 2 * (side + 1), -10), Vector2(size.x / 2 * (side + 1), size.y + 10), Vector2(size.x / 2 * side, size.y + 10)])
 			for half in Geometry2D.intersect_polygons(outer, clip):
 				for piece in Geometry2D.clip_polygons(half, circle): halves.append(piece)
-		for piece in halves: draw_colored_polygon(shadow * piece, Color(0, 0, 0, 0.16))
-		for piece in halves: draw_colored_polygon(piece, Color(WorldUI.CREAM, 0.95))
+		for step in 4:
+			var shadow := Transform2D(0, Vector2(0, (3 + step * 3) * k))
+			for piece in halves: draw_colored_polygon(shadow * piece, Color(0, 0, 0, 0.07))
+		for piece in halves: draw_colored_polygon(piece, WorldUI.GLASS)
 		var edge := outer.duplicate()
 		edge.append(outer[0])
 		for i in edge.size() - 1:
 			var a := edge[i]; var b := edge[i + 1]
-			if a.distance_to(size / 2) > hole_radius + 2 and b.distance_to(size / 2) > hole_radius + 2: draw_line(a, b, Color(WorldUI.RIM, 0.85), 3 * ui.s, true)
+			if a.distance_to(size / 2) > hole_radius + 2 and b.distance_to(size / 2) > hole_radius + 2:
+				draw_line(a, b, Color(1, 1, 1, 0.2 if a.y < size.y / 2 else 0.08), 1.5 * k, true)
 
-## The level as a round medal with a progress ring.
+## The level as a dark medal with a gold progress ring.
 class LevelBadge extends Control:
 	var ui
 	var level := 0
 	var progress := 0.0
 	func _draw() -> void:
+		var k: float = ui.s
 		var c := size / 2
-		var r: float = minf(size.x, size.y) / 2 - 2 * ui.s
-		draw_circle(c + Vector2(0, 3 * ui.s), r, Color(0, 0, 0, 0.2))
-		draw_circle(c, r, WorldUI.CREAM)
-		draw_arc(c, r - 4 * ui.s, 0, TAU, 64, WorldUI.WELL, 6 * ui.s, true)
-		if progress > 0: draw_arc(c, r - 4 * ui.s, -PI / 2, -PI / 2 + TAU * progress, 64, WorldUI.GOLD, 6 * ui.s, true)
-		draw_arc(c, r, 0, TAU, 64, WorldUI.RIM, 2.5 * ui.s, true)
-		draw_circle(c, r - 10 * ui.s, Color("F7C548"))
-		draw_circle(c + Vector2(-r * 0.18, -r * 0.2), r * 0.3, Color(1, 1, 1, 0.25))
-		var font := get_theme_default_font()
+		var r: float = minf(size.x, size.y) / 2 - 1 * k
+		draw_circle(c, r, Color(0, 0, 0, 0.25))
+		draw_arc(c, r - 3 * k, 0, TAU, 64, Color(1, 1, 1, 0.14), 5 * k, true)
+		if progress > 0: draw_arc(c, r - 3 * k, -PI / 2, -PI / 2 + TAU * progress, 64, WorldUI.GOLD, 5 * k, true)
+		var font: Font = WorldUI.DISPLAY
 		var fs: int = int(r * 0.95)
 		var text := str(level)
 		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		var at := Vector2(c.x - w / 2, c.y + fs * 0.36)
-		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(6 * ui.s), WorldUI.WALNUT)
-		draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.CREAM)
+		draw_string(font, Vector2(c.x - w / 2, c.y + fs * 0.35), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.IVORY)
 
 ## A bouncing gold marker that points at the goal's place on the map.
 class Pointer extends Control:
 	var ui
 	func _process(_delta: float) -> void: queue_redraw()
 	func _draw() -> void:
-		var bob: float = sin(Time.get_ticks_msec() / 180.0) * 8 * ui.s
+		var k: float = ui.s
+		var t := Time.get_ticks_msec() / 1000.0
+		var bob: float = sin(t * 5.5) * 7 * k
 		var c := Vector2(size.x / 2, size.y / 2 + bob)
-		var w: float = 22 * ui.s
-		var h: float = 26 * ui.s
-		var shape := PackedVector2Array([c + Vector2(-w, -h), c + Vector2(w, -h), c + Vector2(w, 0), c + Vector2(w * 0.45, 0), c + Vector2(0, h * 0.8), c + Vector2(-w * 0.45, 0), c + Vector2(-w, 0)])
-		var shadow := PackedVector2Array()
-		for point in shape: shadow.append(point + Vector2(0, 4 * ui.s))
-		draw_colored_polygon(shadow, Color(0, 0, 0, 0.22))
-		draw_colored_polygon(shape, WorldUI.GOLD)
-		var outline := shape.duplicate(); outline.append(shape[0])
-		draw_polyline(outline, WorldUI.WALNUT, 3 * ui.s, true)
-		draw_rect(Rect2(c + Vector2(-w * 0.6, -h * 0.8), Vector2(w * 1.2, h * 0.22)), Color(1, 1, 1, 0.35))
+		# A soft ground halo that breathes under the marker.
+		var halo := 0.5 + 0.5 * sin(t * 5.5)
+		draw_set_transform(Vector2(size.x / 2, size.y + 26 * k), 0, Vector2(1, 0.35))
+		draw_circle(Vector2.ZERO, (18 + 6 * halo) * k, Color(WorldUI.GOLD, 0.35 - 0.15 * halo))
+		draw_set_transform(Vector2.ZERO)
+		var r := 19 * k
+		var tip := c + Vector2(0, r * 1.9)
+		var body := PackedVector2Array()
+		for i in 25: body.append(c + Vector2.from_angle(PI * 0.75 + i * PI * 1.5 / 24) * r)
+		body.append(tip)
+		var shadow := Transform2D(0, Vector2(0, 4 * k)) * body
+		draw_colored_polygon(shadow, Color(0, 0, 0, 0.25))
+		draw_colored_polygon(body, WorldUI.GOLD)
+		var outline := body.duplicate(); outline.append(body[0])
+		draw_polyline(outline, WorldUI.GOLD_DEEP, 2.5 * k, true)
+		draw_circle(c, r * 0.42, WorldUI.IVORY)
+		draw_circle(c + Vector2(-r * 0.35, -r * 0.45), r * 0.22, Color(1, 1, 1, 0.4))
 
-## Warm wooden planks behind the Build shelf.
+## The glass dock behind the Build shelf.
 class Shelf extends Control:
 	var ui
 	func _draw() -> void:
-		var body := StyleBoxFlat.new()
-		body.bg_color = Color("A8703B")
-		body.set_corner_radius_all(int(26 * ui.s))
-		body.border_color = Color("6B4220")
-		body.set_border_width_all(int(4 * ui.s))
-		body.shadow_color = Color(0, 0, 0, 0.3)
-		body.shadow_size = int(10 * ui.s)
-		body.shadow_offset = Vector2(0, 4 * ui.s)
-		draw_style_box(body, Rect2(Vector2.ZERO, size))
-		var planks := 3
-		for i in range(1, planks):
-			var y := size.y * i / planks
-			draw_line(Vector2(14 * ui.s, y), Vector2(size.x - 14 * ui.s, y), Color("7E4E26"), 3 * ui.s)
-		for i in 14:
-			var y: float = fmod(i * 37.0 * ui.s, size.y - 20 * ui.s) + 10 * ui.s
-			var x0: float = fmod(i * 173.0 * ui.s, size.x * 0.7) + 20 * ui.s
-			draw_line(Vector2(x0, y), Vector2(x0 + 90 * ui.s, y + 2 * ui.s), Color(1, 1, 1, 0.08), 2 * ui.s)
-		draw_rect(Rect2(Vector2(16 * ui.s, size.y - 16 * ui.s), Vector2(size.x - 32 * ui.s, 6 * ui.s)), Color("6B4220"))
+		draw_style_box(ui.glass(30), Rect2(Vector2.ZERO, size))
 
 ## A small padlock for places that need a higher level.
 class Padlock extends Control:
 	func _draw() -> void:
 		var c := size / 2
 		var r := minf(size.x, size.y) / 2
-		draw_arc(c + Vector2(0, -r * 0.15), r * 0.42, PI, TAU, 24, Color("6B4220"), r * 0.18, true)
-		draw_rect(Rect2(c + Vector2(-r * 0.62, -r * 0.1), Vector2(r * 1.24, r * 0.9)), Color("C9A24A"))
-		draw_rect(Rect2(c + Vector2(-r * 0.62, -r * 0.1), Vector2(r * 1.24, r * 0.9)), Color("6B4220"), false, r * 0.1)
-		draw_circle(c + Vector2(0, r * 0.3), r * 0.12, Color("6B4220"))
+		draw_circle(c, r, Color(0.04, 0.09, 0.085, 0.9))
+		draw_arc(c + Vector2(0, -r * 0.12), r * 0.3, PI, TAU, 24, WorldUI.IVORY, r * 0.13, true)
+		var body := StyleBoxFlat.new()
+		body.bg_color = WorldUI.GOLD
+		body.set_corner_radius_all(int(r * 0.16))
+		draw_style_box(body, Rect2(c + Vector2(-r * 0.42, -r * 0.1), Vector2(r * 0.84, r * 0.62)))
+		draw_circle(c + Vector2(0, r * 0.2), r * 0.09, WorldUI.GOLD_INK)
 
 ## A soft chevron between goods, the place and products.
 class Arrow extends Control:
 	var ui
 	func _draw() -> void:
 		var c := size / 2
-		var d := minf(size.x, size.y) * 0.26
-		for i in 2:
-			var x := c.x + (i - 0.5) * d * 0.95
-			draw_polyline(PackedVector2Array([Vector2(x - d * 0.4, c.y - d), Vector2(x + d * 0.4, c.y), Vector2(x - d * 0.4, c.y + d)]), Color(WorldUI.RIM, 0.55 + 0.35 * i), 6 * ui.s, true)
+		var d := minf(size.x, size.y) * 0.22
+		for i in 3:
+			var x := c.x + (i - 1) * d * 0.8
+			draw_polyline(PackedVector2Array([Vector2(x - d * 0.35, c.y - d * 0.7), Vector2(x + d * 0.35, c.y), Vector2(x - d * 0.35, c.y + d * 0.7)]), Color(1, 1, 1, 0.18 + 0.28 * i), 4 * ui.s, true)
 
-## A striped market awning with a scalloped edge.
-class Awning extends Control:
-	var ui
+## Drifting motes of light for the title screen.
+class Motes extends Control:
+	var seeds: Array = []
+	func _ready() -> void:
+		for i in 46: seeds.append(Vector4(randf(), randf(), randf_range(0.4, 1.0), randf() * TAU))
+	func _process(_delta: float) -> void: queue_redraw()
 	func _draw() -> void:
-		var stripes := 10
-		var w := size.x / stripes
-		var h := size.y
-		for i in stripes:
-			var color := Color("D9573E") if i % 2 == 0 else Color("FFF5DC")
-			draw_rect(Rect2(Vector2(i * w, 0), Vector2(w, h * 0.7)), color)
-			var points := PackedVector2Array()
-			for k in 13:
-				var t := float(k) / 12.0
-				points.append(Vector2(i * w + t * w, h * 0.7 + sin(t * PI) * h * 0.3))
-			points.append(Vector2(i * w, h * 0.7))
-			draw_colored_polygon(points, color)
-		draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, h * 0.12)), Color(0, 0, 0, 0.12))
+		var t := Time.get_ticks_msec() / 1000.0
+		for m: Vector4 in seeds:
+			var y := fposmod(m.y - t * 0.018 * m.z, 1.0)
+			var x := m.x + sin(t * 0.6 * m.z + m.w) * 0.015
+			var twinkle := 0.5 + 0.5 * sin(t * 2.0 * m.z + m.w)
+			var at := Vector2(x * size.x, y * size.y)
+			var r := (1.5 + 2.5 * m.z) * size.y / 720.0
+			draw_circle(at, r * 3.0, Color(1, 0.85, 0.5, 0.06 * twinkle))
+			draw_circle(at, r, Color(1, 0.93, 0.72, 0.25 + 0.55 * twinkle))
 
 ## Field tools drawn in code (no art yet): a seed pouch and a water drop.
 class ToolIcon extends Control:
@@ -304,6 +306,7 @@ class GoodTile extends TextureRect:
 func setup(owner_main) -> void:
 	main = owner_main
 	s = clampf(main.get_viewport().get_visible_rect().size.y / 720.0, 1.0, 3.0)
+	_read_safe_area()
 	for good in C.GOODS: icons[good] = load("res://assets/ui/goods/%s.png" % good)
 	for kind in C.TITLES:
 		var path := "res://assets/ui/places/%s.png" % kind
@@ -315,15 +318,23 @@ func setup(owner_main) -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = _theme()
 	add_child(root)
+	# A soft vignette gives the bright map depth and keeps the HUD legible.
+	var vignette := _gradient_rect([[0.0, Color(0, 0, 0, 0)], [0.62, Color(0, 0, 0, 0)], [1.0, Color(0.02, 0.06, 0.05, 0.34)]], true)
+	root.add_child(vignette)
 	_build_hud()
+	toast_box = PanelContainer.new()
+	var toast_style := glass(22, GLASS_DEEP)
+	toast_style.content_margin_left = 22 * s; toast_style.content_margin_right = 22 * s
+	toast_style.content_margin_top = 10 * s; toast_style.content_margin_bottom = 10 * s
+	toast_box.add_theme_stylebox_override("panel", toast_style)
+	toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast = Label.new()
 	toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	toast.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, int(78 * s))
-	toast.add_theme_color_override("font_color", INK)
-	toast.add_theme_color_override("font_outline_color", CREAM)
-	toast.add_theme_constant_override("outline_size", int(8 * s))
-	toast.add_theme_font_size_override("font_size", int(22 * s))
-	root.add_child(toast)
+	toast.add_theme_font_override("font", DISPLAY_SEMI)
+	toast.add_theme_font_size_override("font_size", int(20 * s))
+	toast_box.add_child(toast)
+	toast_box.visible = false
+	root.add_child(toast_box)
 	fly_layer = Control.new()
 	fly_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	fly_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -335,63 +346,122 @@ func setup(owner_main) -> void:
 	pointer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pointer.visible = false
 	root.add_child(pointer)
-	root.move_child(pointer, 0)
+	root.move_child(pointer, 1)
 	_setup_audio()
 	_show_title()
 	refresh()
+
+## Keeps the HUD clear of the iPhone's Dynamic Island and the home indicator.
+var safe := Rect2()  # insets: position = left/top, size = right/bottom
+func _read_safe_area() -> void:
+	if not OS.has_feature("mobile"): return
+	var screen := Vector2(DisplayServer.screen_get_size())
+	var area := Rect2(DisplayServer.get_display_safe_area())
+	var viewport: Vector2 = main.get_viewport().get_visible_rect().size
+	if screen.x <= 0 or area.size.x <= 0: return
+	var k: float = viewport.x / screen.x
+	safe = Rect2(area.position * k, (screen - area.end) * k)
+
+## A full-screen gradient: radial from the centre, or top-to-bottom.
+func _gradient_rect(stops: Array, radial: bool) -> TextureRect:
+	var gradient := Gradient.new()
+	gradient.offsets = PackedFloat32Array(stops.map(func(stop): return stop[0]))
+	gradient.colors = PackedColorArray(stops.map(func(stop): return stop[1]))
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = 256
+	texture.height = 256
+	if radial:
+		texture.fill = GradientTexture2D.FILL_RADIAL
+		texture.fill_from = Vector2(0.5, 0.45)
+		texture.fill_to = Vector2(1.08, 1.0)
+	else:
+		texture.fill_from = Vector2(0.5, 0.0)
+		texture.fill_to = Vector2(0.5, 1.0)
+	var rect := TextureRect.new()
+	rect.texture = texture
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return rect
 
 # --- title -----------------------------------------------------------------
 
 var title_layer: Control
 
-## A short title over the living map; any tap starts play.
+## A cinematic title over the living map: a dusk grade, drifting light, a
+## wordmark and one Play button. Any tap starts play.
 func _show_title() -> void:
 	title_layer = Control.new()
 	title_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	title_layer.mouse_filter = Control.MOUSE_FILTER_STOP
 	title_layer.theme = root.theme
-	var shade := ColorRect.new()
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.color = Color(0.16, 0.1, 0.02, 0.28)
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title_layer.add_child(shade)
+	var side := _gradient_rect([[0.0, Color(0.02, 0.07, 0.06, 0.88)], [0.42, Color(0.02, 0.07, 0.06, 0.5)], [0.75, Color(0.02, 0.07, 0.06, 0.0)]], false)
+	(side.texture as GradientTexture2D).fill_from = Vector2(0, 0.5)
+	(side.texture as GradientTexture2D).fill_to = Vector2(1, 0.5)
+	title_layer.add_child(side)
+	title_layer.add_child(_gradient_rect([[0.0, Color(0.02, 0.07, 0.06, 0.0)], [0.6, Color(0.02, 0.07, 0.06, 0.0)], [1.0, Color(0.02, 0.06, 0.05, 0.6)]], false))
+	title_layer.add_child(_gradient_rect([[0.0, Color(0, 0, 0, 0)], [0.55, Color(0, 0, 0, 0)], [1.0, Color(0, 0, 0, 0.45)]], true))
+	var motes := Motes.new()
+	motes.set_anchors_preset(Control.PRESET_FULL_RECT)
+	motes.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_layer.add_child(motes)
 	var column := VBoxContainer.new()
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	column.add_theme_constant_override("separation", int(6 * s))
-	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	column.add_theme_constant_override("separation", int(0 * s))
+	column.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	column.offset_left = 86 * s + safe.position.x
+	column.offset_right = column.offset_left + 520 * s
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var eyebrow := Label.new()
+	eyebrow.text = "TUVLO"
+	eyebrow.add_theme_font_override("font", _spaced(BODY, 12))
+	eyebrow.add_theme_font_size_override("font_size", int(22 * s))
+	eyebrow.add_theme_color_override("font_color", GOLD)
+	column.add_child(eyebrow)
 	var name_label := Label.new()
-	name_label.text = "Tuvlo World"
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", int(96 * s))
-	name_label.add_theme_color_override("font_color", CREAM)
-	name_label.add_theme_color_override("font_outline_color", WALNUT)
-	name_label.add_theme_constant_override("outline_size", int(26 * s))
-	name_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.35))
-	name_label.add_theme_constant_override("shadow_offset_y", int(8 * s))
+	name_label.text = "World"
+	name_label.add_theme_font_override("font", DISPLAY)
+	name_label.add_theme_font_size_override("font_size", int(140 * s))
+	name_label.add_theme_color_override("font_color", IVORY)
+	name_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.4))
+	name_label.add_theme_constant_override("shadow_offset_y", int(6 * s))
+	name_label.add_theme_constant_override("shadow_outline_size", int(14 * s))
+	name_label.custom_minimum_size = Vector2(0, 150 * s)
 	column.add_child(name_label)
-	var sprouts := HBoxContainer.new()
-	sprouts.alignment = BoxContainer.ALIGNMENT_CENTER
-	sprouts.add_theme_constant_override("separation", int(14 * s))
-	for good in ["wheat", "flour", "bread", "tart", "meal"]: sprouts.add_child(_icon(icons.get(good), 58))
-	column.add_child(sprouts)
+	var tagline := Label.new()
+	tagline.text = "Grow  ·  Bake  ·  Trade"
+	tagline.add_theme_constant_override("line_spacing", 0)
+	tagline.add_theme_font_override("font", _spaced(BODY, 3))
+	tagline.add_theme_font_size_override("font_size", int(20 * s))
+	tagline.add_theme_color_override("font_color", MUTED)
+	column.add_child(tagline)
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 40 * s)
+	gap.custom_minimum_size = Vector2(0, 30 * s)
 	column.add_child(gap)
-	var play := Label.new()
-	play.text = "Tap to play"
-	play.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var play := _button("Play", dismiss_title)
+	play.custom_minimum_size = Vector2(260, 68) * s
 	play.add_theme_font_size_override("font_size", int(30 * s))
-	play.add_theme_color_override("font_color", CREAM)
-	play.add_theme_color_override("font_outline_color", WALNUT)
-	play.add_theme_constant_override("outline_size", int(12 * s))
+	play.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	column.add_child(play)
 	title_layer.add_child(column)
 	add_child(title_layer)
 	for control in hud: control.modulate.a = 0.0
-	var pulse := play.create_tween().set_loops()
-	pulse.tween_property(play, "modulate:a", 0.35, 0.8).set_trans(Tween.TRANS_SINE)
-	pulse.tween_property(play, "modulate:a", 1.0, 0.8).set_trans(Tween.TRANS_SINE)
+	# Staggered entrance, then Play breathes.
+	var parts := [eyebrow, name_label, tagline, play]
+	for i in parts.size():
+		var part: Control = parts[i]
+		part.modulate.a = 0.0
+		var tween := part.create_tween()
+		tween.tween_interval(0.25 + i * 0.14)
+		tween.tween_property(part, "modulate:a", 1.0, 0.7).set_trans(Tween.TRANS_SINE)
+	get_tree().process_frame.connect(func():
+		if not is_instance_valid(play): return
+		play.pivot_offset = play.size / 2
+		var pulse := play.create_tween().set_loops()
+		pulse.tween_property(play, "scale", Vector2(1.04, 1.04), 0.9).set_trans(Tween.TRANS_SINE)
+		pulse.tween_property(play, "scale", Vector2.ONE, 0.9).set_trans(Tween.TRANS_SINE), CONNECT_ONE_SHOT)
 	title_layer.gui_input.connect(func(e):
 		if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed): dismiss_title())
 	main.camera({"mode": "arrival", "resetZoom": true})
@@ -402,8 +472,8 @@ func dismiss_title() -> void:
 	title_layer = null
 	sfx("success")
 	var tween := create_tween().set_parallel()
-	tween.tween_property(layer, "modulate:a", 0.0, 0.45)
-	for control in hud: tween.tween_property(control, "modulate:a", 1.0, 0.5).set_delay(0.2)
+	tween.tween_property(layer, "modulate:a", 0.0, 0.55).set_trans(Tween.TRANS_SINE)
+	for control in hud: tween.tween_property(control, "modulate:a", 1.0, 0.5).set_delay(0.25)
 	tween.chain().tween_callback(layer.queue_free)
 
 # --- sound -----------------------------------------------------------------
@@ -489,62 +559,108 @@ func fly(texture: Texture2D, from: Vector2, target: Control, count := 3, side :=
 			bump(target))
 
 ## A rising "+N" label at a screen point.
-func float_text(text: String, at: Vector2, color := INK) -> void:
+func float_text(text: String, at: Vector2, color := IVORY) -> void:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", int(30 * s))
+	label.add_theme_font_override("font", DISPLAY)
+	label.add_theme_font_size_override("font_size", int(32 * s))
 	label.add_theme_color_override("font_color", color)
-	label.add_theme_color_override("font_outline_color", CREAM)
-	label.add_theme_constant_override("outline_size", int(10 * s))
+	label.add_theme_color_override("font_outline_color", Color(0.04, 0.09, 0.085, 0.85))
+	label.add_theme_constant_override("outline_size", int(8 * s))
 	fly_layer.add_child(label)
 	label.position = at - Vector2(30, 20) * s
+	label.pivot_offset = Vector2(30, 20) * s
+	label.scale = Vector2(0.6, 0.6)
 	var tween := create_tween().set_parallel()
-	tween.tween_property(label, "position:y", label.position.y - 70 * s, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(label, "position:y", label.position.y - 74 * s, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(label, "modulate:a", 0.0, 0.9).set_delay(0.35)
 	tween.chain().tween_callback(label.queue_free)
 
+## Letter-spaced type for small caps eyebrows and taglines.
+func _spaced(font: Font, spacing: float) -> FontVariation:
+	var variation := FontVariation.new()
+	variation.base_font = font
+	variation.spacing_glyph = int(spacing * s)
+	return variation
+
 func _theme() -> Theme:
 	var theme := Theme.new()
-	var font := SystemFont.new()
-	font.font_names = PackedStringArray(["SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", "Helvetica Neue"])
-	font.font_weight = 800
-	theme.default_font = font
+	theme.default_font = BODY
 	theme.default_font_size = int(18 * s)
-	theme.set_color("font_color", "Label", INK)
-	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
-		var box := pill_box({"normal": GOLD, "hover": Color("F5C24E"), "pressed": Color("D99C26"), "disabled": Color("E2D6BC"), "focus": GOLD}[state])
-		box.border_color = Color(WALNUT, 0.35)
-		box.set_border_width_all(int(2 * s))
-		box.shadow_color = Color(0, 0, 0, 0.18) if state != "disabled" else Color(0, 0, 0, 0)
-		box.shadow_size = int(3 * s)
-		box.shadow_offset = Vector2(0, 2 * s)
-		theme.set_stylebox(state, "Button", box)
-	theme.set_color("font_color", "Button", WALNUT)
-	theme.set_color("font_hover_color", "Button", WALNUT)
-	theme.set_color("font_pressed_color", "Button", WALNUT)
-	theme.set_color("font_disabled_color", "Button", Color("9A8D76"))
-	theme.set_font_size("font_size", "Button", int(20 * s))
+	theme.set_color("font_color", "Label", IVORY)
+	var primary := {
+		"normal": _lip_box(GOLD, GOLD_DEEP, 4), "hover": _lip_box(Color("FACB62"), GOLD_DEEP, 4),
+		"pressed": _lip_box(Color("EBB23C"), GOLD_DEEP, 1), "focus": _lip_box(GOLD, GOLD_DEEP, 4),
+		"disabled": _lip_box(Color(1, 1, 1, 0.1), Color(0, 0, 0, 0), 0)}
+	for state in primary: theme.set_stylebox(state, "Button", primary[state])
+	theme.set_font("font", "Button", DISPLAY_SEMI)
+	theme.set_color("font_color", "Button", GOLD_INK)
+	theme.set_color("font_hover_color", "Button", GOLD_INK)
+	theme.set_color("font_pressed_color", "Button", GOLD_INK)
+	theme.set_color("font_focus_color", "Button", GOLD_INK)
+	theme.set_color("font_disabled_color", "Button", MUTED)
+	theme.set_font_size("font_size", "Button", int(21 * s))
+	theme.set_stylebox("separator", "HSeparator", _line_box())
+	theme.set_constant("separation", "HSeparator", int(14 * s))
 	return theme
 
-func pill_box(color: Color) -> StyleBoxFlat:
+## A pill with a darker lip under it, like a pressable key.
+func _lip_box(color: Color, lip: Color, depth: float) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
 	box.bg_color = color
-	box.set_corner_radius_all(int(22 * s))
+	box.set_corner_radius_all(int(26 * s))
+	box.border_color = lip
+	box.border_width_bottom = int(depth * s)
+	box.content_margin_left = 22 * s; box.content_margin_right = 22 * s
+	box.content_margin_top = (8 + (4 - depth)) * s; box.content_margin_bottom = 8 * s
+	if depth > 0:
+		box.shadow_color = Color(0, 0, 0, 0.22)
+		box.shadow_size = int(6 * s)
+		box.shadow_offset = Vector2(0, 3 * s)
+	box.anti_aliasing_size = 0.8
+	return box
+
+func _line_box() -> StyleBoxLine:
+	var line := StyleBoxLine.new()
+	line.color = Color(1, 1, 1, 0.12)
+	line.thickness = int(maxf(1, 1.5 * s))
+	return line
+
+## The house surface: dark glass with a hairline edge and a soft long shadow.
+func glass(radius := 26.0, color := GLASS, shadow := true) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = color
+	box.set_corner_radius_all(int(radius * s))
+	box.border_color = EDGE
+	box.set_border_width_all(int(maxf(1, 1.5 * s)))
+	if shadow:
+		box.shadow_color = Color(0, 0, 0, 0.28)
+		box.shadow_size = int(16 * s)
+		box.shadow_offset = Vector2(0, 6 * s)
+	box.set_content_margin_all(12 * s)
+	box.anti_aliasing_size = 0.8
+	return box
+
+## A lighter well inside glass, for goods, tiles and tickets.
+func tile_box(radius := 20.0, highlight := false) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(GOLD, 0.16) if highlight else TILE
+	box.set_corner_radius_all(int(radius * s))
+	box.border_color = GOLD if highlight else Color(1, 1, 1, 0.1)
+	box.set_border_width_all(int((2.5 if highlight else 1.2) * s))
+	box.set_content_margin_all(10 * s)
+	box.anti_aliasing_size = 0.8
+	return box
+
+func pill_box(color: Color) -> StyleBoxFlat:
+	var box := glass(22, color, false)
 	box.content_margin_left = 16 * s; box.content_margin_right = 16 * s
 	box.content_margin_top = 6 * s; box.content_margin_bottom = 6 * s
 	return box
 
-func frame_box(radius := 26.0, color := PARCHMENT) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = color
-	box.set_corner_radius_all(int(radius * s))
-	box.border_color = RIM
-	box.set_border_width_all(int(3 * s))
-	box.shadow_color = Color(0, 0, 0, 0.22)
-	box.shadow_size = int(8 * s)
-	box.shadow_offset = Vector2(0, 3 * s)
-	box.set_content_margin_all(10 * s)
-	return box
+func frame_box(radius := 26.0, _color := GLASS) -> StyleBoxFlat:
+	return glass(radius)
 
 func _icon(texture: Texture2D, side: float) -> TextureRect:
 	var rect := TextureRect.new()
@@ -555,118 +671,204 @@ func _icon(texture: Texture2D, side: float) -> TextureRect:
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return rect
 
-func _amount(icon_name: String, label: Label) -> PanelContainer:
-	var pill := PanelContainer.new()
-	pill.add_theme_stylebox_override("panel", frame_box(24, CREAM))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", int(6 * s))
-	row.add_child(_icon(icons[icon_name], 30))
-	label.add_theme_font_size_override("font_size", int(24 * s))
-	row.add_child(label)
-	pill.add_child(row)
-	return pill
+func _number(size_px: int) -> Label:
+	var label := Label.new()
+	label.add_theme_font_override("font", DISPLAY)
+	label.add_theme_font_size_override("font_size", int(size_px * s))
+	return label
 
+## A round glass button: an icon, or a glyph when there is no art.
 func _round_button(icon_name: String, action: Callable, label := "") -> Button:
 	var button := Button.new()
-	button.icon = icons[icon_name]
+	if icons.has(icon_name): button.icon = icons[icon_name]
 	button.expand_icon = true
-	button.custom_minimum_size = Vector2(68, 68) * s
+	button.custom_minimum_size = Vector2(64, 64) * s
 	button.focus_mode = Control.FOCUS_NONE
 	button.tooltip_text = label
-	var box := frame_box(34, CREAM)
-	box.set_content_margin_all(8 * s)
-	for state in ["normal", "hover", "pressed", "focus"]: button.add_theme_stylebox_override(state, box)
+	var box := glass(32)
+	box.set_content_margin_all(10 * s)
+	var down := glass(32, GLASS_DEEP)
+	down.set_content_margin_all(10 * s)
+	for state in ["normal", "hover", "focus"]: button.add_theme_stylebox_override(state, box)
+	button.add_theme_stylebox_override("pressed", down)
+	button.add_theme_color_override("font_color", IVORY)
+	button.add_theme_color_override("font_hover_color", IVORY)
+	button.add_theme_color_override("font_pressed_color", IVORY)
 	button.pressed.connect(action)
 	_juice(button)
 	return button
 
-func _button(text: String, action: Callable, enabled := true, icon_name := "") -> Button:
+func _close_button() -> Button:
+	var button := _round_button("", close, "Close")
+	button.text = "✕"
+	button.add_theme_font_override("font", BODY)
+	button.add_theme_font_size_override("font_size", int(18 * s))
+	button.custom_minimum_size = Vector2(44, 44) * s
+	return button
+
+## Primary actions are gold keys; "quiet" ones are glass.
+func _button(text: String, action: Callable, enabled := true, icon_name := "", quiet := false) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.disabled = not enabled
 	button.focus_mode = Control.FOCUS_NONE
-	button.custom_minimum_size = Vector2(0, 48 * s)
+	button.custom_minimum_size = Vector2(0, 50 * s)
+	if quiet:
+		var box := tile_box(25)
+		box.content_margin_left = 20 * s; box.content_margin_right = 20 * s
+		box.content_margin_top = 6 * s; box.content_margin_bottom = 6 * s
+		var down := box.duplicate()
+		down.bg_color = Color(1, 1, 1, 0.16)
+		for state in ["normal", "hover", "focus", "disabled"]: button.add_theme_stylebox_override(state, box)
+		button.add_theme_stylebox_override("pressed", down)
+		for key in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]: button.add_theme_color_override(key, IVORY)
 	if icon_name != "":
-		button.icon = icons[icon_name]
+		button.icon = icons.get(icon_name)
 		button.expand_icon = true
 		button.add_theme_constant_override("icon_max_width", int(28 * s))
-		button.custom_minimum_size.x = 92 * s
+		button.add_theme_constant_override("h_separation", int(8 * s))
+		button.custom_minimum_size.x = 96 * s
+	button.pressed.connect(action)
+	_juice(button)
+	return button
+
+## A dock button: an icon with a small caption under it.
+func _dock_button(icon_name: String, caption: String, action: Callable) -> Button:
+	var button := Button.new()
+	button.focus_mode = Control.FOCUS_NONE
+	button.tooltip_text = caption
+	button.custom_minimum_size = Vector2(78, 76) * s
+	var flat := StyleBoxFlat.new()
+	flat.bg_color = Color(0, 0, 0, 0)
+	flat.set_corner_radius_all(int(22 * s))
+	var down := flat.duplicate()
+	down.bg_color = Color(1, 1, 1, 0.1)
+	for state in ["normal", "hover", "focus"]: button.add_theme_stylebox_override(state, flat)
+	button.add_theme_stylebox_override("pressed", down)
+	var column := VBoxContainer.new()
+	column.set_anchors_preset(Control.PRESET_FULL_RECT)
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_theme_constant_override("separation", int(1 * s))
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var picture := _icon(icons.get(icon_name), 44)
+	picture.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	column.add_child(picture)
+	var label := Label.new()
+	label.text = caption
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_override("font", DISPLAY_SEMI)
+	label.add_theme_font_size_override("font_size", int(14 * s))
+	label.add_theme_color_override("font_color", MUTED)
+	column.add_child(label)
+	button.add_child(column)
 	button.pressed.connect(action)
 	_juice(button)
 	return button
 
 func _build_hud() -> void:
+	# One wallet capsule at the top: level medal, then coins.
+	var wallet := PanelContainer.new()
+	var wallet_box := glass(30)
+	wallet_box.content_margin_left = 6 * s; wallet_box.content_margin_right = 20 * s
+	wallet_box.content_margin_top = 5 * s; wallet_box.content_margin_bottom = 5 * s
+	wallet.add_theme_stylebox_override("panel", wallet_box)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", int(10 * s))
-	coins_label = Label.new()
-	level_label = Label.new()
-	coin_pill = _amount("coin", coins_label)
-	top.add_child(coin_pill)
 	level_badge = LevelBadge.new()
 	level_badge.ui = self
-	level_badge.custom_minimum_size = Vector2(62, 62) * s
+	level_badge.custom_minimum_size = Vector2(48, 48) * s
 	level_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var level := _amount("star", level_label)
-	level.visible = false
-	level_bar = ProgressBar.new()
-	level_bar.show_percentage = false
-	level_bar.custom_minimum_size = Vector2(64, 10) * s
-	level_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var bar_bg := StyleBoxFlat.new()
-	bar_bg.bg_color = WELL
-	bar_bg.set_corner_radius_all(int(5 * s))
-	var bar_fill := StyleBoxFlat.new()
-	bar_fill.bg_color = GOLD
-	bar_fill.set_corner_radius_all(int(5 * s))
-	level_bar.add_theme_stylebox_override("background", bar_bg)
-	level_bar.add_theme_stylebox_override("fill", bar_fill)
-	level.get_child(0).add_child(level_bar)
-	top.add_child(level)
 	top.add_child(level_badge)
-	top.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, int(14 * s))
-	top.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	root.add_child(top)
-	hud.append(top)
+	var divider := ColorRect.new()
+	divider.color = Color(1, 1, 1, 0.14)
+	divider.custom_minimum_size = Vector2(maxf(1, 1.5 * s), 28 * s)
+	divider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(divider)
+	var coin := _icon(icons["coin"], 32)
+	coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(coin)
+	coin_pill = coin
+	coins_label = _number(26)
+	coins_label.custom_minimum_size = Vector2(36, 0) * s
+	top.add_child(coins_label)
+	level_label = Label.new()
+	wallet.add_child(top)
+	wallet.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, int(14 * s))
+	wallet.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	root.add_child(wallet)
+	hud.append(wallet)
+	wallet_node = wallet
 	# Goal ticket: the next step, always one tap away.
 	goal_box = PanelContainer.new()
-	var ticket := frame_box(22, CREAM)
-	ticket.border_color = GOLD
+	var ticket := glass(24)
+	ticket.content_margin_left = 8 * s; ticket.content_margin_right = 18 * s
+	ticket.content_margin_top = 7 * s; ticket.content_margin_bottom = 7 * s
 	goal_box.add_theme_stylebox_override("panel", ticket)
 	var goal_row := HBoxContainer.new()
-	goal_row.add_theme_constant_override("separation", int(10 * s))
-	goal_icon = _icon(icons["star"], 40)
-	goal_row.add_child(goal_icon)
+	goal_row.add_theme_constant_override("separation", int(12 * s))
+	var socket := PanelContainer.new()
+	var socket_box := tile_box(22, true)
+	socket_box.set_content_margin_all(5 * s)
+	socket.add_theme_stylebox_override("panel", socket_box)
+	socket.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	goal_icon = _icon(icons["star"], 36)
+	socket.add_child(goal_icon)
+	goal_row.add_child(socket)
+	var words := VBoxContainer.new()
+	words.alignment = BoxContainer.ALIGNMENT_CENTER
+	words.add_theme_constant_override("separation", int(-3 * s))
+	var next := Label.new()
+	next.text = "NEXT"
+	next.add_theme_font_override("font", _spaced(BODY, 2.5))
+	next.add_theme_font_size_override("font_size", int(11 * s))
+	next.add_theme_color_override("font_color", GOLD)
+	words.add_child(next)
 	goal_label = Label.new()
-	goal_label.add_theme_font_size_override("font_size", int(19 * s))
-	goal_row.add_child(goal_label)
+	goal_label.add_theme_font_override("font", DISPLAY_SEMI)
+	goal_label.add_theme_font_size_override("font_size", int(20 * s))
+	words.add_child(goal_label)
+	goal_row.add_child(words)
+	var chevron := Label.new()
+	chevron.text = "›"
+	chevron.add_theme_font_override("font", DISPLAY)
+	chevron.add_theme_font_size_override("font_size", int(30 * s))
+	chevron.add_theme_color_override("font_color", MUTED)
+	goal_row.add_child(chevron)
 	goal_box.add_child(goal_row)
-	goal_box.position = Vector2(16, 14) * s
+	goal_box.position = Vector2(16 * s + safe.position.x, 14 * s + safe.position.y)
 	goal_box.mouse_filter = Control.MOUSE_FILTER_STOP
 	goal_box.gui_input.connect(func(e):
 		if ((e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed)) and goal_action.is_valid():
-			sfx("tap"); goal_action.call())
+			sfx("tap"); bump(goal_box); goal_action.call())
 	root.add_child(goal_box)
 	hud.append(goal_box)
+	# The dock: Build and the Market, captioned like a pro app's tab bar.
+	var dock := PanelContainer.new()
+	var dock_box := glass(30)
+	dock_box.set_content_margin_all(5 * s)
+	dock.add_theme_stylebox_override("panel", dock_box)
 	var rail := HBoxContainer.new()
-	rail.add_theme_constant_override("separation", int(12 * s))
-	rail.add_child(_round_button("hammer", func(): open("build"), "Build"))
-	market_button = _round_button("meal", func(): open("more"), "Market")
+	rail.add_theme_constant_override("separation", int(2 * s))
+	rail.add_child(_dock_button("hammer", "Build", func(): open("build")))
+	var market: bool = main.game.host.features().get("market", false)
+	market_button = _dock_button("meal", "Market" if market else "Goods", func(): open("more"))
 	rail.add_child(market_button)
-	rail.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, int(18 * s))
-	rail.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	rail.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	root.add_child(rail)
-	hud.append(rail)
-	var sound := Button.new()
+	dock.add_child(rail)
+	dock.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, int(16 * s))
+	dock.offset_left -= safe.size.x; dock.offset_right -= safe.size.x
+	dock.offset_top -= safe.size.y; dock.offset_bottom -= safe.size.y
+	dock.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	dock.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	root.add_child(dock)
+	hud.append(dock)
+	dock_node = dock
+	var sound := _round_button("", func(): pass, "Sound")
 	sound.text = "♪"
-	sound.focus_mode = Control.FOCUS_NONE
-	sound.custom_minimum_size = Vector2(44, 44) * s
-	var sound_box := frame_box(22, CREAM)
-	sound_box.set_content_margin_all(4 * s)
-	for state in ["normal", "hover", "pressed", "focus"]: sound.add_theme_stylebox_override(state, sound_box)
 	sound.add_theme_font_size_override("font_size", int(22 * s))
+	sound.custom_minimum_size = Vector2(46, 46) * s
 	sound.pressed.connect(func(): toggle_sound(); sound.modulate.a = 1.0 if sound_on else 0.45)
 	sound.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, int(16 * s))
+	sound.offset_left -= safe.size.x; sound.offset_right -= safe.size.x
 	sound.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	root.add_child(sound)
 	hud.append(sound)
@@ -779,48 +981,79 @@ func _celebrate_level(level: int, before: int) -> void:
 	sfx("level_up")
 	_confetti()
 	var banner := PanelContainer.new()
-	var box := frame_box(30, CREAM)
-	box.border_color = GOLD
-	box.set_border_width_all(int(5 * s))
+	var box := glass(32, GLASS_DEEP)
+	box.border_color = Color(GOLD, 0.7)
+	box.set_border_width_all(int(2 * s))
+	box.content_margin_left = 34 * s; box.content_margin_right = 34 * s
+	box.content_margin_top = 18 * s; box.content_margin_bottom = 22 * s
 	banner.add_theme_stylebox_override("panel", box)
 	var column := VBoxContainer.new()
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_theme_constant_override("separation", int(4 * s))
+	var eyebrow := Label.new()
+	eyebrow.text = "LEVEL UP"
+	eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	eyebrow.add_theme_font_override("font", _spaced(BODY, 5))
+	eyebrow.add_theme_font_size_override("font_size", int(14 * s))
+	eyebrow.add_theme_color_override("font_color", GOLD)
+	column.add_child(eyebrow)
 	var head := HBoxContainer.new()
 	head.alignment = BoxContainer.ALIGNMENT_CENTER
-	head.add_child(_icon(icons["star"], 64))
-	var title := Label.new()
-	title.text = "Level %d" % level
-	title.add_theme_font_size_override("font_size", int(40 * s))
+	head.add_theme_constant_override("separation", int(10 * s))
+	head.add_child(_icon(icons["star"], 56))
+	var title := _number(56)
+	title.text = str(level)
+	title.add_theme_color_override("font_color", IVORY)
 	head.add_child(title)
 	column.add_child(head)
 	var unlocked := HBoxContainer.new()
 	unlocked.alignment = BoxContainer.ALIGNMENT_CENTER
-	unlocked.add_theme_constant_override("separation", int(8 * s))
+	unlocked.add_theme_constant_override("separation", int(10 * s))
 	for kind in C.BUILD_ORDER:
 		var gate: int = C.BUILDS[kind].gate
-		if gate > before and gate <= level: unlocked.add_child(_icon(icons.get(kind), 72))
+		if gate > before and gate <= level: unlocked.add_child(_socket(icons.get(kind), 64))
 	for side in C.LAND:
-		if C.LAND[side].gate > before and C.LAND[side].gate <= level: unlocked.add_child(_icon(icons.get(side), 72))
-	if unlocked.get_child_count() > 0: column.add_child(unlocked)
+		if C.LAND[side].gate > before and C.LAND[side].gate <= level: unlocked.add_child(_socket(icons.get(side), 64))
+	if unlocked.get_child_count() > 0:
+		var gap := Control.new()
+		gap.custom_minimum_size = Vector2(0, 6 * s)
+		column.add_child(gap)
+		column.add_child(unlocked)
 	banner.add_child(column)
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	fly_layer.add_child(banner)
 	await get_tree().process_frame
-	banner.position = Vector2((root.size.x - banner.size.x) / 2, root.size.y * 0.14)
+	banner.position = Vector2((root.size.x - banner.size.x) / 2, root.size.y * 0.16)
 	pop_in(banner)
 	var tween := create_tween()
-	tween.tween_interval(2.4)
+	tween.tween_interval(2.6)
 	tween.tween_property(banner, "modulate:a", 0.0, 0.4)
 	tween.tween_callback(banner.queue_free)
+
+## An icon sitting in a soft round well.
+func _socket(texture: Texture2D, side: float, highlight := false) -> PanelContainer:
+	var holder := PanelContainer.new()
+	var box := tile_box(side / 2, highlight)
+	box.set_content_margin_all(6 * s)
+	holder.add_theme_stylebox_override("panel", box)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(_icon(texture, side))
+	return holder
 
 func show_toast(text: String) -> void:
 	toast.text = text
 	toast_left = 2.2
+	toast_box.reset_size()
+	var viewport := root.get_viewport_rect().size
+	toast_box.position = Vector2((viewport.x - toast_box.size.x) / 2, 84 * s)
+	if not toast_box.visible:
+		toast_box.visible = true
+		pop_in(toast_box)
 
 func _process(delta: float) -> void:
 	if toast_left > 0:
 		toast_left -= delta
-		if toast_left <= 0: toast.text = ""
+		if toast_left <= 0: toast.text = ""; toast_box.visible = false
 
 func refresh() -> void:
 	var game: WorldGame = main.game
@@ -829,8 +1062,6 @@ func refresh() -> void:
 	coins_label.text = str(coins)
 	level_label.text = str(level)
 	var bar := game.next_level_progress()
-	level_bar.visible = bar.y > 0
-	if bar.y > 0: level_bar.value = 100.0 * bar.x / bar.y
 	level_badge.level = level
 	level_badge.progress = float(bar.x) / bar.y if bar.y > 0 else 0.0
 	level_badge.queue_redraw()
@@ -839,7 +1070,7 @@ func refresh() -> void:
 	if last_coins >= 0 and coins > last_coins:
 		sfx("coins")
 		fly(icons["coin"], from, coin_pill, clampi(coins - last_coins, 1, 6))
-		float_text("+%d" % (coins - last_coins), from + Vector2(0, -50 * s), Color(0.62, 0.42, 0.05))
+		float_text("+%d" % (coins - last_coins), from + Vector2(0, -50 * s), GOLD)
 	elif last_coins >= 0 and coins < last_coins: sfx("world_build_complete")
 	if not last_stock.is_empty():
 		var gained := false
@@ -874,6 +1105,7 @@ func refresh() -> void:
 	if pointer_id == "": pointer.visible = false
 	else: main.send("feedbackAnchor", {"id": pointer_id, "event": "goal"})
 	goal_box.visible = mode == ""
+	dock_node.visible = mode == ""
 	if mode == "": return
 	# Rebuild only when something visible changed; timers update in place.
 	var next := _signature()
@@ -910,6 +1142,8 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 		if station == "field": station = ""
 	_fill()
 	was_new = false
+	goal_box.visible = false
+	dock_node.visible = false
 	if next_mode != "build": main.spot_preview({})
 	panel_changed.emit(next_mode in ["place", "more", "land"])
 	if was == "" or was != next_mode: pass
@@ -924,6 +1158,8 @@ func close() -> void:
 	main.spot_preview({})
 	if was_place: main.camera({"mode": "arrival", "resetZoom": true})
 	panel_changed.emit(false)
+	goal_box.visible = true
+	dock_node.visible = true
 
 func _act(result: String) -> void:
 	filled = {}
@@ -980,8 +1216,9 @@ func _good_tile(good: String, count_text: String, short := false, draggable := f
 	var label := Label.new()
 	label.text = count_text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_override("font", DISPLAY_SEMI)
 	label.add_theme_font_size_override("font_size", int(20 * s))
-	label.add_theme_color_override("font_color", SHORT if short else INK)
+	label.add_theme_color_override("font_color", SHORT if short else IVORY)
 	column.add_child(label)
 	return column
 
@@ -1022,19 +1259,15 @@ func _card_shell(title: String) -> Array:
 	row.add_child(centre)
 	row.add_child(_arrow())
 	row.add_child(_well_holder(right))
-	var close_button := _round_button("more", close, "Close")
-	close_button.icon = null
-	close_button.text = "✕"
-	close_button.custom_minimum_size = Vector2(46, 46) * s
-	close_button.position = Vector2(width - 34 * s, band.position.y - 20 * s)
+	var close_button := _close_button()
+	close_button.position = Vector2(width - 30 * s, band.position.y - 18 * s)
 	card.add_child(close_button)
 	var ribbon := Ribbon.new()
 	ribbon.ui = self
 	ribbon.text = title
-	var font := root.theme.default_font
-	var ribbon_width := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * s)).x + 70 * s
+	var ribbon_width := DISPLAY.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * s)).x + 92 * s
 	ribbon.size = Vector2(ribbon_width, 44 * s)
-	ribbon.position = Vector2((width - ribbon_width) / 2, -50 * s)
+	ribbon.position = Vector2((width - ribbon_width) / 2, band.position.y - 74 * s)
 	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(ribbon)
 	root.add_child(card)
@@ -1107,7 +1340,7 @@ func _fill_place() -> void:
 	if C.stations_for(item.kind).size() > 1:
 		# The cottage hosts the oven and the kitchen bench: one card each, switched here.
 		var other: String = C.stations_for(item.kind)[1] if station == C.stations_for(item.kind)[0] else C.stations_for(item.kind)[0]
-		var switch := _button(C.title(other), func(): open("place", place_id, other))
+		var switch := _button(C.title(other), func(): open("place", place_id, other), true, "", true)
 		switch.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		centre.add_child(switch)
 
@@ -1220,10 +1453,8 @@ func _fill_station(left: VBoxContainer, right: VBoxContainer) -> Button:
 		var tile := _good_tile(r.output, "×%d" % r.quantity, false, false, func(): if not working: recipe = id; filled = {}; _fill())
 		if id == recipe:
 			var holder := PanelContainer.new()
-			var box := frame_box(18, CREAM)
-			box.border_color = GOLD
-			box.shadow_size = 0
-			box.set_content_margin_all(2 * s)
+			var box := tile_box(18, true)
+			box.set_content_margin_all(4 * s)
 			holder.add_theme_stylebox_override("panel", box)
 			holder.add_child(tile)
 			right.add_child(holder)
@@ -1283,20 +1514,45 @@ func _fill_build() -> void:
 	var game: WorldGame = main.game
 	var viewport := root.get_viewport_rect().size
 	var tray := PanelContainer.new()
-	var empty := StyleBoxEmpty.new()
-	empty.set_content_margin_all(16 * s)
-	tray.add_theme_stylebox_override("panel", empty)
-	var shelf := Shelf.new()
-	shelf.ui = self
-	shelf.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shelf.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tray.add_child(shelf)
+	var dock := glass(30)
+	dock.set_content_margin_all(12 * s)
+	tray.add_theme_stylebox_override("panel", dock)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", int(8 * s))
+	column.add_theme_constant_override("separation", int(10 * s))
 	tray.add_child(column)
+	var head := HBoxContainer.new()
+	var title := Label.new()
+	title.text = "Build"
+	title.add_theme_font_override("font", DISPLAY)
+	title.add_theme_font_size_override("font_size", int(24 * s))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	if build_pick != "":
+		var spec: Dictionary = C.LAND[build_pick] if C.LAND.has(build_pick) else C.BUILDS[build_pick]
+		var picked := Label.new()
+		picked.text = C.title(build_pick)
+		picked.add_theme_font_override("font", DISPLAY_SEMI)
+		picked.add_theme_font_size_override("font_size", int(18 * s))
+		picked.add_theme_color_override("font_color", MUTED)
+		picked.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		head.add_child(picked)
+		var gap := Control.new()
+		gap.custom_minimum_size = Vector2(12, 0) * s
+		head.add_child(gap)
+		head.add_child(_button("Cancel", func(): build_pick = ""; main.spot_preview({}); main.land_preview(""); _fill(), true, "", true))
+		var buy := _button("Build  %d" % spec.price, _confirm_build, game.host.wallet() >= int(spec.price), "coin")
+		buy.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		buy.custom_minimum_size = Vector2(160, 50) * s
+		head.add_child(buy)
+	var close_button := _close_button()
+	var gap2 := Control.new()
+	gap2.custom_minimum_size = Vector2(10, 0) * s
+	head.add_child(gap2)
+	head.add_child(close_button)
+	column.add_child(head)
 	var scroll := ScrollContainer.new()
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.custom_minimum_size = Vector2(minf(viewport.x - 190 * s, 1100 * s), 128 * s)
+	scroll.custom_minimum_size = Vector2(minf(viewport.x - 56 * s - safe.position.x - safe.size.x, 1220 * s), 146 * s)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", int(10 * s))
 	scroll.add_child(row)
@@ -1311,61 +1567,59 @@ func _fill_build() -> void:
 		if is_land: blocker = "owned" if key in game.state.land else ("locked" if level < spec.gate else "")
 		else: blocker = game.state.build_blocker(key, level)
 		row.add_child(_build_tile(key, spec, blocker))
-	if build_pick != "":
-		var spec: Dictionary = C.LAND[build_pick] if C.LAND.has(build_pick) else C.BUILDS[build_pick]
-		var confirm := HBoxContainer.new()
-		confirm.alignment = BoxContainer.ALIGNMENT_CENTER
-		confirm.add_theme_constant_override("separation", int(10 * s))
-		var buy := _button("Build  %d" % spec.price, _confirm_build, game.host.wallet() >= int(spec.price), "coin")
-		buy.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		buy.custom_minimum_size = Vector2(170, 52) * s
-		confirm.add_child(buy)
-		confirm.add_child(_button("Cancel", func(): build_pick = ""; main.spot_preview({}); _fill()))
-		column.add_child(confirm)
 	tray.reset_size()
 	root.add_child(tray)
-	tray.position = Vector2(12 * s, viewport.y - tray.get_combined_minimum_size().y - 14 * s)
+	tray.position = Vector2(14 * s + safe.position.x, viewport.y - tray.get_combined_minimum_size().y - 16 * s - safe.size.y)
 	sheet_root = tray
 
 func _build_tile(key: String, spec: Dictionary, blocker: String) -> Control:
 	var button := Button.new()
 	button.focus_mode = Control.FOCUS_NONE
-	button.custom_minimum_size = Vector2(112, 124) * s
+	button.custom_minimum_size = Vector2(118, 144) * s
 	button.tooltip_text = C.title(key)
-	var box := frame_box(20, CREAM if key != build_pick else Color("FFE7A3"))
-	box.shadow_size = int(4 * s)
-	box.border_color = GOLD if key == build_pick else Color("6B4220")
-	box.set_border_width_all(int((5 if key == build_pick else 3) * s))
+	var picked := key == build_pick
+	var box := tile_box(22, picked)
 	for state in ["normal", "hover", "pressed", "focus", "disabled"]: button.add_theme_stylebox_override(state, box)
 	var column := VBoxContainer.new()
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.set_anchors_preset(Control.PRESET_FULL_RECT)
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	column.add_theme_constant_override("separation", int(2 * s))
-	var picture := _icon(icons.get(key, icons["build"]), 74)
-	if blocker in ["locked", "land", "full", "owned"]: picture.modulate = Color(1, 1, 1, 0.45)
+	column.add_theme_constant_override("separation", int(0 * s))
+	var picture := _icon(icons.get(key, icons["build"]), 76)
+	picture.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var dim := blocker in ["locked", "land", "full", "owned"]
+	if dim: picture.modulate = Color(1, 1, 1, 0.4)
 	if blocker == "locked":
 		var lock := Padlock.new()
-		lock.size = Vector2(34, 34) * s
-		lock.position = Vector2(54, 0) * s
+		lock.size = Vector2(30, 30) * s
+		lock.position = Vector2(50, 46) * s
 		lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		picture.add_child(lock)
 	column.add_child(picture)
+	var name_label := Label.new()
+	name_label.text = C.title(key)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_label.custom_minimum_size = Vector2(104, 0) * s
+	name_label.add_theme_font_size_override("font_size", int(13 * s))
+	name_label.add_theme_color_override("font_color", MUTED if dim else IVORY)
+	column.add_child(name_label)
 	var tag := HBoxContainer.new()
 	tag.alignment = BoxContainer.ALIGNMENT_CENTER
 	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var label := Label.new()
-	label.add_theme_font_size_override("font_size", int(18 * s))
+	tag.add_theme_constant_override("separation", int(4 * s))
+	var label := _number(18)
 	match blocker:
-		"owned": label.text = "✓"
-		"locked": tag.add_child(_icon(icons["star"], 20)); label.text = str(spec.gate)
-		"land": tag.add_child(_icon(icons["west"], 22)); label.text = ""
+		"owned": label.text = "✓"; label.add_theme_color_override("font_color", MINT)
+		"locked": tag.add_child(_icon(icons["star"], 18)); label.text = "Lv %d" % spec.gate; label.add_theme_color_override("font_color", MUTED)
+		"land": tag.add_child(_icon(icons["west"], 20)); label.text = ""
 		"full": label.text = "—"
-		_: tag.add_child(_icon(icons["coin"], 20)); label.text = str(spec.price)
+		_: tag.add_child(_icon(icons["coin"], 20)); label.text = str(spec.price); label.add_theme_color_override("font_color", GOLD if main.game.host.wallet() >= int(spec.price) else SHORT)
 	tag.add_child(label)
 	column.add_child(tag)
 	button.add_child(column)
 	button.pressed.connect(func(): _pick_build(key, blocker))
+	_juice(button)
 	return button
 
 func _pick_build(key: String, blocker: String) -> void:
@@ -1398,47 +1652,48 @@ func _confirm_build() -> void:
 func _sheet(title: String) -> VBoxContainer:
 	var viewport := root.get_viewport_rect().size
 	var sheet := PanelContainer.new()
-	var sheet_box := frame_box(28)
-	if title == "Market": sheet_box.content_margin_top = 0
+	var sheet_box := glass(30, GLASS_DEEP)
+	sheet_box.content_margin_left = 24 * s; sheet_box.content_margin_right = 18 * s
+	sheet_box.content_margin_top = 16 * s; sheet_box.content_margin_bottom = 22 * s
 	sheet.add_theme_stylebox_override("panel", sheet_box)
-	sheet.clip_children = CanvasItem.CLIP_CHILDREN_DISABLED
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", int(10 * s))
+	column.add_theme_constant_override("separation", int(12 * s))
 	sheet.add_child(column)
-	if title == "Market":
-		var awning := Awning.new()
-		awning.ui = self
-		awning.custom_minimum_size = Vector2(0, 46 * s)
-		awning.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		column.add_child(awning)
 	var head := HBoxContainer.new()
-	var ribbon := Ribbon.new()
-	ribbon.ui = self
-	ribbon.text = title
-	ribbon.custom_minimum_size = Vector2(root.theme.default_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * s)).x + 70 * s, 44 * s)
-	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var spacer_left := Control.new()
-	spacer_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(spacer_left)
-	head.add_child(ribbon)
-	var right_side := HBoxContainer.new()
-	right_side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_side.alignment = BoxContainer.ALIGNMENT_END
-	head.add_child(right_side)
-	var close_button := _round_button("more", close, "Close")
-	close_button.icon = null
-	close_button.text = "✕"
-	close_button.custom_minimum_size = Vector2(46, 46) * s
-	right_side.add_child(close_button)
+	var name_label := Label.new()
+	name_label.text = title
+	name_label.add_theme_font_override("font", DISPLAY)
+	name_label.add_theme_font_size_override("font_size", int(32 * s))
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(name_label)
+	head.add_child(_close_button())
 	column.add_child(head)
 	var centre := CenterContainer.new()
 	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var shade := ColorRect.new()
+	shade.color = Color(0.02, 0.05, 0.05, 0.35)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var holder := Control.new()
+	holder.set_anchors_preset(Control.PRESET_FULL_RECT)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(shade)
+	holder.add_child(centre)
 	centre.add_child(sheet)
-	root.add_child(centre)
-	sheet_root = centre
-	sheet.custom_minimum_size = Vector2(minf(640 * s, viewport.x - 40 * s), 0)
+	root.add_child(holder)
+	root.move_child(wallet_node, -1)
+	sheet_root = holder
+	sheet.custom_minimum_size = Vector2(minf(660 * s, viewport.x - 40 * s), 0)
 	return column
+
+func _eyebrow(text: String) -> Label:
+	var label := Label.new()
+	label.text = text.to_upper()
+	label.add_theme_font_override("font", _spaced(BODY, 3))
+	label.add_theme_font_size_override("font_size", int(12 * s))
+	label.add_theme_color_override("font_color", GOLD)
+	return label
 
 func _fill_more() -> void:
 	var game: WorldGame = main.game
@@ -1446,16 +1701,15 @@ func _fill_more() -> void:
 	var column := _sheet("Market" if market else "Warehouse")
 	var orders := game.state.open_orders()
 	if market and not orders.is_empty():
+		column.add_child(_eyebrow("Orders"))
 		var board := HBoxContainer.new()
 		board.add_theme_constant_override("separation", int(12 * s))
-		board.alignment = BoxContainer.ALIGNMENT_CENTER
 		for order in orders: board.add_child(_order_ticket(order))
 		column.add_child(board)
-		var rule := HSeparator.new()
-		column.add_child(rule)
+	column.add_child(_eyebrow("Your goods" if market else "Stored"))
 	var grid := GridContainer.new()
 	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", int(14 * s))
+	grid.add_theme_constant_override("h_separation", int(12 * s))
 	grid.add_theme_constant_override("v_separation", int(10 * s))
 	column.add_child(grid)
 	var any := false
@@ -1464,35 +1718,52 @@ func _fill_more() -> void:
 		if count <= 0: continue
 		any = true
 		var cell := PanelContainer.new()
-		var box := frame_box(20, CREAM)
-		box.shadow_size = int(2 * s)
+		var box := tile_box(20)
+		box.set_content_margin_all(8 * s)
 		cell.add_theme_stylebox_override("panel", box)
+		cell.custom_minimum_size = Vector2(296, 0) * s
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", int(10 * s))
-		row.add_child(_icon(icons[good], 52))
-		var amount := Label.new()
+		row.add_child(_icon(icons[good], 50))
+		var words := VBoxContainer.new()
+		words.alignment = BoxContainer.ALIGNMENT_CENTER
+		words.add_theme_constant_override("separation", int(-4 * s))
+		words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var good_name := Label.new()
+		good_name.text = C.title(good)
+		good_name.add_theme_font_size_override("font_size", int(13 * s))
+		good_name.add_theme_color_override("font_color", MUTED)
+		words.add_child(good_name)
+		var amount := _number(24)
 		amount.text = "×%d" % count
-		amount.custom_minimum_size = Vector2(56, 0) * s
-		amount.add_theme_font_size_override("font_size", int(22 * s))
-		row.add_child(amount)
+		words.add_child(amount)
+		row.add_child(words)
 		if market:
 			var sell: Button
 			sell = _button("%d" % C.SELL_PRICE[good], func(): fly_from = sell.get_global_rect().get_center(); _act(game.sell(good, 1)), true, "coin")
 			sell.tooltip_text = "Sell one"
+			sell.custom_minimum_size = Vector2(88, 46) * s
 			row.add_child(sell)
 			if count > 1:
 				var all: Button
-				all = _button("All", func(): fly_from = all.get_global_rect().get_center(); _act(game.sell(good, count)))
+				all = _button("All", func(): fly_from = all.get_global_rect().get_center(); _act(game.sell(good, count)), true, "", true)
+				all.custom_minimum_size = Vector2(0, 46) * s
 				row.add_child(all)
 		cell.add_child(row)
 		grid.add_child(cell)
 	if not any:
-		var empty := HBoxContainer.new()
-		empty.alignment = BoxContainer.ALIGNMENT_CENTER
-		empty.add_child(_icon(icons["wheat"], 56))
+		var empty := PanelContainer.new()
+		empty.add_theme_stylebox_override("panel", tile_box(20))
+		var line := HBoxContainer.new()
+		line.alignment = BoxContainer.ALIGNMENT_CENTER
+		line.add_theme_constant_override("separation", int(12 * s))
+		line.add_child(_icon(icons["wheat"], 48))
 		var hint := Label.new()
 		hint.text = "Grow wheat at the farm"
-		empty.add_child(hint)
+		hint.add_theme_font_override("font", DISPLAY_SEMI)
+		hint.add_theme_font_size_override("font_size", int(19 * s))
+		line.add_child(hint)
+		empty.add_child(line)
 		column.add_child(empty)
 
 ## One order: a crate of goods for a bonus over the market price.
@@ -1501,21 +1772,20 @@ func _order_ticket(order: Dictionary) -> Control:
 	var have: int = game.state.stock.get(order.good, 0)
 	var ready: bool = have >= order.count
 	var ticket := PanelContainer.new()
-	var box := frame_box(22, CREAM)
-	box.border_color = GOLD if ready else Color(0.78, 0.66, 0.45)
-	box.set_border_width_all(int((4 if ready else 2) * s))
+	var box := tile_box(22, ready)
+	box.set_content_margin_all(12 * s)
 	ticket.add_theme_stylebox_override("panel", box)
 	var column := VBoxContainer.new()
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	column.add_theme_constant_override("separation", int(4 * s))
-	column.custom_minimum_size = Vector2(150, 0) * s
+	column.add_theme_constant_override("separation", int(8 * s))
+	column.custom_minimum_size = Vector2(170, 0) * s
 	var crate := HBoxContainer.new()
 	crate.alignment = BoxContainer.ALIGNMENT_CENTER
-	crate.add_child(_icon(icons.get(order.good), 60))
-	var count := Label.new()
+	crate.add_theme_constant_override("separation", int(8 * s))
+	crate.add_child(_icon(icons.get(order.good), 56))
+	var count := _number(24)
 	count.text = "%d/%d" % [mini(have, order.count), order.count]
-	count.add_theme_font_size_override("font_size", int(22 * s))
-	if not ready: count.add_theme_color_override("font_color", Color(0.78, 0.2, 0.15))
+	count.add_theme_color_override("font_color", MINT if ready else SHORT)
 	crate.add_child(count)
 	column.add_child(crate)
 	var deliver := _button("%d" % order.reward, func():
@@ -1523,6 +1793,7 @@ func _order_ticket(order: Dictionary) -> Control:
 		fly_from = at
 		_act(game.deliver(order.slot))
 		if game.state.stock.get(order.good, 0) < have: sfx("celebrate"), ready, "coin")
+	deliver.custom_minimum_size = Vector2(0, 46) * s
 	column.add_child(deliver)
 	ticket.add_child(column)
 	if not ready:
