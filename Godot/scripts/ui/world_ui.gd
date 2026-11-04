@@ -47,6 +47,9 @@ var goal_icon: TextureRect
 var goal_label: Label
 var goal_action := Callable()
 var level_bar: ProgressBar
+var level_badge: LevelBadge
+var pointer: Pointer
+var pointer_id := ""
 var coin_pill: Control
 var market_button: Button
 var fly_layer: Control
@@ -154,6 +157,80 @@ class Band extends Control:
 			var a := edge[i]; var b := edge[i + 1]
 			if a.distance_to(size / 2) > hole_radius + 2 and b.distance_to(size / 2) > hole_radius + 2: draw_line(a, b, Color(WorldUI.RIM, 0.85), 3 * ui.s, true)
 
+## The level as a round medal with a progress ring.
+class LevelBadge extends Control:
+	var ui
+	var level := 0
+	var progress := 0.0
+	func _draw() -> void:
+		var c := size / 2
+		var r: float = minf(size.x, size.y) / 2 - 2 * ui.s
+		draw_circle(c + Vector2(0, 3 * ui.s), r, Color(0, 0, 0, 0.2))
+		draw_circle(c, r, WorldUI.CREAM)
+		draw_arc(c, r - 4 * ui.s, 0, TAU, 64, WorldUI.WELL, 6 * ui.s, true)
+		if progress > 0: draw_arc(c, r - 4 * ui.s, -PI / 2, -PI / 2 + TAU * progress, 64, WorldUI.GOLD, 6 * ui.s, true)
+		draw_arc(c, r, 0, TAU, 64, WorldUI.RIM, 2.5 * ui.s, true)
+		draw_circle(c, r - 10 * ui.s, Color("F7C548"))
+		draw_circle(c + Vector2(-r * 0.18, -r * 0.2), r * 0.3, Color(1, 1, 1, 0.25))
+		var font := get_theme_default_font()
+		var fs: int = int(r * 0.95)
+		var text := str(level)
+		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var at := Vector2(c.x - w / 2, c.y + fs * 0.36)
+		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(6 * ui.s), WorldUI.WALNUT)
+		draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.CREAM)
+
+## A bouncing gold marker that points at the goal's place on the map.
+class Pointer extends Control:
+	var ui
+	func _process(_delta: float) -> void: queue_redraw()
+	func _draw() -> void:
+		var bob: float = sin(Time.get_ticks_msec() / 180.0) * 8 * ui.s
+		var c := Vector2(size.x / 2, size.y / 2 + bob)
+		var w: float = 22 * ui.s
+		var h: float = 26 * ui.s
+		var shape := PackedVector2Array([c + Vector2(-w, -h), c + Vector2(w, -h), c + Vector2(w, 0), c + Vector2(w * 0.45, 0), c + Vector2(0, h * 0.8), c + Vector2(-w * 0.45, 0), c + Vector2(-w, 0)])
+		var shadow := PackedVector2Array()
+		for point in shape: shadow.append(point + Vector2(0, 4 * ui.s))
+		draw_colored_polygon(shadow, Color(0, 0, 0, 0.22))
+		draw_colored_polygon(shape, WorldUI.GOLD)
+		var outline := shape.duplicate(); outline.append(shape[0])
+		draw_polyline(outline, WorldUI.WALNUT, 3 * ui.s, true)
+		draw_rect(Rect2(c + Vector2(-w * 0.6, -h * 0.8), Vector2(w * 1.2, h * 0.22)), Color(1, 1, 1, 0.35))
+
+## Warm wooden planks behind the Build shelf.
+class Shelf extends Control:
+	var ui
+	func _draw() -> void:
+		var body := StyleBoxFlat.new()
+		body.bg_color = Color("A8703B")
+		body.set_corner_radius_all(int(26 * ui.s))
+		body.border_color = Color("6B4220")
+		body.set_border_width_all(int(4 * ui.s))
+		body.shadow_color = Color(0, 0, 0, 0.3)
+		body.shadow_size = int(10 * ui.s)
+		body.shadow_offset = Vector2(0, 4 * ui.s)
+		draw_style_box(body, Rect2(Vector2.ZERO, size))
+		var planks := 3
+		for i in range(1, planks):
+			var y := size.y * i / planks
+			draw_line(Vector2(14 * ui.s, y), Vector2(size.x - 14 * ui.s, y), Color("7E4E26"), 3 * ui.s)
+		for i in 14:
+			var y: float = fmod(i * 37.0 * ui.s, size.y - 20 * ui.s) + 10 * ui.s
+			var x0: float = fmod(i * 173.0 * ui.s, size.x * 0.7) + 20 * ui.s
+			draw_line(Vector2(x0, y), Vector2(x0 + 90 * ui.s, y + 2 * ui.s), Color(1, 1, 1, 0.08), 2 * ui.s)
+		draw_rect(Rect2(Vector2(16 * ui.s, size.y - 16 * ui.s), Vector2(size.x - 32 * ui.s, 6 * ui.s)), Color("6B4220"))
+
+## A small padlock for places that need a higher level.
+class Padlock extends Control:
+	func _draw() -> void:
+		var c := size / 2
+		var r := minf(size.x, size.y) / 2
+		draw_arc(c + Vector2(0, -r * 0.15), r * 0.42, PI, TAU, 24, Color("6B4220"), r * 0.18, true)
+		draw_rect(Rect2(c + Vector2(-r * 0.62, -r * 0.1), Vector2(r * 1.24, r * 0.9)), Color("C9A24A"))
+		draw_rect(Rect2(c + Vector2(-r * 0.62, -r * 0.1), Vector2(r * 1.24, r * 0.9)), Color("6B4220"), false, r * 0.1)
+		draw_circle(c + Vector2(0, r * 0.3), r * 0.12, Color("6B4220"))
+
 ## A soft chevron between goods, the place and products.
 class Arrow extends Control:
 	var ui
@@ -252,6 +329,13 @@ func setup(owner_main) -> void:
 	fly_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	fly_layer.theme = root.theme
 	add_child(fly_layer)
+	pointer = Pointer.new()
+	pointer.ui = self
+	pointer.size = Vector2(60, 70) * s
+	pointer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pointer.visible = false
+	root.add_child(pointer)
+	root.move_child(pointer, 0)
 	_setup_audio()
 	_show_title()
 	refresh()
@@ -518,7 +602,12 @@ func _build_hud() -> void:
 	level_label = Label.new()
 	coin_pill = _amount("coin", coins_label)
 	top.add_child(coin_pill)
+	level_badge = LevelBadge.new()
+	level_badge.ui = self
+	level_badge.custom_minimum_size = Vector2(62, 62) * s
+	level_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var level := _amount("star", level_label)
+	level.visible = false
 	level_bar = ProgressBar.new()
 	level_bar.show_percentage = false
 	level_bar.custom_minimum_size = Vector2(64, 10) * s
@@ -533,6 +622,7 @@ func _build_hud() -> void:
 	level_bar.add_theme_stylebox_override("fill", bar_fill)
 	level.get_child(0).add_child(level_bar)
 	top.add_child(level)
+	top.add_child(level_badge)
 	top.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, int(14 * s))
 	top.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	root.add_child(top)
@@ -590,24 +680,24 @@ func _goal() -> Array:
 	for station in st.jobs:
 		if st.job_remaining(station, now) == 0:
 			var spec: Dictionary = C.RECIPES[st.jobs[station].recipe]
-			return [spec.output, "Collect %s" % C.title(spec.output).to_lower(), func(): place_tapped(st.first_of(C.STATIONS[station]).id, station)]
+			return [spec.output, "Collect %s" % C.title(spec.output).to_lower(), func(): place_tapped(st.first_of(C.STATIONS[station]).id, station), st.first_of(C.STATIONS[station]).id]
 	var stages := []
 	for i in st.fields.size(): stages.append(st.field_stage(i, now))
-	if 4 in stages: return ["wheat", "Harvest the wheat", func(): place_tapped(garden.id, "")]
+	if 4 in stages: return ["wheat", "Harvest the wheat", func(): place_tapped(garden.id, ""), garden.id]
 	for order in st.open_orders():
-		if st.stock.get(order.good, 0) >= order.count: return ["coin", "Deliver %d %s" % [order.count, C.title(order.good).to_lower()], func(): open("more")]
-	if 0 in stages: return ["seed", "Plant wheat", func(): place_tapped(garden.id, "")]
-	if 1 in stages: return ["water", "Water the field", func(): place_tapped(garden.id, "")]
+		if st.stock.get(order.good, 0) >= order.count: return ["coin", "Deliver %d %s" % [order.count, C.title(order.good).to_lower()], func(): open("more"), ""]
+	if 0 in stages: return ["seed", "Plant wheat", func(): place_tapped(garden.id, ""), garden.id]
+	if 1 in stages: return ["water", "Water the field", func(): place_tapped(garden.id, ""), garden.id]
 	var level := game.host.progress()
 	for kind in C.BUILD_ORDER:
 		var spec: Dictionary = C.BUILDS[kind]
 		if kind in ["flowers", "rocks", "bench"]: continue
 		var blocker := st.build_blocker(kind, level)
-		if blocker == "" and game.host.wallet() >= spec.price: return [kind, "Build a %s" % C.title(kind).to_lower(), func(): open("build")]
-		if blocker == "locked": return [kind, "%s at level %d" % [C.title(kind), spec.gate], func(): open("more")]
-	if st.owns("windmill") and not st.jobs.has("mill") and st.stock.wheat >= 2: return ["flour", "Mill some flour", func(): place_tapped(st.first_of("windmill").id, "mill")]
-	if not st.jobs.has("oven") and st.stock.flour >= 1: return ["bread", "Bake bread", func(): place_tapped(st.first_of("cottage").id, "oven")]
-	return ["wheat", "Wheat is growing", func(): place_tapped(garden.id, "")]
+		if blocker == "" and game.host.wallet() >= spec.price: return [kind, "Build a %s" % C.title(kind).to_lower(), func(): open("build"), ""]
+		if blocker == "locked": return [kind, "%s at level %d" % [C.title(kind), spec.gate], func(): open("more"), ""]
+	if st.owns("windmill") and not st.jobs.has("mill") and st.stock.wheat >= 2: return ["flour", "Mill some flour", func(): place_tapped(st.first_of("windmill").id, "mill"), st.first_of("windmill").id]
+	if not st.jobs.has("oven") and st.stock.flour >= 1: return ["bread", "Bake bread", func(): place_tapped(st.first_of("cottage").id, "oven"), st.first_of("cottage").id]
+	return ["wheat", "Wheat is growing", func(): place_tapped(garden.id, ""), ""]
 
 # --- state -------------------------------------------------------------------
 
@@ -660,8 +750,34 @@ func blocks(point: Vector2) -> bool:
 		if control.get_global_rect().has_point(point): return true
 	return false
 
+## The renderer reports where the goal's place is on screen (0–1 coordinates).
+func point_at(x: float, y: float) -> void:
+	if pointer_id == "" or mode != "": pointer.visible = false; return
+	var viewport := root.get_viewport_rect().size
+	pointer.position = Vector2(x * viewport.x, y * viewport.y) - Vector2(pointer.size.x / 2, pointer.size.y + 30 * s)
+	pointer.visible = true
+
+func _confetti() -> void:
+	var viewport := root.get_viewport_rect().size
+	var colors := [GOLD, LEAF, Color("D9573E"), Color("5BA8D8"), CREAM]
+	for i in 70:
+		var bit := ColorRect.new()
+		bit.color = colors[i % colors.size()]
+		bit.size = Vector2(randf_range(8, 14), randf_range(12, 20)) * s
+		bit.pivot_offset = bit.size / 2
+		bit.position = Vector2(randf() * viewport.x, -30 * s - randf() * 120 * s)
+		bit.rotation = randf() * TAU
+		bit.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		fly_layer.add_child(bit)
+		var tween := bit.create_tween().set_parallel()
+		var time := randf_range(1.6, 2.6)
+		tween.tween_property(bit, "position", bit.position + Vector2(randf_range(-120, 120) * s, viewport.y + 160 * s), time).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.tween_property(bit, "rotation", bit.rotation + randf_range(-8, 8), time)
+		tween.chain().tween_callback(bit.queue_free)
+
 func _celebrate_level(level: int, before: int) -> void:
 	sfx("level_up")
+	_confetti()
 	var banner := PanelContainer.new()
 	var box := frame_box(30, CREAM)
 	box.border_color = GOLD
@@ -715,6 +831,9 @@ func refresh() -> void:
 	var bar := game.next_level_progress()
 	level_bar.visible = bar.y > 0
 	if bar.y > 0: level_bar.value = 100.0 * bar.x / bar.y
+	level_badge.level = level
+	level_badge.progress = float(bar.x) / bar.y if bar.y > 0 else 0.0
+	level_badge.queue_redraw()
 	var from := fly_from if fly_from.x >= 0 else root.get_viewport_rect().size / 2
 	if ring and is_instance_valid(ring): from = ring.get_global_rect().get_center()
 	if last_coins >= 0 and coins > last_coins:
@@ -751,6 +870,9 @@ func refresh() -> void:
 		goal_icon.texture = icons.get(goal[0], icons["star"])
 	goal_label.text = goal[1]
 	goal_action = goal[2]
+	pointer_id = goal[3] if mode == "" and title_layer == null else ""
+	if pointer_id == "": pointer.visible = false
+	else: main.send("feedbackAnchor", {"id": pointer_id, "event": "goal"})
 	goal_box.visible = mode == ""
 	if mode == "": return
 	# Rebuild only when something visible changed; timers update in place.
@@ -1161,7 +1283,14 @@ func _fill_build() -> void:
 	var game: WorldGame = main.game
 	var viewport := root.get_viewport_rect().size
 	var tray := PanelContainer.new()
-	tray.add_theme_stylebox_override("panel", frame_box(28))
+	var empty := StyleBoxEmpty.new()
+	empty.set_content_margin_all(16 * s)
+	tray.add_theme_stylebox_override("panel", empty)
+	var shelf := Shelf.new()
+	shelf.ui = self
+	shelf.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shelf.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tray.add_child(shelf)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", int(8 * s))
 	tray.add_child(column)
@@ -1204,7 +1333,9 @@ func _build_tile(key: String, spec: Dictionary, blocker: String) -> Control:
 	button.custom_minimum_size = Vector2(112, 124) * s
 	button.tooltip_text = C.title(key)
 	var box := frame_box(20, CREAM if key != build_pick else Color("FFE7A3"))
-	box.shadow_size = int(2 * s)
+	box.shadow_size = int(4 * s)
+	box.border_color = GOLD if key == build_pick else Color("6B4220")
+	box.set_border_width_all(int((5 if key == build_pick else 3) * s))
 	for state in ["normal", "hover", "pressed", "focus", "disabled"]: button.add_theme_stylebox_override(state, box)
 	var column := VBoxContainer.new()
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1213,6 +1344,12 @@ func _build_tile(key: String, spec: Dictionary, blocker: String) -> Control:
 	column.add_theme_constant_override("separation", int(2 * s))
 	var picture := _icon(icons.get(key, icons["build"]), 74)
 	if blocker in ["locked", "land", "full", "owned"]: picture.modulate = Color(1, 1, 1, 0.45)
+	if blocker == "locked":
+		var lock := Padlock.new()
+		lock.size = Vector2(34, 34) * s
+		lock.position = Vector2(54, 0) * s
+		lock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		picture.add_child(lock)
 	column.add_child(picture)
 	var tag := HBoxContainer.new()
 	tag.alignment = BoxContainer.ALIGNMENT_CENTER
