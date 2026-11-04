@@ -719,12 +719,12 @@ func _solo_tween(control: Node, key: String) -> Tween:
 	control.set_meta(meta, tween)
 	return tween
 
-func bump(control: Control) -> void:
+func bump(control: Control, size := F.BUMP_SCALE) -> void:
 	if not is_instance_valid(control) or reduce_motion: return
 	control.pivot_offset = control.size / 2
 	control.scale = Vector2.ONE
 	var tween := _solo_tween(control, "bump")
-	tween.tween_property(control, "scale", Vector2.ONE * F.BUMP_SCALE, F.BUMP_UP_TIME).set_trans(Tween.TRANS_QUAD)
+	tween.tween_property(control, "scale", Vector2.ONE * size, F.BUMP_UP_TIME).set_trans(Tween.TRANS_QUAD)
 	tween.tween_property(control, "scale", Vector2.ONE, F.BUMP_SETTLE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _juice(button: BaseButton) -> void:
@@ -787,12 +787,16 @@ func _count_to(coins: int) -> void:
 		shown_coins = value
 		coins_label.text = str(roundi(value)), shown_coins, float(coins), time).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
+## 0 for a small gain, 1 for a good one, 2 for a big one (thresholds in feel.gd).
+static func reward_tier(gain: int) -> int:
+	return 2 if gain >= F.REWARD_BIG else (1 if gain >= F.REWARD_GOOD else 0)
+
 ## A rising "+N" label at a screen point.
-func float_text(text: String, at: Vector2, color := IVORY) -> void:
+func float_text(text: String, at: Vector2, color := IVORY, font_px := 32) -> void:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_override("font", DISPLAY)
-	label.add_theme_font_size_override("font_size", int(32 * s))
+	label.add_theme_font_size_override("font_size", int(font_px * s))
 	label.add_theme_color_override("font_color", color)
 	label.add_theme_color_override("font_outline_color", Color(0.04, 0.09, 0.085, 0.85))
 	label.add_theme_constant_override("outline_size", int(8 * s))
@@ -1250,6 +1254,7 @@ func _confetti() -> void:
 
 func _celebrate_level(level: int, before: int) -> void:
 	sfx("level_up")
+	_level_impact()
 	_confetti()
 	var banner := PanelContainer.new()
 	var box := glass(32, GLASS_DEEP)
@@ -1310,6 +1315,39 @@ func _celebrate_level(level: int, before: int) -> void:
 	tween.tween_property(banner, "modulate:a", 0.0, 0.4)
 	tween.tween_callback(banner.queue_free)
 
+## The level badge winds up, the frame holds for an instant on impact with a
+## warm flash and a heavy haptic, then the badge springs back. Display only:
+## input keeps flowing through the hold, and Reduce Motion gets the haptic.
+var hitstop_until := 0
+func _level_impact() -> void:
+	if reduce_motion: haptic(F.HAPTIC_BIG); return
+	var badge := level_badge
+	badge.pivot_offset = badge.size / 2
+	var tween := _solo_tween(badge, "bump")
+	tween.tween_property(badge, "scale", Vector2.ONE * F.LEVEL_WINDUP_SCALE, F.LEVEL_WINDUP_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(func():
+		haptic(F.HAPTIC_BIG)
+		_flash()
+		badge.scale = Vector2.ONE * F.LEVEL_PUNCH_SCALE
+		_hitstop(F.HITSTOP_TIME))
+	tween.tween_property(badge, "scale", Vector2.ONE, F.LEVEL_SETTLE_TIME).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+## Freezes animation (not input) for `seconds` of real time.
+func _hitstop(seconds: float) -> void:
+	Engine.time_scale = 0.0
+	hitstop_until = Time.get_ticks_msec() + int(seconds * 1000)
+	get_tree().create_timer(seconds, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
+
+func _flash() -> void:
+	var flash := ColorRect.new()
+	flash.color = Color(1, 0.94, 0.78, F.FLASH_ALPHA)
+	flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fly_layer.add_child(flash)
+	var tween := flash.create_tween()
+	tween.tween_property(flash, "color:a", 0.0, F.FLASH_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(flash.queue_free)
+
 ## An icon sitting in a soft round well.
 func _socket(texture: Texture2D, side: float, highlight := false) -> PanelContainer:
 	var holder := PanelContainer.new()
@@ -1367,6 +1405,8 @@ func show_speech(who: String, line: String) -> void:
 	tween.tween_callback(bubble.queue_free)
 
 func _process(delta: float) -> void:
+	# A hit-stop can never outlive its moment, whatever happened to its timer.
+	if Engine.time_scale != 1.0 and Time.get_ticks_msec() > hitstop_until: Engine.time_scale = 1.0
 	if is_instance_valid(season_clock) and main and main.game:
 		var season: Dictionary = main.game.season()
 		season_clock.text = _time(int(season.left))
@@ -1391,10 +1431,16 @@ func refresh() -> void:
 	var from := fly_from if fly_from.x >= 0 else root.get_viewport_rect().size / 2
 	if ring and is_instance_valid(ring): from = ring.get_global_rect().get_center()
 	if last_coins >= 0 and coins > last_coins:
+		# Feedback scales with the gain: a coin or two is crisp and small,
+		# a big sale lands heavier, louder and larger.
+		var tier := reward_tier(coins - last_coins)
 		sfx("coins", _combo_pitch())
-		haptic(F.HAPTIC_REWARD)
-		fly(icons["coin"], from, coin_pill, clampi(coins - last_coins, 1, 6))
-		float_text("+%d" % (coins - last_coins), from + Vector2(0, -50 * s), GOLD)
+		haptic(F.REWARD_HAPTIC[tier])
+		fly(icons["coin"], from, coin_pill, F.REWARD_COINS[tier])
+		float_text("+%d" % (coins - last_coins), from + Vector2(0, -50 * s), GOLD, F.REWARD_FONT[tier])
+		if tier == 2:
+			var pill := coin_pill
+			get_tree().create_timer(F.FLY_TRAVEL_TIME + F.FLY_GROW_TIME).timeout.connect(func(): bump(pill, F.REWARD_BIG_BUMP))
 	elif last_coins >= 0 and coins < last_coins: sfx("world_build_complete")
 	if not last_stock.is_empty():
 		var gained := false
@@ -1487,13 +1533,25 @@ func close() -> void:
 	mode = ""
 	place_id = ""
 	build_pick = ""
-	if sheet_root: sheet_root.queue_free(); sheet_root = null
+	if sheet_root: _close_out(sheet_root); sheet_root = null
 	ring = null
 	main.spot_preview({})
 	if was_place: main.camera({"mode": "arrival", "resetZoom": true})
 	panel_changed.emit(false)
 	goal_box.visible = true
 	dock_node.visible = true
+
+## The closed box shrinks and fades out instead of vanishing. It stops
+## taking taps on the same frame, so the map is live at once.
+func _close_out(holder: Control) -> void:
+	if reduce_motion or not holder.is_inside_tree(): holder.queue_free(); return
+	holder.propagate_call("set_mouse_filter", [Control.MOUSE_FILTER_IGNORE])
+	var panel: Control = holder.get_meta("panel", holder)
+	panel.pivot_offset = panel.size / 2
+	var tween := holder.create_tween().set_parallel()
+	tween.tween_property(panel, "scale", Vector2.ONE * F.CLOSE_TO_SCALE, F.CLOSE_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_property(holder, "modulate:a", 0.0, F.CLOSE_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(holder.queue_free)
 
 func _act(result: String) -> void:
 	filled = {}

@@ -270,3 +270,38 @@ Audit and design: see the second section of `docs/design/CORE-LOOP-AUDIT.md`.
 - **Tuning:** `SEASON_SECONDS`, `SEASON_BONUS` and `SEASON_STEP` are in `catalogue.gd`.
 
 Tests: rules 92/0 (9 new season checks), feel spam 28/0, runtime and collect pass. Checked in a 1280×720 market capture, not on a device.
+
+## Pass 11 · 2026-11-04 (owner request: game feel, second pass)
+
+Audit after pass 7, which added the punch, the flecks and the timer buffer.
+
+- **Input:** already instant everywhere.
+  - Buttons press on touch-down and release with an overshoot.
+  - Taps on nearly finished timers are buffered (0.6 s).
+  - There is no tap-to-action wait anywhere.
+  - Coyote time doesn't apply, because there is no movement or jumping.
+- **Transitions:**
+  - Boxes open with a back-ease pop, but they **closed with a hard cut**, the only unanimated state change left.
+- **Proportion:**
+  - A 1-coin wheat sale and a 30-coin season batch got identical feedback: the same three coins, label size and haptic.
+  - A **level-up** had confetti and a banner but no impact moment, so the biggest milestone felt as light as a sale.
+
+Changes (tuning in `feel.gd`):
+- **Box close follow-through** (`_close_out`). The box shrinks to 94% and fades over 120 ms (ease-in). It stops taking taps on the same frame, so the map is live at once. A box opened during the fade sits above it. Reduce Motion closes instantly.
+- **Proportional rewards** (`reward_tier`). Coin gains fall into three tiers:
+
+  | Gain | Tier | Coins flying | "+N" label | Haptic |
+  |---|---|---|---|---|
+  | Under 5 | Small | 2 | 28 pt | 0.35 |
+  | 5–14 | Good | 4 | 34 pt | 0.5 |
+  | 15 or more | Big | 6 | 44 pt | 0.8 |
+
+  On a big gain, the wallet also punches to 1.32× as the coins land.
+- **Level-up choreography** (`_level_impact`):
+  - **Anticipation:** the badge winds up to 0.82× (80 ms).
+  - **Impact:** on the frame it lands, a heavy haptic, a warm 22% flash, the badge snapped to 1.45× and a 70 ms hit-stop.
+  - **Follow-through:** the badge springs back elastically over 0.6 s, followed by the existing confetti and banner.
+  - The hit-stop freezes animation only. Input and game clocks keep running, and a guard in `_process` releases it even if its timer were lost.
+  - Reduce Motion keeps only the haptic.
+
+Tests: feel spam 32/0 (4 new checks: tiers, hit-stop release, badge settle, closed boxes freed), rules 92/0, runtime and collect pass. Checked in 1280×720 captures; haptic strength hasn't been felt on a device.
