@@ -27,6 +27,7 @@ Source of truth for behaviour: `reference/tuvlo-swift/` (Tuvlo `b50d5f57`). The 
    - Tapping a place on the map does the obvious thing (plant, water, harvest, pick, collect). Otherwise it opens the place card: goods → the real place framed in a ring → products, with drag or tap to fill and one action.
    - A picture-only Build tray in a single row with spot preview, and a Market sheet with orders and selling.
    - Motion and sound: cards spring in, buttons press, goods and coins fly to the Market and wallet, a level-up banner shows what unlocked, and the World music loops (♪ toggles it).
+   - Look: a title screen over the living map, place cards as one picture strip (goods › the place seen through a window in the band › products) under a gold ribbon, a ring that glows when something is ready, and a striped market-stall awning.
    - Market orders: three order slots that open with the farm, windmill and barn and pay above the market price (record type `order`). 44 headless checks.
 3. **iPhone and iPad.** The export presets are in (`Godot/export_presets.cfg`). The first device run happens on the owner's Mac (see [Run](RUN.md)). A Swift shell is only needed later, for StoreKit.
 4. **Market.** Selling, levels and orders have landed. Still to do: balancing and a market stall place. This is solo-only.

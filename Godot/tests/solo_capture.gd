@@ -27,43 +27,44 @@ func _process(delta: float) -> bool:
 	if step == 0: game.clock = func(): return Time.get_unix_time_from_system() + offset.s
 	match step:
 		0: wait = 4.0
-		1: shot("01-start")
-		2: main.ui.goal_action.call(); wait = 0.6
-		3: shot("02-planted-quick")
-		4: main.ui.place_tapped("base:garden"); wait = 0.6
-		5: offset.s += 31; main.push(); wait = 1.0
-		6: shot("03-farm-ready")
-		7: main.ui.place_tapped("base:garden"); wait = 0.35
-		8: shot("04-harvest-fly")
-		9: wait = 1.5
-		10: main.ui.open("place", "base:garden"); wait = 4.0
-		11: shot("05-farm-card")
-		12: main.ui.close(); main.ui.open("more"); wait = 1.0
-		13: shot("06-market-orders")
-		14: main.ui._act(game.deliver(0)); wait = 0.3
-		15: shot("07-order-coins")
-		16:
+		1: shot("00-title"); main.ui.dismiss_title(); wait = 1.0
+		2: shot("01-start")
+		3: main.ui.goal_action.call(); wait = 0.6
+		4: shot("02-planted-quick")
+		5: main.ui.place_tapped("base:garden"); wait = 0.6
+		6: offset.s += 31; main.push(); wait = 1.0
+		7: shot("03-farm-ready")
+		8: main.ui.place_tapped("base:garden"); wait = 0.35
+		9: shot("04-harvest-fly")
+		10: wait = 1.5
+		11: main.ui.open("place", "base:garden"); wait = 4.0
+		12: shot("05-farm-card")
+		13: main.ui.close(); main.ui.open("more"); wait = 1.0
+		14: shot("06-market-orders")
+		15: main.ui._act(game.deliver(0)); wait = 0.3
+		16: shot("07-order-coins")
+		17:
 			main.ui.close(); main.host.grant("test-level", 40, []); main.push()
 			main.ui.open("build"); wait = 1.0
-		17: shot("08-build-tray")
-		18: main.ui._pick_build("windmill", ""); wait = 1.5
-		19: shot("09-build-spot")
-		20:
-			main.ui._confirm_build(); offset.s += 9; main.push(); wait = 2.0
+		18: shot("08-build-tray")
+		19: main.ui._pick_build("windmill", ""); wait = 1.5
+		20: shot("09-build-spot")
 		21:
+			main.ui._confirm_build(); offset.s += 9; main.push(); wait = 2.0
+		22:
 			main.ui.open("place", game.state.first_of("windmill").id, "mill"); wait = 4.0
-		22: shot("10-mill-card")
-		23:
+		23: shot("10-mill-card")
+		24:
 			main.ui._ring_dropped("wheat"); offset.s += 20; main.push(); wait = 1.0
-		24: shot("11-mill-working")
-		25:
+		25: shot("11-mill-working")
+		26:
 			main.ui.close(); main.ui.open("more"); wait = 1.0
-		26: shot("12-market")
-		27:
+		27: shot("12-market")
+		28:
 			for good in game.state.stock:
 				if game.state.stock[good] > 0: game.sell(good, game.state.stock[good])
 			main.ui.close(); main.push(); wait = 0.5
-		28: shot("13-level-up")
-		29: return true
+		29: shot("13-level-up")
+		30: return true
 	step += 1
 	return false

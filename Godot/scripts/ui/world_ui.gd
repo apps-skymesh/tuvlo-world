@@ -65,10 +65,17 @@ class WorldRing extends Control:
 	signal dropped(good: String)
 	var progress := -1.0
 	var label := ""
+	var glow := false
 	var ui
+	func _process(_delta: float) -> void:
+		if glow: queue_redraw()
 	func _draw() -> void:
 		var r := size.x / 2.0
 		var c := size / 2.0
+		if glow:
+			var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0)
+			for i in 6:
+				draw_arc(c, r + (4 + i * 4) * ui.s, 0, TAU, 96, Color(WorldUI.GOLD, (0.42 - i * 0.07) * (0.55 + 0.45 * pulse)), 5 * ui.s, true)
 		draw_arc(c, r - 5 * ui.s, 0, TAU, 96, Color(1, 0.96, 0.86, 0.95), 10 * ui.s, true)
 		draw_arc(c, r - 1 * ui.s, 0, TAU, 96, WorldUI.RIM, 3 * ui.s, true)
 		draw_arc(c, r - 10 * ui.s, 0, TAU, 96, Color(WorldUI.RIM, 0.55), 2 * ui.s, true)
@@ -86,6 +93,94 @@ class WorldRing extends Control:
 		if press and event.position.distance_to(size / 2) <= size.x / 2: tapped.emit()
 	func _can_drop_data(_at: Vector2, data: Variant) -> bool: return data is Dictionary and data.has("good")
 	func _drop_data(_at: Vector2, data: Variant) -> void: dropped.emit(str(data.good))
+
+## A gold banner with notched tails, for card and sheet titles.
+class Ribbon extends Control:
+	var text := ""
+	var ui
+	func _draw() -> void:
+		var h := size.y
+		var w := size.x
+		var tail := h * 0.55
+		var dark := Color("C98A1C")
+		for side in [-1, 1]:
+			var x0 := 0.0 if side < 0 else w
+			var points := PackedVector2Array([Vector2(x0 + side * -tail * 0.2, h * 0.28), Vector2(x0 + side * tail, h * 0.28), Vector2(x0 + side * tail * 0.62, h * 0.72), Vector2(x0 + side * tail, h * 1.12), Vector2(x0 + side * -tail * 0.2, h * 1.12)])
+			draw_colored_polygon(points, dark)
+		var body := StyleBoxFlat.new()
+		body.bg_color = WorldUI.GOLD
+		body.set_corner_radius_all(int(h * 0.3))
+		body.border_color = Color("A86E12")
+		body.set_border_width_all(int(2 * ui.s))
+		body.shadow_color = Color(0, 0, 0, 0.25)
+		body.shadow_size = int(5 * ui.s)
+		body.shadow_offset = Vector2(0, 3 * ui.s)
+		draw_style_box(body, Rect2(Vector2.ZERO, Vector2(w, h * 0.9)))
+		draw_rect(Rect2(Vector2(h * 0.25, h * 0.12), Vector2(w - h * 0.5, h * 0.12)), Color(1, 1, 1, 0.28))
+		var font := get_theme_default_font()
+		var fs := int(h * 0.5)
+		var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var at := Vector2((w - tw) / 2, h * 0.45 + fs * 0.36)
+		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(7 * ui.s), WorldUI.WALNUT)
+		draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.CREAM)
+
+## The card's band, with a round window so the real place shows through the ring.
+class Band extends Control:
+	var ui
+	var hole_radius := 100.0
+	func _rounded(rect: Rect2, radius: float) -> PackedVector2Array:
+		var points := PackedVector2Array()
+		var corners := [[rect.position + Vector2(radius, radius), PI], [Vector2(rect.end.x - radius, rect.position.y + radius), -PI / 2], [rect.end - Vector2(radius, radius), 0.0], [Vector2(rect.position.x + radius, rect.end.y - radius), PI / 2]]
+		for corner in corners:
+			for k in 9: points.append(corner[0] + Vector2.from_angle(corner[1] + k * PI / 16) * radius)
+		return points
+	func _draw() -> void:
+		var circle := PackedVector2Array()
+		for k in 64: circle.append(size / 2 + Vector2.from_angle(k * TAU / 64) * hole_radius)
+		var outer := _rounded(Rect2(Vector2.ZERO, size), minf(40 * ui.s, size.y / 2))
+		var shadow := Transform2D(0, Vector2(0, 4 * ui.s))
+		var shapes: Array = Geometry2D.clip_polygons(outer, circle)
+		# clip_polygons returns the outer ring and the hole separately; split into halves instead.
+		var halves := []
+		for side in [0, 1]:
+			var clip := PackedVector2Array([Vector2(size.x / 2 * side, -10), Vector2(size.x / 2 * (side + 1), -10), Vector2(size.x / 2 * (side + 1), size.y + 10), Vector2(size.x / 2 * side, size.y + 10)])
+			for half in Geometry2D.intersect_polygons(outer, clip):
+				for piece in Geometry2D.clip_polygons(half, circle): halves.append(piece)
+		for piece in halves: draw_colored_polygon(shadow * piece, Color(0, 0, 0, 0.16))
+		for piece in halves: draw_colored_polygon(piece, Color(WorldUI.CREAM, 0.95))
+		var edge := outer.duplicate()
+		edge.append(outer[0])
+		for i in edge.size() - 1:
+			var a := edge[i]; var b := edge[i + 1]
+			if a.distance_to(size / 2) > hole_radius + 2 and b.distance_to(size / 2) > hole_radius + 2: draw_line(a, b, Color(WorldUI.RIM, 0.85), 3 * ui.s, true)
+
+## A soft chevron between goods, the place and products.
+class Arrow extends Control:
+	var ui
+	func _draw() -> void:
+		var c := size / 2
+		var d := minf(size.x, size.y) * 0.26
+		for i in 2:
+			var x := c.x + (i - 0.5) * d * 0.95
+			draw_polyline(PackedVector2Array([Vector2(x - d * 0.4, c.y - d), Vector2(x + d * 0.4, c.y), Vector2(x - d * 0.4, c.y + d)]), Color(WorldUI.RIM, 0.55 + 0.35 * i), 6 * ui.s, true)
+
+## A striped market awning with a scalloped edge.
+class Awning extends Control:
+	var ui
+	func _draw() -> void:
+		var stripes := 10
+		var w := size.x / stripes
+		var h := size.y
+		for i in stripes:
+			var color := Color("D9573E") if i % 2 == 0 else Color("FFF5DC")
+			draw_rect(Rect2(Vector2(i * w, 0), Vector2(w, h * 0.7)), color)
+			var points := PackedVector2Array()
+			for k in 13:
+				var t := float(k) / 12.0
+				points.append(Vector2(i * w + t * w, h * 0.7 + sin(t * PI) * h * 0.3))
+			points.append(Vector2(i * w, h * 0.7))
+			draw_colored_polygon(points, color)
+		draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, h * 0.12)), Color(0, 0, 0, 0.12))
 
 ## Field tools drawn in code (no art yet): a seed pouch and a water drop.
 class ToolIcon extends Control:
@@ -158,7 +253,74 @@ func setup(owner_main) -> void:
 	fly_layer.theme = root.theme
 	add_child(fly_layer)
 	_setup_audio()
+	_show_title()
 	refresh()
+
+# --- title -----------------------------------------------------------------
+
+var title_layer: Control
+
+## A short title over the living map; any tap starts play.
+func _show_title() -> void:
+	title_layer = Control.new()
+	title_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	title_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	title_layer.theme = root.theme
+	var shade := ColorRect.new()
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.16, 0.1, 0.02, 0.28)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_layer.add_child(shade)
+	var column := VBoxContainer.new()
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_theme_constant_override("separation", int(6 * s))
+	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var name_label := Label.new()
+	name_label.text = "Tuvlo World"
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.add_theme_font_size_override("font_size", int(96 * s))
+	name_label.add_theme_color_override("font_color", CREAM)
+	name_label.add_theme_color_override("font_outline_color", WALNUT)
+	name_label.add_theme_constant_override("outline_size", int(26 * s))
+	name_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.35))
+	name_label.add_theme_constant_override("shadow_offset_y", int(8 * s))
+	column.add_child(name_label)
+	var sprouts := HBoxContainer.new()
+	sprouts.alignment = BoxContainer.ALIGNMENT_CENTER
+	sprouts.add_theme_constant_override("separation", int(14 * s))
+	for good in ["wheat", "flour", "bread", "tart", "meal"]: sprouts.add_child(_icon(icons.get(good), 58))
+	column.add_child(sprouts)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 40 * s)
+	column.add_child(gap)
+	var play := Label.new()
+	play.text = "Tap to play"
+	play.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	play.add_theme_font_size_override("font_size", int(30 * s))
+	play.add_theme_color_override("font_color", CREAM)
+	play.add_theme_color_override("font_outline_color", WALNUT)
+	play.add_theme_constant_override("outline_size", int(12 * s))
+	column.add_child(play)
+	title_layer.add_child(column)
+	add_child(title_layer)
+	for control in hud: control.modulate.a = 0.0
+	var pulse := play.create_tween().set_loops()
+	pulse.tween_property(play, "modulate:a", 0.35, 0.8).set_trans(Tween.TRANS_SINE)
+	pulse.tween_property(play, "modulate:a", 1.0, 0.8).set_trans(Tween.TRANS_SINE)
+	title_layer.gui_input.connect(func(e):
+		if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed): dismiss_title())
+	main.camera({"mode": "arrival", "resetZoom": true})
+
+func dismiss_title() -> void:
+	if not title_layer: return
+	var layer := title_layer
+	title_layer = null
+	sfx("success")
+	var tween := create_tween().set_parallel()
+	tween.tween_property(layer, "modulate:a", 0.0, 0.45)
+	for control in hud: tween.tween_property(control, "modulate:a", 1.0, 0.5).set_delay(0.2)
+	tween.chain().tween_callback(layer.queue_free)
 
 # --- sound -----------------------------------------------------------------
 
@@ -491,6 +653,7 @@ func _quick(action: Callable) -> void:
 	if result != "": sfx("soft_fail")
 
 func blocks(point: Vector2) -> bool:
+	if title_layer: return true
 	if mode in ["place", "more", "land"]: return true
 	if sheet_root and sheet_root.get_global_rect().has_point(point): return true
 	for control in hud:
@@ -701,42 +864,57 @@ func _good_tile(good: String, count_text: String, short := false, draggable := f
 	return column
 
 func _card_shell(title: String) -> Array:
+	# A picture sentence on one band: goods › the place in a ring › products.
 	# Returns [left well, centre column, right well].
 	var viewport := root.get_viewport_rect().size
-	var width := minf(680 * s, viewport.x - 24 * s)
-	var height := minf(330 * s, viewport.y - 4 * s)
+	var width := minf(760 * s, viewport.x - 24 * s)
+	var height := minf(340 * s, viewport.y - 4 * s)
 	var card := Control.new()
 	card.size = Vector2(width, height)
-	card.position = (viewport - card.size) / 2
+	card.position = (viewport - card.size) / 2 + Vector2(0, 14 * s)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var band := Band.new()
+	band.ui = self
+	band.hole_radius = RING_DIAMETER * s / 2 - 4 * s
+	band.size = Vector2(width, 168 * s)
+	band.position = Vector2(0, (RING_DIAMETER * s - band.size.y) / 2)
+	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(band)
 	var row := HBoxContainer.new()
-	row.size = card.size
-	row.add_theme_constant_override("separation", int(10 * s))
+	row.size = Vector2(width, height)
+	row.add_theme_constant_override("separation", int(4 * s))
 	card.add_child(row)
 	var left := _well()
 	var right := _well()
-	row.add_child(_framed(left, 132))
+	for well in [left, right]:
+		well.custom_minimum_size = Vector2(150, 0) * s
+		well.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		well.alignment = BoxContainer.ALIGNMENT_CENTER
+	var left_holder := _well_holder(left)
+	row.add_child(left_holder)
+	row.add_child(_arrow())
 	var centre := VBoxContainer.new()
 	centre.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	centre.alignment = BoxContainer.ALIGNMENT_CENTER
-	centre.add_theme_constant_override("separation", int(10 * s))
+	centre.alignment = BoxContainer.ALIGNMENT_BEGIN
+	centre.add_theme_constant_override("separation", int(12 * s))
 	row.add_child(centre)
-	row.add_child(_framed(right, 132))
+	row.add_child(_arrow())
+	row.add_child(_well_holder(right))
 	var close_button := _round_button("more", close, "Close")
 	close_button.icon = null
 	close_button.text = "✕"
-	close_button.custom_minimum_size = Vector2(48, 48) * s
-	close_button.position = Vector2(width - 30 * s, -18 * s)
+	close_button.custom_minimum_size = Vector2(46, 46) * s
+	close_button.position = Vector2(width - 34 * s, band.position.y - 20 * s)
 	card.add_child(close_button)
-	var heading := Label.new()
-	heading.text = title
-	heading.add_theme_font_size_override("font_size", int(22 * s))
-	heading.add_theme_color_override("font_outline_color", CREAM)
-	heading.add_theme_constant_override("outline_size", int(10 * s))
-	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	heading.size = Vector2(width, 30 * s)
-	heading.position = Vector2(0, -34 * s)
-	card.add_child(heading)
+	var ribbon := Ribbon.new()
+	ribbon.ui = self
+	ribbon.text = title
+	var font := root.theme.default_font
+	var ribbon_width := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * s)).x + 70 * s
+	ribbon.size = Vector2(ribbon_width, 44 * s)
+	ribbon.position = Vector2((width - ribbon_width) / 2, -50 * s)
+	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(ribbon)
 	root.add_child(card)
 	sheet_root = card
 	ring = WorldRing.new()
@@ -746,13 +924,30 @@ func _card_shell(title: String) -> Array:
 	centre.add_child(ring)
 	return [left, centre, right]
 
+func _well_holder(well: VBoxContainer) -> Control:
+	# Keeps a well vertically centred on the ring.
+	var holder := CenterContainer.new()
+	holder.custom_minimum_size = Vector2(150 * s, RING_DIAMETER * s)
+	holder.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	holder.add_child(well)
+	return holder
+
+func _arrow() -> Control:
+	var arrow := Arrow.new()
+	arrow.ui = self
+	arrow.custom_minimum_size = Vector2(40 * s, RING_DIAMETER * s)
+	arrow.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return arrow
+
 func _frame_camera(kind_station: String) -> void:
-	await get_tree().process_frame
-	if not ring or not is_instance_valid(ring): return
+	# The ring's place comes from the card's own geometry: the containers may
+	# not have laid out yet, and the pop-in scale would skew a measured rect.
+	if not ring or not is_instance_valid(ring) or not sheet_root: return
 	var viewport := root.get_viewport_rect().size
-	var rect := ring.get_global_rect()
-	var shift := {"x": rect.get_center().x / viewport.x - 0.5, "y": rect.get_center().y / viewport.y - 0.5}
-	main.camera({"mode": "place", "id": place_id, "station": kind_station, "production": true, "focusShift": shift, "ring": rect.size.y / viewport.y, "resetZoom": true})
+	var centre := sheet_root.position + Vector2(sheet_root.size.x / 2, RING_DIAMETER * s / 2)
+	var shift := {"x": centre.x / viewport.x - 0.5, "y": centre.y / viewport.y - 0.5}
+	main.camera({"mode": "place", "id": place_id, "station": kind_station, "production": true, "focusShift": shift, "ring": RING_DIAMETER * s / viewport.y, "resetZoom": true})
 
 func _fill_place() -> void:
 	var game: WorldGame = main.game
@@ -822,7 +1017,14 @@ func _update_ring() -> void:
 		var left := st.job_remaining(station, now)
 		ring.progress = clampf(1.0 - float(left) / C.RECIPES[st.jobs[station].recipe].seconds, 0, 1)
 		if left > 0: ring.label = _time(left)
+	ring.glow = ring.progress >= 1.0 or (item.kind == "garden" and _any_field(4))
 	ring.queue_redraw()
+
+func _any_field(stage: int) -> bool:
+	var st: WorldState = main.game.state
+	for i in st.fields.size():
+		if st.field_stage(i, main.game.now()) == stage: return true
+	return false
 
 static func _time(seconds: int) -> String:
 	return "%d:%02d" % [seconds / 60, seconds % 60]
@@ -1059,17 +1261,38 @@ func _confirm_build() -> void:
 func _sheet(title: String) -> VBoxContainer:
 	var viewport := root.get_viewport_rect().size
 	var sheet := PanelContainer.new()
-	sheet.add_theme_stylebox_override("panel", frame_box(28))
+	var sheet_box := frame_box(28)
+	if title == "Market": sheet_box.content_margin_top = 0
+	sheet.add_theme_stylebox_override("panel", sheet_box)
+	sheet.clip_children = CanvasItem.CLIP_CHILDREN_DISABLED
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", int(10 * s))
 	sheet.add_child(column)
+	if title == "Market":
+		var awning := Awning.new()
+		awning.ui = self
+		awning.custom_minimum_size = Vector2(0, 46 * s)
+		awning.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		column.add_child(awning)
 	var head := HBoxContainer.new()
-	var heading := Label.new()
-	heading.text = title
-	heading.add_theme_font_size_override("font_size", int(24 * s))
-	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(heading)
-	head.add_child(_button("✕", close))
+	var ribbon := Ribbon.new()
+	ribbon.ui = self
+	ribbon.text = title
+	ribbon.custom_minimum_size = Vector2(root.theme.default_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * s)).x + 70 * s, 44 * s)
+	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var spacer_left := Control.new()
+	spacer_left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(spacer_left)
+	head.add_child(ribbon)
+	var right_side := HBoxContainer.new()
+	right_side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_side.alignment = BoxContainer.ALIGNMENT_END
+	head.add_child(right_side)
+	var close_button := _round_button("more", close, "Close")
+	close_button.icon = null
+	close_button.text = "✕"
+	close_button.custom_minimum_size = Vector2(46, 46) * s
+	right_side.add_child(close_button)
 	column.add_child(head)
 	var centre := CenterContainer.new()
 	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
