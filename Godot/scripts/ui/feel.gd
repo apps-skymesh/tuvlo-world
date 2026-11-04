@@ -65,13 +65,10 @@ const HAPTIC_TAP := 0.35
 const HAPTIC_REWARD := 0.5
 const HAPTIC_MS := 12
 
-# Ambient sounds (scripts/ui/ambience.gd). Quiet beds under the effects: the
-# river always, the mill only while it grinds, birds mostly at dawn and morning.
-const AMBIENT_RIVER_DB := -27.0
+# Ambient sounds (scripts/ui/ambience.gd), quiet under the effects: the mill
+# only while it grinds, birds mostly at dawn and morning.
 const AMBIENT_MILL_DB := -19.0
 const AMBIENT_BIRDS_DB := -21.0
-const AMBIENT_FADE_TIME := 1.6
-const AMBIENT_SILENT_DB := -60.0
 const MILL_CREAK_EVERY := Vector2(2.6, 4.2)
 ## Seconds between bird calls by day phase; missing phases stay quiet.
 const BIRD_CALL_EVERY := {"dawn": Vector2(5.0, 10.0), "morning": Vector2(9.0, 18.0), "afternoon": Vector2(22.0, 40.0)}

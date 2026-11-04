@@ -1,29 +1,21 @@
 class_name WorldAmbience
 extends Node
 
-## Environmental sound under the interface effects: a distant river that
-## always runs, wooden mill gears creaking while the mill grinds, and soft bird
-## calls that gather at dawn and thin out through the day. Three players and
-## three small mono clips; nothing streams or allocates while playing.
+## Environmental sound under the interface effects: wooden mill gears creaking
+## while the mill grinds, and soft bird calls that gather at dawn and thin out
+## through the day. Two players and two small mono clips; nothing streams or
+## allocates while playing. (A river loop was removed: it read as noise.)
 const F = preload("res://scripts/ui/feel.gd")
-var river: AudioStreamPlayer
 var mill: AudioStreamPlayer
 var birds: AudioStreamPlayer
 var enabled := true
 var mill_running := false
 var next_creak := 0.0
 var next_bird := 3.0
-var fade: Tween
 
 func _ready() -> void:
-	river = _player("ambient_river", F.AMBIENT_SILENT_DB)
 	mill = _player("ambient_mill", F.AMBIENT_MILL_DB)
 	birds = _player("ambient_birds", F.AMBIENT_BIRDS_DB)
-	if river and river.stream is AudioStreamWAV:
-		var loop: AudioStreamWAV = river.stream
-		loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		loop.loop_begin = 0
-		loop.loop_end = int(loop.get_length() * loop.mix_rate)
 	set_enabled(enabled)
 
 func _player(name: String, db: float) -> AudioStreamPlayer:
@@ -35,18 +27,10 @@ func _player(name: String, db: float) -> AudioStreamPlayer:
 	add_child(player)
 	return player
 
-## Follows the Sound effects setting; the river fades rather than cuts.
+## Follows the Sound effects setting.
 func set_enabled(on: bool) -> void:
 	enabled = on
-	if river == null: return
-	if fade: fade.kill()
-	fade = create_tween()
-	if on:
-		if not river.playing: river.play()
-		fade.tween_property(river, "volume_db", F.AMBIENT_RIVER_DB, F.AMBIENT_FADE_TIME)
-	else:
-		fade.tween_property(river, "volume_db", F.AMBIENT_SILENT_DB, F.AMBIENT_FADE_TIME * 0.5)
-		fade.tween_callback(river.stop)
+	if not on:
 		if mill: mill.stop()
 		if birds: birds.stop()
 
