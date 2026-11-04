@@ -79,3 +79,33 @@ Known limits:
 
 1. **Return reward and adaptive music**: a small daily find on the first visit of the day, and a music layer that adds instruments as tiers wake.
 2. **Economy pacing**: levels come only from sales. Orders could count extra, and the level curve could be tuned so tiers arrive roughly every few minutes early on and slower later.
+
+## Pass 3 · 2026-11-04
+
+Scores after pass 2: narrative 5, reactivity 6. The weakest pillar is now the core loop (5): nothing gives a reason to return tomorrow.
+
+**Chosen: a daily gift with a streak** (Delight 7, Differentiation 5, Risk 2).
+- On the first look at the farm each later day, the gift card opens once.
+  - It shows the week's trail of baskets, with today's lifted, and one Collect button.
+  - Closing the card keeps the gift waiting on the goal ticket ("Daily gift").
+- Consecutive days climb a seven-basket week, from 2 wheat up to 2 bread and a tart, then loop. A missed day starts again at day 1.
+- Gifts give goods only: no coins, no sales and no levels. The economy stays driven by play.
+- The gift is saved as an append-only `gift` record carrying its local day.
+  - Replay accepts one gift per day, so a retry or a second device can't pay twice.
+  - Day one never has a gift, and the farm must have been harvested once.
+
+Edge cases:
+- Rules tests cover:
+  - No gift on day one.
+  - One gift per day.
+  - A twin record from another device is ignored.
+  - The streak climbs, breaks after a missed day, survives replay and loops after day 7.
+- A day boundary passed mid-session offers the gift once.
+- Time-zone drift is tolerated by ±1 day between the local and UTC day.
+
+Not checked on a device.
+
+### Next pass candidates
+
+1. **Economy pacing**: orders count toward levels and the early level curve is tuned, so a new tier or unlock arrives every few minutes at first.
+2. **Adaptive music**: a music layer that adds instruments as valley tiers wake.

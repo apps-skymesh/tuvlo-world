@@ -133,6 +133,26 @@ func _initialize() -> void:
 	var again := WorldState.replay(host.records)
 	check(again.orders_filled[0] == 1, "replay keeps delivered orders")
 
+	# Daily gift: none on the first day, one per later day, streak grows it.
+	check(not game.gift_ready(), "no gift on the first day")
+	clock.t += 86400.0
+	check(game.gift_ready(), "a gift waits the next day")
+	check(game.gift_basket() == WorldCatalogue.GIFT_BASKETS[0], "first gift is day 1's basket")
+	var wheat_before: int = game.state.stock.wheat
+	var coins_before_gift := host.coins
+	check(game.claim_gift() == "", "claim the gift")
+	check(game.state.stock.wheat == wheat_before + 2 and host.coins == coins_before_gift, "gift adds goods, never coins")
+	check(game.claim_gift() == "claimed" and not game.gift_ready(), "one gift per day")
+	var twin := {"v": 1, "id": "twin-gift", "type": "gift", "at": clock.t + 5, "seq": 9999, "day": game.today()}
+	check(WorldState.replay(host.records + [twin]).stock.wheat == game.state.stock.wheat, "a second device's gift for the same day is ignored")
+	clock.t += 86400.0
+	check(game.state.gift_streak_on(game.today()) == 2 and game.gift_basket() == WorldCatalogue.GIFT_BASKETS[1], "next day climbs the streak")
+	game.claim_gift()
+	clock.t += 86400.0 * 2
+	check(game.state.gift_streak_on(game.today()) == 1, "a missed day starts the week again")
+	check(WorldState.replay(host.records).gift_streak == 2, "replay keeps the streak")
+	check(WorldCatalogue.gift_basket(8) == WorldCatalogue.GIFT_BASKETS[0], "the week loops after day 7")
+
 	# Quick play: new timers run 5× faster; a running timer keeps its frozen length.
 	WorldCatalogue.speed_override = WorldCatalogue.QUICK_PLAY_SPEED
 	check(WorldCatalogue.duration(WorldCatalogue.FIELD_SECONDS) == 24, "quick play wheat grows in 24 s")

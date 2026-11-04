@@ -21,6 +21,9 @@ var rejected := 0
 var lifetime_sales := 0
 var harvests := 0
 var orders_filled := [0, 0, 0]
+var start_day := -1  # local day of the first record
+var gift_day := -1
+var gift_streak := 0
 var notice := ""
 
 func _init() -> void:
@@ -118,6 +121,7 @@ func apply(r: Dictionary) -> String:
 	if id == "" or seen.has(id): return "duplicate"
 	if int(r.get("v", 0)) != C.SAVE_VERSION: return "version"
 	var at := float(r.get("at", 0))
+	if start_day < 0: start_day = C.local_day(at)
 	var result := _apply(str(r.get("type", "")), r, at)
 	if result == "": seen[id] = true
 	return result
@@ -196,6 +200,15 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			orders_filled[slot] += 1
 			lifetime_sales += int(r.get("amount", 0))
 			notice = "Order delivered"
+		"gift":
+			var day := int(r.get("day", -1))
+			if harvests == 0 or day <= gift_day: return "claimed"
+			if absi(day - floori(at / 86400.0)) > 1: return "invalid"
+			gift_streak = gift_streak_on(day)
+			gift_day = day
+			var basket := C.gift_basket(gift_streak)
+			for good in basket: stock[good] += basket[good]
+			notice = "Daily gift"
 		"swap":
 			var a := find(str(r.get("a", "")))
 			var b := find(str(r.get("b", "")))
@@ -206,6 +219,13 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 		_:
 			return "unknown"
 	return ""
+
+## A gift waits on any day after the first, once the farm has been harvested.
+func gift_ready(today: int) -> bool:
+	return harvests > 0 and today > gift_day and today > start_day
+## The streak a gift claimed on `day` would reach.
+func gift_streak_on(day: int) -> int:
+	return gift_streak + 1 if gift_day >= 0 and day == gift_day + 1 else 1
 
 func open_orders() -> Array:
 	var result := []

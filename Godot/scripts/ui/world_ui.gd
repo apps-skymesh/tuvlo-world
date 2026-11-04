@@ -82,6 +82,7 @@ var reduce_motion := false
 const SETTINGS_PATH := "user://settings.cfg"
 var fly_from := Vector2(-1, -1)
 var last_stock := {}
+var gift_offered_day := -1
 
 # --- small drawing helpers -------------------------------------------------
 
@@ -996,6 +997,8 @@ func _goal() -> Array:
 	var st := game.state
 	var now := game.now()
 	var garden := st.first_of("garden")
+	if game.gift_ready():
+		return [game.gift_basket().keys()[0], "Daily gift", func(): open("gift"), ""]
 	for station in st.jobs:
 		if st.job_remaining(station, now) == 0:
 			var spec: Dictionary = C.RECIPES[st.jobs[station].recipe]
@@ -1215,6 +1218,11 @@ func refresh() -> void:
 	if last_level >= 0 and level > last_level: _celebrate_level(level, last_level)
 	last_coins = coins
 	last_level = level
+	# The first look at the farm each day opens the gift once; after that it
+	# waits on the goal ticket.
+	if mode == "" and title_layer == null and game.gift_ready() and gift_offered_day != game.today():
+		gift_offered_day = game.today()
+		call_deferred("open", "gift")
 	var goal := _goal()
 	if goal[0] in ["seed", "water"]:
 		goal_icon.texture = null
@@ -1273,7 +1281,7 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	goal_box.visible = false
 	dock_node.visible = false
 	if next_mode != "build": main.spot_preview({})
-	panel_changed.emit(next_mode in ["place", "more", "land", "settings"])
+	panel_changed.emit(next_mode in ["place", "more", "land", "settings", "gift"])
 	if was == "" or was != next_mode: pass
 
 func close() -> void:
@@ -1306,6 +1314,7 @@ func _fill() -> void:
 		"more": _fill_more()
 		"land": _fill_land()
 		"settings": _fill_settings()
+		"gift": _fill_gift()
 	if sheet_root and was_new:
 		var target := sheet_root
 		get_tree().process_frame.connect(func(): if is_instance_valid(target): pop_in(target), CONNECT_ONE_SHOT)
@@ -1821,6 +1830,60 @@ func _sheet(title: String) -> VBoxContainer:
 	sheet_root = holder
 	sheet.custom_minimum_size = Vector2(minf(660 * s, viewport.x - 40 * s), 0)
 	return column
+
+## The daily gift: the week's trail of baskets with today's lifted, and one
+## Collect. Closing keeps the gift waiting on the goal ticket.
+func _fill_gift() -> void:
+	var game: WorldGame = main.game
+	if not game.gift_ready():
+		close.call_deferred()
+		return
+	var streak := game.state.gift_streak_on(game.today())
+	var today := (streak - 1) % C.GIFT_BASKETS.size()
+	var column := _sheet("Daily gift")
+	var trail := HBoxContainer.new()
+	trail.alignment = BoxContainer.ALIGNMENT_CENTER
+	trail.add_theme_constant_override("separation", int(8 * s))
+	for i in C.GIFT_BASKETS.size():
+		var basket: Dictionary = C.GIFT_BASKETS[i]
+		var last: String = basket.keys()[-1]
+		var day := PanelContainer.new()
+		var box := tile_box(16, i == today)
+		box.set_content_margin_all(6 * s)
+		if i == today:
+			box.border_color = GOLD
+			box.set_border_width_all(int(2 * s))
+		day.add_theme_stylebox_override("panel", box)
+		day.modulate.a = 1.0 if i <= today else 0.5
+		var stack := VBoxContainer.new()
+		stack.alignment = BoxContainer.ALIGNMENT_CENTER
+		stack.add_theme_constant_override("separation", 0)
+		var number := Label.new()
+		number.text = "✓" if i < today else str(i + 1)
+		number.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		number.add_theme_font_override("font", DISPLAY_SEMI)
+		number.add_theme_font_size_override("font_size", int(15 * s))
+		number.add_theme_color_override("font_color", MINT if i < today else (GOLD if i == today else MUTED))
+		stack.add_child(number)
+		stack.add_child(_icon(icons.get(last), 40 if i == C.GIFT_BASKETS.size() - 1 else 34))
+		day.add_child(stack)
+		day.tooltip_text = "Day %d" % (i + 1)
+		trail.add_child(day)
+	column.add_child(trail)
+	var basket_row := HBoxContainer.new()
+	basket_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	basket_row.add_theme_constant_override("separation", int(18 * s))
+	var basket := game.gift_basket()
+	for good in basket: basket_row.add_child(_good_tile(good, "×%d" % basket[good]))
+	column.add_child(basket_row)
+	var collect := _button("Collect", func():
+		fly_from = basket_row.get_global_rect().get_center()
+		var result := game.claim_gift()
+		close()
+		_act(result))
+	collect.custom_minimum_size.y = 56 * s
+	column.add_child(collect)
+	if was_new: sfx("success")
 
 func _eyebrow(text: String) -> Label:
 	var label := Label.new()

@@ -95,6 +95,14 @@ func deliver(slot: int) -> String:
 	if state.stock.get(want.good, 0) < want.count: return "short"
 	return _commit(_record("order", {"slot": slot, "nth": want.nth, "good": want.good, "count": want.count, "amount": want.reward}), 0, want.reward)
 
+func today() -> int: return C.local_day(now())
+func gift_ready() -> bool: return state.gift_ready(today())
+## The basket waiting today, or empty when there is none.
+func gift_basket() -> Dictionary: return C.gift_basket(state.gift_streak_on(today())) if gift_ready() else {}
+func claim_gift() -> String:
+	if not gift_ready(): return "claimed"
+	return _commit(_record("gift", {"day": today()}))
+
 ## Sales still needed for the next level (solo hosts; 0 when unknown).
 func next_level_progress() -> Vector2:
 	if not host.has_method("earned"): return Vector2.ZERO
