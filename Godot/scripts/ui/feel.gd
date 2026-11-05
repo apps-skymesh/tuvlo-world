@@ -19,6 +19,10 @@ const BUMP_SETTLE_TIME := 0.22
 const PRESS_SCALE := 0.93
 const PRESS_TIME := 0.06
 const RELEASE_TIME := 0.18
+# Cards and tiles (bigger than buttons) squash a little less, and everything
+# pressable dims while held. Reduce Motion keeps the dim, drops the squash.
+const CARD_PRESS_SCALE := 0.96
+const PRESS_DIM := 0.82
 
 # Goods and coins flying to the HUD.
 const FLY_MAX_PER_GAIN := 6

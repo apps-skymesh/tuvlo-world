@@ -534,6 +534,7 @@ static func _drag_start(source: Control, ui, picture: Control, good: String) -> 
 ## When a drag ends without landing anywhere, the good drifts back to its socket.
 static func _drag_end(source: Control, ui, texture: Texture2D, tool: String) -> void:
 	source.modulate.a = 1.0
+	ui.press_out(source)
 	if source.get_viewport().gui_is_drag_successful(): return
 	ui.fly_back(texture, tool, source.get_viewport().get_mouse_position(), source)
 
@@ -857,15 +858,45 @@ func bump(control: Control, size := F.BUMP_SCALE) -> void:
 	tween.tween_property(control, "scale", Vector2.ONE, F.BUMP_SETTLE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _juice(button: BaseButton) -> void:
-	button.button_down.connect(func():
-		if reduce_motion or button.disabled: return
-		button.pivot_offset = button.size / 2
-		_solo_tween(button, "press").tween_property(button, "scale", Vector2.ONE * F.PRESS_SCALE, F.PRESS_TIME))
-	button.button_up.connect(func():
-		if not is_instance_valid(button): return
-		if reduce_motion: button.scale = Vector2.ONE; return
-		_solo_tween(button, "press").tween_property(button, "scale", Vector2.ONE, F.RELEASE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
+	button.button_down.connect(func(): if not button.disabled: press_in(button, F.PRESS_SCALE))
+	button.button_up.connect(func(): press_out(button))
 	button.pressed.connect(func(): last_pressed = button; sfx("tap"); haptic())
+
+## A card, tile or chip that isn't a Button gets the same pressed state: it
+## dims and squashes while the finger is down, and springs back on release,
+## when the finger slides off, or when any touch ends anywhere (a scroll or a
+## drag can swallow the card's own release).
+func _press_card(card: Control) -> void:
+	card.gui_input.connect(func(e):
+		var touch: bool = (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT) or e is InputEventScreenTouch
+		if not touch: return
+		if e.pressed: press_in(card, F.CARD_PRESS_SCALE)
+		else: press_out(card))
+	card.mouse_exited.connect(func(): press_out(card))
+
+var held: Array[Control] = []
+func press_in(control: Control, to_scale: float) -> void:
+	if not is_instance_valid(control): return
+	if control not in held: held.append(control)
+	_dim(control, F.PRESS_DIM, F.PRESS_TIME)
+	if reduce_motion: return
+	control.pivot_offset = control.size / 2
+	_solo_tween(control, "press").tween_property(control, "scale", Vector2.ONE * to_scale, F.PRESS_TIME)
+
+func press_out(control: Control) -> void:
+	held.erase(control)
+	if not is_instance_valid(control): return
+	_dim(control, 1.0, F.RELEASE_TIME)
+	if reduce_motion: control.scale = Vector2.ONE; return
+	if control.scale.is_equal_approx(Vector2.ONE): return
+	_solo_tween(control, "press").tween_property(control, "scale", Vector2.ONE, F.RELEASE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+## Brightness only: alpha stays free for drag sockets and locked tabs.
+func _dim(control: Control, to: float, time: float) -> void:
+	var from := control.modulate.r
+	if is_equal_approx(from, to): return
+	_solo_tween(control, "dim").tween_method(func(v: float):
+		if is_instance_valid(control): control.modulate = Color(v, v, v, control.modulate.a), from, to, time)
 
 ## Icons fly from a screen point to a HUD target along an arc, then the target bumps.
 ## With Reduce Motion the target only acknowledges the gain.
@@ -1214,6 +1245,7 @@ func _build_hud() -> void:
 	goal_box.add_child(goal_row)
 	goal_box.position = Vector2(16 * s + safe.position.x, 14 * s + safe.position.y)
 	goal_box.mouse_filter = Control.MOUSE_FILTER_STOP
+	_press_card(goal_box)
 	goal_box.gui_input.connect(func(e):
 		if ((e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed)) and goal_action.is_valid():
 			sfx("tap"); bump(goal_box); goal_action.call())
@@ -1283,6 +1315,7 @@ func _build_weather_pill() -> void:
 	row.add_child(weather_pill_label)
 	weather_pill.add_child(row)
 	weather_pill.mouse_filter = Control.MOUSE_FILTER_STOP
+	_press_card(weather_pill)
 	weather_pill.gui_input.connect(func(e):
 		if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
 			sfx("tap"); bump(weather_pill); open("weather"))
@@ -1490,6 +1523,7 @@ func _build_barge_chip() -> void:
 	barge_chip.add_child(row)
 	barge_chip.mouse_filter = Control.MOUSE_FILTER_STOP
 	barge_chip.visible = false
+	_press_card(barge_chip)
 	barge_chip.gui_input.connect(func(e):
 		if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
 			sfx("tap"); bump(barge_chip); open("barge"))
@@ -2096,6 +2130,7 @@ func _good_tile(good: String, count_text: String, short := false, draggable := f
 	tile.custom_minimum_size = Vector2(64, 64) * s
 	tile.mouse_filter = Control.MOUSE_FILTER_STOP if draggable or tap.is_valid() else Control.MOUSE_FILTER_IGNORE
 	tile.tooltip_text = C.title(good)
+	if tap.is_valid(): _press_card(tile)
 	if tap.is_valid(): tile.gui_input.connect(func(e): if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed): tap.call())
 	column.add_child(tile)
 	var label := Label.new()
@@ -2347,6 +2382,7 @@ func _product_tab(product: Dictionary, selected: bool, busy: bool) -> Control:
 	star_row.add_child(star_label)
 	facts.add_child(star_row)
 	tab_refs.append({"time": time_label, "star": star_label, "clock": clock, "target": product.target, "seconds": product.seconds, "recipe": product.recipe})
+	_press_card(tab)
 	tab.gui_input.connect(func(e):
 		var up: bool = (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed)
 		if not up or selected: return
@@ -2381,6 +2417,7 @@ func _need_slot(good: String, text: String, state: String) -> Control:
 		tool.custom_minimum_size = Vector2(60, 60) * s
 		tool.tooltip_text = "Seeds" if good == "seed" else "Water"
 		tool.mouse_filter = Control.MOUSE_FILTER_STOP
+		_press_card(tool)
 		tool.gui_input.connect(func(e): if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed): tap.call())
 		socket.add_child(tool)
 	else:
@@ -2394,6 +2431,7 @@ func _need_slot(good: String, text: String, state: String) -> Control:
 		tile.custom_minimum_size = Vector2(60, 60) * s
 		tile.tooltip_text = C.title(good)
 		tile.mouse_filter = Control.MOUSE_FILTER_STOP
+		_press_card(tile)
 		tile.gui_input.connect(func(e): if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed): tap.call())
 		socket.add_child(tile)
 	if state == "used": socket.modulate.a = 0.45
@@ -3485,6 +3523,7 @@ func _order_ticket(order: Dictionary) -> Control:
 	ticket.add_child(column)
 	if not ready:
 		ticket.mouse_filter = Control.MOUSE_FILTER_STOP
+		_press_card(ticket)
 		ticket.gui_input.connect(func(e):
 			if (e is InputEventMouseButton and not e.pressed) or (e is InputEventScreenTouch and not e.pressed): _open_source(order.good))
 	return ticket
@@ -3522,6 +3561,7 @@ func _fill_settings() -> void:
 		line.add_child(label)
 		var toggle := Switch.new()
 		toggle.ui = self
+		_press_card(toggle)
 		toggle.on = entry[1]
 		toggle.knob = 1.0 if entry[1] else 0.0
 		toggle.custom_minimum_size = Vector2(58, 34) * s
@@ -3578,6 +3618,8 @@ func _input(event: InputEvent) -> void:
 		down = event.pressed; up = not event.pressed; at = event.position
 	else:
 		return
+	if up:
+		for control in held.duplicate(): press_out(control)
 	if down:
 		press_at = at
 		press_time = Time.get_ticks_msec() / 1000.0
