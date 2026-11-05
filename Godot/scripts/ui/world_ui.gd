@@ -18,6 +18,8 @@ const GLASS := Color(0.075, 0.15, 0.14, 0.86)
 const GLASS_DEEP := Color(0.04, 0.09, 0.085, 0.92)
 const EDGE := Color(1, 1, 1, 0.16)
 const TILE := Color(1, 1, 1, 0.075)
+const RECESS := Color(0, 0, 0, 0.26)  # a recessed plate inside a card
+const RECESS_LIP := 0.1               # its lit bottom edge
 const IVORY := Color("FFF8EA")
 const MUTED := Color(1, 0.97, 0.9, 0.62)
 const GOLD := Color("F7C04A")
@@ -2201,7 +2203,12 @@ func _production_window(title: String) -> Dictionary:
 	body.add_theme_constant_override("separation", int(14 * s))
 	column.add_child(body)
 	var needs_plate := PanelContainer.new()
+	# A recessed well: darker than the card, lit only along its bottom lip.
 	var plate_box := tile_box(24)
+	plate_box.bg_color = RECESS
+	plate_box.border_color = Color(1, 1, 1, RECESS_LIP)
+	plate_box.set_border_width_all(0)
+	plate_box.border_width_bottom = int(maxf(1, 1.5 * s))
 	plate_box.set_content_margin_all(12 * s)
 	needs_plate.add_theme_stylebox_override("panel", plate_box)
 	needs_plate.custom_minimum_size = Vector2(138 * s, 0)

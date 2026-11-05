@@ -39,6 +39,20 @@ const HILL_NEAR := Color("6FA35E")
 const SOIL := Color("7A5235")
 const SOIL_DARK := Color("5C3C26")
 const LAMP := Color(1.0, 0.82, 0.5)
+# Depth (rung 3): one light from the upper left. Surfaces are lit at the top
+# and fall into shade below; things sit on the floor through contact shadows;
+# the scene reads as a window set into the card.
+const LIT_TOP := 0.16       # how much a surface brightens at its top edge
+const LIT_LOW := 0.26       # how much it darkens at its foot
+const LIT_SIDE := 0.06      # extra light on the left, shade on the right
+const RIM_ALPHA := 0.22     # the bright lip along a lit top edge
+const CONTACT_ALPHA := 0.38 # soft shadow where a thing meets the ground
+const AO_ALPHA := 0.32      # where the wall meets the floor
+const LAMP_POOL := 0.16     # the lamp's warm pool on the floor
+const HAZE := 0.3           # far hills fade toward the sky
+const INSET_DEPTH := 22.0   # inner shadow along the window's top edge (pt)
+const INSET_ALPHA := 0.42
+const LIP_ALPHA := 0.12     # the window's lit bottom lip
 
 static var _vertical := {}
 static var _radial: GradientTexture2D
@@ -103,15 +117,15 @@ func tray_global() -> Vector2:
 
 # --- shared paint ------------------------------------------------------------
 
-static func _gradient(top: Color, low: Color) -> GradientTexture2D:
-	var key := top.to_html() + low.to_html()
+static func _gradient(top: Color, low: Color, across := false) -> GradientTexture2D:
+	var key := top.to_html() + low.to_html() + ("h" if across else "")
 	if not _vertical.has(key):
 		var g := Gradient.new()
 		g.set_color(0, top); g.set_color(1, low)
 		var tex := GradientTexture2D.new()
 		tex.gradient = g
-		tex.fill_from = Vector2(0, 0); tex.fill_to = Vector2(0, 1)
-		tex.width = 4; tex.height = 128
+		tex.fill_from = Vector2(0, 0); tex.fill_to = Vector2(1, 0) if across else Vector2(0, 1)
+		tex.width = 128 if across else 4; tex.height = 4 if across else 128
 		_vertical[key] = tex
 	return _vertical[key]
 
@@ -145,6 +159,34 @@ func _round_rect(rect: Rect2, radius: float, color: Color, border := Color(0, 0,
 		box.set_border_width_all(int(maxf(1, width)))
 	draw_style_box(box, rect)
 
+## A lit block: brighter along its top, shaded at its foot, with a bright lip.
+func _lit_rect(rect: Rect2, color: Color, radius := 0.0) -> void:
+	if radius > 0: _round_rect(rect, radius, color)
+	else: draw_rect(rect, color)
+	var inner := rect.grow_individual(-radius * 0.5, -radius * 0.25, -radius * 0.5, -radius * 0.25)
+	if inner.size.x <= 0 or inner.size.y <= 0: return
+	var top := Rect2(inner.position, Vector2(inner.size.x, inner.size.y * 0.45))
+	draw_texture_rect(_gradient(Color(1, 1, 1, LIT_TOP), Color(1, 1, 1, 0)), top, false)
+	var low := Rect2(inner.position + Vector2(0, inner.size.y * 0.4), Vector2(inner.size.x, inner.size.y * 0.6))
+	draw_texture_rect(_gradient(Color(0, 0, 0, 0), Color(0, 0, 0, LIT_LOW)), low, false)
+	draw_line(Vector2(inner.position.x, rect.position.y + _k()), Vector2(inner.end.x, rect.position.y + _k()), Color(1, 1, 1, RIM_ALPHA), maxf(1, 1.5 * _k()))
+
+## A lit shape: each corner takes the light by its height and side.
+func _lit_poly(points: PackedVector2Array, color: Color) -> void:
+	var box := Rect2(points[0], Vector2.ZERO)
+	for p in points: box = box.expand(p)
+	var colors := PackedColorArray()
+	for p in points:
+		var v := (p.y - box.position.y) / maxf(1.0, box.size.y)
+		var u := (p.x - box.position.x) / maxf(1.0, box.size.x)
+		var c := color.lightened(LIT_TOP * (1.0 - v)) if v < 0.5 else color.darkened(LIT_LOW * (v - 0.5) * 2.0)
+		colors.append(c.lightened(LIT_SIDE * (1.0 - u)) if u < 0.5 else c.darkened(LIT_SIDE * (u - 0.5) * 2.0))
+	draw_polygon(points, colors)
+
+## The soft dark where something stands on the ground.
+func _contact(at: Vector2, half_width: float) -> void:
+	_glow(at, Vector2(half_width, half_width * 0.2), Color(0, 0, 0, CONTACT_ALPHA))
+
 func _good(good: String, at: Vector2, side: float, alpha := 1.0) -> void:
 	var tex: Texture2D = ui.icons.get(good)
 	if tex == null: return
@@ -163,12 +205,23 @@ func _draw() -> void:
 	if not working and not done and kind != "build": _draw_slots()
 	elif working: _draw_last_drop()
 	_draw_bursts()
+	_draw_inset()
 	_draw_clock_pill()
 	if hover_until > _now():
 		# A held good over the scene: gold when it can go in, a cool rim when not.
 		var rim := WorldUI.GOLD if hover_valid else Color(1, 1, 1, 0.5)
 		_round_rect(Rect2(Vector2(3, 3) * _k(), size - Vector2(6, 6) * _k()), 22 * _k(), Color(0, 0, 0, 0), Color(rim, 0.9), 3 * _k())
 		if hover_valid: _glow(size / 2, size * 0.6, Color(WorldUI.GOLD, 0.1))
+
+## The scene sits behind the card's surface: shadow falls in from the top and
+## sides, and the bottom lip catches the light.
+func _draw_inset() -> void:
+	var k := _k()
+	var d := INSET_DEPTH * k
+	draw_texture_rect(_gradient(Color(0, 0, 0, INSET_ALPHA), Color(0, 0, 0, 0)), Rect2(0, 0, size.x, d), false)
+	draw_texture_rect(_gradient(Color(0, 0, 0, INSET_ALPHA * 0.6), Color(0, 0, 0, 0), true), Rect2(0, 0, d * 0.7, size.y), false)
+	draw_texture_rect(_gradient(Color(0, 0, 0, 0), Color(0, 0, 0, INSET_ALPHA * 0.6), true), Rect2(size.x - d * 0.7, 0, d * 0.7, size.y), false)
+	draw_line(Vector2(24 * k, size.y - 1.5 * k), Vector2(size.x - 24 * k, size.y - 1.5 * k), Color(1, 1, 1, LIP_ALPHA), maxf(1, 1.5 * k))
 
 ## A good or a field tool, with an optional squash.
 func _item(good: String, at: Vector2, side: float, alpha := 1.0, squash := Vector2.ONE) -> void:
@@ -367,14 +420,18 @@ func _draw_workroom() -> void:
 	draw_colored_polygon(PackedVector2Array([lamp + Vector2(-16, 12) * k, lamp + Vector2(16, 12) * k, lamp + Vector2(8, 0) * k, lamp + Vector2(-8, 0) * k]), Color("C98A1C"))
 	_ellipse(lamp + Vector2(0, 13 * k), Vector2(7, 4) * k, Color(1, 0.93, 0.7))
 	# Floor boards in gentle perspective.
-	draw_rect(Rect2(0, floor_y, w, h - floor_y), FLOOR)
-	draw_rect(Rect2(0, floor_y, w, 3 * k), Color(1, 1, 1, 0.07))
+	draw_texture_rect(_gradient(FLOOR.lightened(0.1), FLOOR.darkened(0.4)), Rect2(0, floor_y, w, h - floor_y), false)
+	_glow(Vector2(lamp.x, floor_y + (h - floor_y) * 0.45), Vector2(w * 0.32, (h - floor_y) * 0.6), Color(LAMP, LAMP_POOL))
+	draw_texture_rect(_gradient(Color(0, 0, 0, 0), Color(0, 0, 0, AO_ALPHA)), Rect2(0, floor_y - 18 * k, w, 18 * k), false)
+	draw_texture_rect(_gradient(Color(0, 0, 0, AO_ALPHA), Color(0, 0, 0, 0)), Rect2(0, floor_y, w, 12 * k), false)
+	draw_rect(Rect2(0, floor_y, w, 1.5 * k), Color(1, 1, 1, 0.06))
 	for i in 9:
 		var fx := w * (i + 0.5) / 9.0
 		draw_line(Vector2(fx, floor_y), Vector2(w / 2 + (fx - w / 2) * 1.6, h), Color(0, 0, 0, 0.22), maxf(1, 1.2 * k))
 	# Machine and belt.
 	var belt_y := h * 0.69
 	var machine := Vector2(w * 0.5, belt_y)
+	_contact(Vector2(machine.x, h * 0.9), w * 0.2)
 	_draw_belt(belt_y)
 	var kick := _kick()
 	draw_set_transform(machine * (1.0 - kick), 0, Vector2(kick, kick))
@@ -402,10 +459,11 @@ func _draw_belt(y: float) -> void:
 	var band := 18.0 * k
 	# Trestle legs and the belt's shadow on the floor.
 	for lx in [x0 + 24 * k, size.x * 0.5, x1 - 24 * k]:
-		draw_rect(Rect2(lx - 4 * k, y + band * 0.5, 8 * k, size.y * 0.2), Color("24190F"))
+		_lit_rect(Rect2(lx - 4 * k, y + band * 0.5, 8 * k, size.y * 0.2), Color("2E2116"))
+		_contact(Vector2(lx, y + band * 0.5 + size.y * 0.2), 12 * k)
 	_ellipse(Vector2(size.x / 2, size.y * 0.93), Vector2(size.x * 0.46, 10 * k), Color(0, 0, 0, 0.25))
 	# Rail, belt surface with sliding slats, brass trim and rivets.
-	_round_rect(Rect2(x0, y - band * 0.5, x1 - x0, band * 1.35), band * 0.6, RAIL)
+	_lit_rect(Rect2(x0, y - band * 0.5, x1 - x0, band * 1.35), RAIL, band * 0.6)
 	_round_rect(Rect2(x0 + 6 * k, y - band * 0.5, x1 - x0 - 12 * k, band * 0.8), band * 0.4, BELT)
 	var step := 16.0 * k
 	var shift := fmod(t * (46.0 * k if working else 0.0), step)
@@ -457,8 +515,7 @@ func _draw_tray(at: Vector2) -> void:
 	var k := _k()
 	var plate := Rect2(at.x - 38 * k, at.y - 8 * k, 76 * k, 14 * k)
 	_round_rect(plate.grow(2 * k), 9 * k, Color("2A1D15"))
-	_round_rect(plate, 8 * k, Color("8A5E3C"))
-	draw_line(plate.position + Vector2(6 * k, 2 * k), Vector2(plate.end.x - 6 * k, plate.position.y + 2 * k), Color(1, 1, 1, 0.18), 1.5 * k)
+	_lit_rect(plate, Color("8A5E3C"), 8 * k)
 	if not done or output == "": return
 	var lift := 0.0 if ui.reduce_motion else sin(t * 2.4) * 4 * k
 	_glow(at - Vector2(0, 34 * k), Vector2(70, 70) * k, Color(WorldUI.GOLD, 0.55))
@@ -497,14 +554,14 @@ func _draw_mill(base: Vector2) -> void:
 	# Hopper pouring grain into the stones.
 	var stone := base + Vector2(0, -size.y * 0.12)
 	var hop_top := stone + Vector2(0, -size.y * 0.32)
-	draw_colored_polygon(PackedVector2Array([hop_top + Vector2(-34, 0) * k, hop_top + Vector2(34, 0) * k, hop_top + Vector2(9, 34) * k, hop_top + Vector2(-9, 34) * k]), Color("A0703F"))
+	_lit_poly(PackedVector2Array([hop_top + Vector2(-34, 0) * k, hop_top + Vector2(34, 0) * k, hop_top + Vector2(9, 34) * k, hop_top + Vector2(-9, 34) * k]), Color("A0703F"))
 	draw_line(hop_top + Vector2(-34, 0) * k, hop_top + Vector2(34, 0) * k, Color("C99A5B"), 3 * k)
 	if working:
 		for i in 7:
 			var u := fposmod(t * 1.6 + i / 7.0, 1.0)
 			draw_circle(hop_top + Vector2(sin(i * 2.1) * 3 * k, 36 * k + u * (size.y * 0.1)), 2.2 * k, Color(WorldUI.GOLD, 1.0 - u))
 	# Two stones on a wooden tub; the upper stone turns.
-	_round_rect(Rect2(stone.x - 62 * k, stone.y + 4 * k, 124 * k, base.y - stone.y - 10 * k), 10 * k, Color("8A5A3B"))
+	_lit_rect(Rect2(stone.x - 62 * k, stone.y + 4 * k, 124 * k, base.y - stone.y - 10 * k), Color("8A5A3B"), 10 * k)
 	for i in 3: draw_line(Vector2(stone.x - 62 * k, stone.y + (16 + i * 14) * k), Vector2(stone.x + 62 * k, stone.y + (16 + i * 14) * k), Color(0, 0, 0, 0.18), 2 * k)
 	_ellipse(stone + Vector2(0, 4 * k), Vector2(58, 14) * k, Color("8F887D"))
 	_ellipse(stone, Vector2(54, 13) * k, Color("BDB5A8"))
@@ -523,18 +580,17 @@ func _draw_oven(base: Vector2) -> void:
 	var c := base + Vector2(0, -12 * k)
 	var r := size.y * 0.33
 	# Chimney and its smoke.
-	draw_rect(Rect2(c.x + r * 0.35, c.y - r * 1.35, r * 0.28, r * 0.6), Color("8C3F2A"))
+	_lit_rect(Rect2(c.x + r * 0.35, c.y - r * 1.35, r * 0.28, r * 0.6), Color("8C3F2A"))
 	draw_rect(Rect2(c.x + r * 0.32, c.y - r * 1.38, r * 0.34, r * 0.08), Color("6E2F1F"))
 	if working:
 		for i in 4:
 			var u := fposmod(t * 0.35 + i / 4.0, 1.0)
 			draw_circle(Vector2(c.x + r * 0.49 + sin(u * 5 + i) * 8 * k, c.y - r * 1.4 - u * size.y * 0.2), (6 + u * 12) * k, Color(0.9, 0.88, 0.85, 0.28 * (1.0 - u)))
 	# A brick dome on a stone plinth.
-	draw_rect(Rect2(c.x - r * 1.15, c.y - 4 * k, r * 2.3, base.y - c.y + 10 * k), Color("7E756A"))
-	draw_rect(Rect2(c.x - r * 1.15, c.y - 4 * k, r * 2.3, 4 * k), Color(1, 1, 1, 0.12))
+	_lit_rect(Rect2(c.x - r * 1.15, c.y - 4 * k, r * 2.3, base.y - c.y + 10 * k), Color("7E756A"))
 	var dome := PackedVector2Array()
 	for i in 33: dome.append(c + Vector2.from_angle(PI + PI * i / 32.0) * r * Vector2(1.05, 1.0))
-	draw_colored_polygon(dome, Color("B5583A"))
+	_lit_poly(dome, Color("B5583A"))
 	for row in 4:
 		var rr := r * (0.36 + row * 0.2)
 		draw_arc(c, rr, PI, TAU, 40, Color(0, 0, 0, 0.18), 1.5 * k, true)
@@ -570,12 +626,11 @@ func _draw_pantry(base: Vector2) -> void:
 		draw_rect(Rect2(jx - 9 * k, shelf_y - 35 * k, 18 * k, 6 * k), Color("8A5E3C"))
 		draw_line(Vector2(jx - 6 * k, shelf_y - 24 * k), Vector2(jx - 6 * k, shelf_y - 8 * k), Color(1, 1, 1, 0.35), 2 * k)
 	var top := base.y - size.y * 0.16
-	draw_rect(Rect2(base.x - 86 * k, top, 172 * k, 12 * k), Color("A0703F"))
-	draw_rect(Rect2(base.x - 86 * k, top, 172 * k, 2.5 * k), Color(1, 1, 1, 0.18))
+	_lit_rect(Rect2(base.x - 86 * k, top, 172 * k, 12 * k), Color("A0703F"))
 	for lx in [-74, 74]: draw_rect(Rect2(base.x + (lx - 5) * k, top + 12 * k, 10 * k, base.y - top - 12 * k), Color("6E4A31"))
 	# The crate; its lid lifts each time something drops in.
 	var crate := Rect2(base.x - 46 * k, top - 52 * k, 92 * k, 52 * k)
-	_round_rect(crate, 6 * k, Color("C08A4E"))
+	_lit_rect(crate, Color("C08A4E"), 6 * k)
 	for i in 3: draw_line(Vector2(crate.position.x, crate.position.y + (12 + i * 14) * k), Vector2(crate.end.x, crate.position.y + (12 + i * 14) * k), Color(0, 0, 0, 0.2), 2 * k)
 	var open := 0.15 + (0.35 + 0.3 * sin(t * 2.6) if working else 0.0)
 	var hinge := Vector2(crate.end.x, crate.position.y)
@@ -594,15 +649,16 @@ func _draw_barn(base: Vector2) -> void:
 	# Hay bales stacked at the back.
 	for i in 3:
 		var bale := Rect2(base.x - size.x * 0.27 + i * 60 * k, base.y - size.y * 0.3 - (24 * k if i == 1 else 0.0), 56 * k, 36 * k)
-		_round_rect(bale, 8 * k, Color("E3C25A"))
+		_lit_rect(bale, Color("E3C25A"), 8 * k)
 		for j in 4: draw_line(bale.position + Vector2(6 * k, (7 + j * 8) * k), bale.position + Vector2(bale.size.x - 6 * k, (7 + j * 8) * k), Color(0.6, 0.45, 0.1, 0.35), 1.2 * k)
 		draw_line(bale.position + Vector2(18 * k, 0), bale.position + Vector2(18 * k, bale.size.y), Color("8A5E3C"), 2 * k)
 	# The manger the belt feeds, and a milk churn.
 	var trough := Rect2(base.x - 64 * k, base.y - 34 * k, 128 * k, 28 * k)
-	_round_rect(trough, 6 * k, Color("8A5A3B"))
+	_lit_rect(trough, Color("8A5A3B"), 6 * k)
 	draw_rect(Rect2(trough.position.x + 6 * k, trough.position.y + 3 * k, trough.size.x - 12 * k, 8 * k), Color("E3C25A"))
 	var churn := Vector2(base.x + size.x * 0.24, base.y - 8 * k)
-	_round_rect(Rect2(churn.x - 16 * k, churn.y - 54 * k, 32 * k, 54 * k), 9 * k, Color("C9D3D6"))
+	_contact(churn, 22 * k)
+	_lit_rect(Rect2(churn.x - 16 * k, churn.y - 54 * k, 32 * k, 54 * k), Color("C9D3D6"), 9 * k)
 	draw_rect(Rect2(churn.x - 10 * k, churn.y - 62 * k, 20 * k, 9 * k), Color("A9B5B9"))
 	draw_line(Vector2(churn.x - 9 * k, churn.y - 46 * k), Vector2(churn.x - 9 * k, churn.y - 10 * k), Color(1, 1, 1, 0.45), 2.5 * k)
 	# Two sheep at the manger; heads dip while they eat.
@@ -625,12 +681,12 @@ func _draw_grill(base: Vector2) -> void:
 	var k := _k()
 	# Copper hood, smoke, then the iron grate over a brick firebox.
 	var hood_y := base.y - size.y * 0.52
-	draw_colored_polygon(PackedVector2Array([Vector2(base.x - 80 * k, hood_y + 40 * k), Vector2(base.x + 80 * k, hood_y + 40 * k),
+	_lit_poly(PackedVector2Array([Vector2(base.x - 80 * k, hood_y + 40 * k), Vector2(base.x + 80 * k, hood_y + 40 * k),
 		Vector2(base.x + 30 * k, hood_y), Vector2(base.x - 30 * k, hood_y)]), Color("B87333"))
 	draw_line(Vector2(base.x - 80 * k, hood_y + 40 * k), Vector2(base.x + 80 * k, hood_y + 40 * k), Color("E0A060"), 3 * k)
-	draw_rect(Rect2(base.x - 12 * k, 0, 24 * k, hood_y), Color("8E5A2A"))
+	_lit_rect(Rect2(base.x - 12 * k, 0, 24 * k, hood_y), Color("8E5A2A"))
 	var box := Rect2(base.x - 78 * k, base.y - 58 * k, 156 * k, 52 * k)
-	_round_rect(box, 6 * k, Color("A04A32"))
+	_lit_rect(box, Color("A04A32"), 6 * k)
 	for row in 3:
 		draw_line(Vector2(box.position.x, box.position.y + (14 + row * 13) * k), Vector2(box.end.x, box.position.y + (14 + row * 13) * k), Color(0, 0, 0, 0.2), 1.5 * k)
 	var coals := box.position.y + 6 * k
@@ -687,12 +743,15 @@ func _draw_outdoors() -> void:
 	var far := PackedVector2Array([Vector2(0, h)])
 	for i in 25: far.append(Vector2(w * i / 24.0, horizon - 18 * k - sin(i * 0.6) * 14 * k))
 	far.append(Vector2(w, h))
-	draw_colored_polygon(far, HILL_FAR)
+	_lit_poly(far, HILL_FAR.lerp(SKY_LOW, HAZE))
 	var near := PackedVector2Array([Vector2(0, h)])
 	for i in 25: near.append(Vector2(w * i / 24.0, horizon + 10 * k - sin(i * 0.4 + 1.5) * 10 * k))
 	near.append(Vector2(w, h))
-	draw_colored_polygon(near, HILL_NEAR)
-	draw_rect(Rect2(0, h * 0.62, w, h * 0.38), Color("7DB06A"))
+	_lit_poly(near, HILL_NEAR)
+	# Sunlit ridge on the near hill, then a meadow that darkens toward us.
+	var ridge := near.slice(1, near.size() - 1)
+	draw_polyline(ridge, Color(1, 0.97, 0.8, RIM_ALPHA), maxf(1, 2 * k), true)
+	draw_texture_rect(_gradient(Color("86B873"), Color("6A9E58")), Rect2(0, h * 0.62, w, h * 0.38), false)
 	if kind != "fishing":
 		# Tufts of grass and a few wildflowers on the near meadow.
 		for i in 16:
@@ -721,8 +780,9 @@ func _draw_fields() -> void:
 	for f in count:
 		var stage: int = stages[f] if f < stages.size() else 0
 		var bed := Rect2(size.x * 0.1 + f * (bed_w + 14 * k), top, bed_w, size.y * 0.3)
+		_contact(Vector2(bed.get_center().x, bed.end.y + 2 * k), bed.size.x * 0.55)
 		_round_rect(bed.grow(3 * k), 12 * k, SOIL_DARK)
-		_round_rect(bed, 10 * k, SOIL)
+		_lit_rect(bed, SOIL, 10 * k)
 		var rows := 3
 		for r in rows:
 			var ry := bed.position.y + bed.size.y * (r + 0.7) / (rows + 0.4)
@@ -752,7 +812,8 @@ func _draw_fields() -> void:
 				draw_circle(at, 2 * k, Color(0.7, 0.88, 1.0, 0.6 * (1.0 - u)))
 	# The harvest cart at the end of the line.
 	var cart := Vector2(size.x * 0.86, size.y * 0.8)
-	_round_rect(Rect2(cart.x - 44 * k, cart.y - 30 * k, 88 * k, 30 * k), 6 * k, Color("A0703F"))
+	_contact(cart + Vector2(0, 16 * k), 56 * k)
+	_lit_rect(Rect2(cart.x - 44 * k, cart.y - 30 * k, 88 * k, 30 * k), Color("A0703F"), 6 * k)
 	for i in 3: draw_line(Vector2(cart.x - 44 * k, cart.y - (22 - i * 8) * k), Vector2(cart.x + 44 * k, cart.y - (22 - i * 8) * k), Color(0, 0, 0, 0.18), 1.5 * k)
 	for wx in [-28, 28]:
 		draw_circle(cart + Vector2(wx * k, 4 * k), 12 * k, Color("5E3F2A"))
@@ -790,7 +851,8 @@ func _draw_orchard() -> void:
 			var u := fposmod(t * 0.5 + i / 6.0, 1.0)
 			draw_circle(base + Vector2(-60 * k + i * 24 * k, -u * 40 * k), 2 * k, Color(0.7, 0.88, 1.0, 0.6 * (1.0 - u)))
 	var basket := Vector2(size.x * 0.8, size.y * 0.84)
-	draw_colored_polygon(PackedVector2Array([basket + Vector2(-40, -26) * k, basket + Vector2(40, -26) * k, basket + Vector2(30, 6) * k, basket + Vector2(-30, 6) * k]), Color("C08A4E"))
+	_contact(basket + Vector2(0, 8 * k), 44 * k)
+	_lit_poly(PackedVector2Array([basket + Vector2(-40, -26) * k, basket + Vector2(40, -26) * k, basket + Vector2(30, 6) * k, basket + Vector2(-30, 6) * k]), Color("C08A4E"))
 	for i in 3: draw_line(basket + Vector2(-38 + i * 2, -18 + i * 8) * k, basket + Vector2(38 - i * 2, -18 + i * 8) * k, Color(0, 0, 0, 0.2), 1.5 * k)
 	draw_arc(basket + Vector2(0, -26 * k), 32 * k, PI, TAU, 24, Color("9E6B38"), 4 * k, true)
 	if done:
@@ -861,7 +923,7 @@ func _draw_fishing() -> void:
 	# The jetty and the angler's rod.
 	var deck := Rect2(w * 0.16, shore - 6 * k, w * 0.3, 16 * k)
 	for leg in [0.2, 0.32, 0.44]: draw_rect(Rect2(w * leg - 4 * k, shore, 8 * k, 46 * k), Color("5E3F2A"))
-	_round_rect(deck, 4 * k, Color("A0703F"))
+	_lit_rect(deck, Color("A0703F"), 4 * k)
 	for i in 7: draw_line(Vector2(deck.position.x + i * deck.size.x / 7, deck.position.y), Vector2(deck.position.x + i * deck.size.x / 7, deck.end.y), Color(0, 0, 0, 0.2), 1.5 * k)
 	var rod_base := Vector2(w * 0.42, shore - 8 * k)
 	var tip := Vector2(w * 0.62, shore - 110 * k)
@@ -903,10 +965,11 @@ func _draw_hive() -> void:
 		draw_circle(trunk + p * k, 30 * k, Color("6CBF5C"))
 	# The hive: stacked white boxes with a little roof.
 	var hive := Vector2(w * 0.5, h * 0.82)
+	_contact(hive + Vector2(0, 30 * k), 60 * k)
 	draw_rect(Rect2(hive.x - 40 * k, hive.y, 80 * k, 30 * k), Color("6E4A31"))
 	for i in 3:
 		var box := Rect2(hive.x - 46 * k, hive.y - (i + 1) * 34 * k, 92 * k, 32 * k)
-		_round_rect(box, 4 * k, Color("F4E8CF") if i != 1 else Color("EBD9B4"))
+		_lit_rect(box, Color("F4E8CF") if i != 1 else Color("EBD9B4"), 4 * k)
 		draw_line(box.position + Vector2(4 * k, 2 * k), Vector2(box.end.x - 4 * k, box.position.y + 2 * k), Color(1, 1, 1, 0.5), 1.5 * k)
 	var roof := hive.y - 3 * 34 * k
 	draw_colored_polygon(PackedVector2Array([Vector2(hive.x - 58 * k, roof), Vector2(hive.x + 58 * k, roof), Vector2(hive.x, roof - 34 * k)]), Color("C8553D"))
@@ -930,7 +993,8 @@ func _draw_hive() -> void:
 	# The honey jar waits on a stump.
 	var stump := Vector2(w * 0.86, h * 0.86)
 	_ellipse(stump, Vector2(34, 10) * k, Color("8A5A3B"))
-	draw_rect(Rect2(stump.x - 34 * k, stump.y, 68 * k, 26 * k), Color("7A5235"))
+	_contact(stump + Vector2(0, 26 * k), 44 * k)
+	_lit_rect(Rect2(stump.x - 34 * k, stump.y, 68 * k, 26 * k), Color("7A5235"))
 	_ready_product(stump - Vector2(0, 40 * k), 58)
 
 ## The greenhouse: glass walls full of light, shelves of pots whose herbs grow
@@ -954,11 +1018,11 @@ func _draw_greenhouse() -> void:
 	var grow := 1.0 if done else (progress if progress >= 0 else 0.15)
 	for row in 2:
 		var shelf := h * (0.48 + row * 0.24)
-		draw_rect(Rect2(w * 0.1, shelf, w * 0.66, 9 * k), Color("A0703F"))
+		_lit_rect(Rect2(w * 0.1, shelf, w * 0.66, 9 * k), Color("A0703F"))
 		for p in 6:
 			var px := w * (0.15 + p * 0.11)
 			var pot := Rect2(px - 18 * k, shelf - 28 * k, 36 * k, 28 * k)
-			draw_colored_polygon(PackedVector2Array([pot.position, Vector2(pot.end.x, pot.position.y), pot.end - Vector2(4 * k, 0), Vector2(pot.position.x + 4 * k, pot.end.y)]), Color("C8693D"))
+			_lit_poly(PackedVector2Array([pot.position, Vector2(pot.end.x, pot.position.y), pot.end - Vector2(4 * k, 0), Vector2(pot.position.x + 4 * k, pot.end.y)]), Color("C8693D"))
 			draw_rect(Rect2(pot.position.x - 2 * k, pot.position.y, pot.size.x + 4 * k, 6 * k), Color("D9814F"))
 			var tall := (6 + 34 * grow) * k
 			var sway := 0.0 if ui.reduce_motion else sin(t * 1.8 + p + row) * 2 * k
@@ -982,9 +1046,9 @@ func _draw_workshop(base: Vector2) -> void:
 	var k := _k()
 	var frame := Rect2(base.x - 90 * k, base.y - size.y * 0.5, 180 * k, size.y * 0.42)
 	for side in [frame.position.x, frame.end.x - 10 * k]:
-		draw_rect(Rect2(side, frame.position.y, 10 * k, frame.size.y + 8 * k), Color("6E4A31"))
-	draw_rect(Rect2(frame.position.x - 6 * k, frame.position.y - 6 * k, frame.size.x + 12 * k, 12 * k), Color("8A5A3B"))
-	draw_rect(Rect2(frame.position.x - 6 * k, frame.end.y - 8 * k, frame.size.x + 12 * k, 12 * k), Color("8A5A3B"))
+		_lit_rect(Rect2(side, frame.position.y, 10 * k, frame.size.y + 8 * k), Color("6E4A31"))
+	_lit_rect(Rect2(frame.position.x - 6 * k, frame.position.y - 6 * k, frame.size.x + 12 * k, 12 * k), Color("8A5A3B"))
+	_lit_rect(Rect2(frame.position.x - 6 * k, frame.end.y - 8 * k, frame.size.x + 12 * k, 12 * k), Color("8A5A3B"))
 	for i in 14:
 		var wx := frame.position.x + 18 * k + i * (frame.size.x - 36 * k) / 13.0
 		draw_line(Vector2(wx, frame.position.y + 6 * k), Vector2(wx, frame.end.y - 8 * k), Color("E8D3A0"), 1.5 * k)
