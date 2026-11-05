@@ -396,6 +396,50 @@ class Atmosphere extends Control:
 			var c1 := base + 1 + ((j + 1) % steps) * 2
 			indices.append_array([base, c0, c1, c0, c0 + 1, c1 + 1, c0, c1 + 1, c1])
 
+## Rowan's barge as a small emblem: hull, cabin, mast and striped sail over
+## two strokes of water. Drawn in code so it stays crisp at every size.
+class BoatIcon extends Control:
+	var muted := false
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		var k := minf(w, h) / 48.0
+		var a := 0.55 if muted else 1.0
+		var hull := PackedVector2Array([Vector2(w * 0.08, h * 0.62), Vector2(w * 0.92, h * 0.62), Vector2(w * 0.8, h * 0.8), Vector2(w * 0.2, h * 0.8)])
+		draw_colored_polygon(hull, Color(0.48, 0.29, 0.17, a))
+		draw_line(Vector2(w * 0.08, h * 0.62), Vector2(w * 0.92, h * 0.62), Color(0.33, 0.19, 0.1, a), 2.2 * k, true)
+		draw_rect(Rect2(w * 0.16, h * 0.45, w * 0.22, h * 0.17), Color(0.94, 0.89, 0.78, a))
+		draw_rect(Rect2(w * 0.13, h * 0.41, w * 0.28, h * 0.06), Color(WorldUI.AWNING_RED, a))
+		draw_line(Vector2(w * 0.58, h * 0.62), Vector2(w * 0.58, h * 0.1), Color(0.42, 0.27, 0.15, a), 2.0 * k, true)
+		var sail := PackedVector2Array([Vector2(w * 0.61, h * 0.14), Vector2(w * 0.61, h * 0.56), Vector2(w * 0.88, h * 0.56)])
+		draw_colored_polygon(sail, Color(0.96, 0.93, 0.85, a))
+		draw_colored_polygon(PackedVector2Array([Vector2(w * 0.61, h * 0.4), Vector2(w * 0.61, h * 0.47), Vector2(w * 0.8, h * 0.47), Vector2(w * 0.74, h * 0.4)]), Color(WorldUI.AWNING_RED, a))
+		var water := Color(0.45, 0.78, 0.8, 0.9 * a)
+		for row in 2:
+			var y := h * (0.87 + row * 0.08)
+			var points := PackedVector2Array()
+			for i in 13:
+				var x := w * (0.1 + row * 0.08 + i * 0.065)
+				points.append(Vector2(x, y + sin(i * 1.4) * 1.4 * k))
+			draw_polyline(points, water, 1.8 * k, true)
+
+## A slim rounded progress bar on paper or glass.
+class FillBar extends Control:
+	var share := 0.0
+	var track := Color(0, 0, 0, 0.12)
+	var fill := Color("3F8F5A")
+	func _draw() -> void:
+		var r := size.y / 2
+		var box := StyleBoxFlat.new()
+		box.bg_color = track
+		box.set_corner_radius_all(int(r))
+		draw_style_box(box, Rect2(Vector2.ZERO, size))
+		if share > 0.0:
+			var inner := StyleBoxFlat.new()
+			inner.bg_color = fill
+			inner.set_corner_radius_all(int(r))
+			draw_style_box(inner, Rect2(Vector2.ZERO, Vector2(maxf(size.y, size.x * clampf(share, 0, 1)), size.y)))
+
 ## Field tools drawn in code (no art yet): a seed pouch and a water drop.
 class ToolIcon extends Control:
 	var tool := "seed"
@@ -1076,6 +1120,7 @@ func _build_hud() -> void:
 			sfx("tap"); bump(goal_box); goal_action.call())
 	root.add_child(goal_box)
 	hud.append(goal_box)
+	_build_barge_chip()
 	# The dock: Build and the Market, captioned like a pro app's tab bar.
 	var dock := PanelContainer.new()
 	var dock_box := glass(30)
@@ -1107,6 +1152,85 @@ func _build_hud() -> void:
 	root.add_child(sound)
 	hud.append(sound)
 
+## The barge ticket under the goal: when Rowan's barge is in and how long it
+## stays, one tap from its screen. Hidden until the windmill brings the barge.
+var barge_chip: PanelContainer
+var barge_chip_icon: BoatIcon
+var barge_chip_status: Label
+var barge_chip_eyebrow: Label
+var barge_docked_style: StyleBoxFlat
+var barge_away_style: StyleBoxFlat
+var barge_clock: Label
+var barge_shown := {}
+var last_shipped := -1
+func _build_barge_chip() -> void:
+	barge_chip = PanelContainer.new()
+	barge_docked_style = glass(22)
+	barge_docked_style.border_color = Color(GOLD, 0.85)
+	barge_docked_style.set_border_width_all(int(2 * s))
+	barge_away_style = glass(22)
+	for style in [barge_docked_style, barge_away_style]:
+		style.content_margin_left = 10 * s; style.content_margin_right = 16 * s
+		style.content_margin_top = 6 * s; style.content_margin_bottom = 6 * s
+	barge_chip.add_theme_stylebox_override("panel", barge_away_style)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", int(10 * s))
+	barge_chip_icon = BoatIcon.new()
+	barge_chip_icon.custom_minimum_size = Vector2(38, 38) * s
+	barge_chip_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(barge_chip_icon)
+	var words := VBoxContainer.new()
+	words.alignment = BoxContainer.ALIGNMENT_CENTER
+	words.add_theme_constant_override("separation", int(-3 * s))
+	barge_chip_eyebrow = Label.new()
+	barge_chip_eyebrow.add_theme_font_override("font", _spaced(BODY, 2.5))
+	barge_chip_eyebrow.add_theme_font_size_override("font_size", int(11 * s))
+	barge_chip_eyebrow.add_theme_color_override("font_color", GOLD)
+	words.add_child(barge_chip_eyebrow)
+	barge_chip_status = Label.new()
+	barge_chip_status.add_theme_font_override("font", DISPLAY_SEMI)
+	barge_chip_status.add_theme_font_size_override("font_size", int(17 * s))
+	words.add_child(barge_chip_status)
+	row.add_child(words)
+	barge_chip.add_child(row)
+	barge_chip.mouse_filter = Control.MOUSE_FILTER_STOP
+	barge_chip.visible = false
+	barge_chip.gui_input.connect(func(e):
+		if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
+			sfx("tap"); bump(barge_chip); open("barge"))
+	root.add_child(barge_chip)
+	hud.append(barge_chip)
+
+func _barge_status(info: Dictionary) -> String:
+	if info.docked: return "Leaves in %s" % _clock(int(info.left))
+	return "Back in %s" % _clock(int(info.left))
+
+## Hours when they matter, else minutes and seconds.
+static func _clock(seconds: int) -> String:
+	seconds = maxi(0, seconds)
+	if seconds >= 3600: return "%d:%02d:%02d" % [seconds / 3600, (seconds / 60) % 60, seconds % 60]
+	return _time(seconds)
+
+func _update_barge_chip() -> void:
+	if barge_chip == null or not main or not main.game: return
+	var info: Dictionary = main.game.barge()
+	var show := not info.is_empty() and mode == "" and title_layer == null
+	barge_chip.visible = show
+	if is_instance_valid(barge_clock) and not info.is_empty():
+		barge_clock.text = _barge_status(info)
+	if info.is_empty(): return
+	# The screen rebuilds when the barge arrives, leaves or is loaded.
+	if mode == "barge" and [info.docked, info.cycle, info.loaded] != [barge_shown.get("docked"), barge_shown.get("cycle"), barge_shown.get("loaded")]:
+		_fill()
+	if not show: return
+	barge_chip.position = goal_box.position + Vector2(0, goal_box.size.y + 10 * s)
+	barge_chip.add_theme_stylebox_override("panel", barge_docked_style if info.docked else barge_away_style)
+	barge_chip_icon.muted = not info.docked
+	barge_chip_icon.queue_redraw()
+	barge_chip_eyebrow.text = ("BARGE · %d/%d" % [info.loaded, info.wanted]) if info.docked else "BARGE"
+	barge_chip_status.text = _barge_status(info)
+	barge_chip_status.add_theme_color_override("font_color", IVORY if info.docked else MUTED)
+
 ## The next most useful step, computed from the save. Never a dead end.
 func _goal() -> Array:
 	var game: WorldGame = main.game
@@ -1115,6 +1239,11 @@ func _goal() -> Array:
 	var garden := st.first_of("garden")
 	if game.gift_ready():
 		return [game.gift_basket().keys()[0], "Daily gift", func(): open("gift"), ""]
+	var barge_info: Dictionary = game.barge()
+	if barge_info.get("docked", false):
+		for line in barge_info.lines:
+			if line.loaded < line.count and st.stock.get(line.good, 0) > 0:
+				return [line.good, "Load the barge", func(): open("barge"), ""]
 	for station in st.jobs:
 		if st.job_remaining(station, now) == 0:
 			var spec: Dictionary = C.RECIPES[st.jobs[station].recipe]
@@ -1407,6 +1536,7 @@ func show_speech(who: String, line: String) -> void:
 func _process(delta: float) -> void:
 	# A hit-stop can never outlive its moment, whatever happened to its timer.
 	if Engine.time_scale != 1.0 and Time.get_ticks_msec() > hitstop_until: Engine.time_scale = 1.0
+	_update_barge_chip()
 	if is_instance_valid(season_clock) and main and main.game:
 		var season: Dictionary = main.game.season()
 		season_clock.text = _time(int(season.left))
@@ -1455,6 +1585,10 @@ func refresh() -> void:
 	last_stock = game.state.stock.duplicate()
 	fly_from = Vector2(-1, -1)
 	if last_level >= 0 and level > last_level: _celebrate_level(level, last_level)
+	var shipped: int = game.state.barges_filled
+	if last_shipped >= 0 and shipped > last_shipped:
+		_celebrate_barge(C.barge_bonus(game.state.barge.get("manifest", [])))
+	last_shipped = shipped
 	last_coins = coins
 	last_level = level
 	# The first look at the farm each day opens the gift once; after that it
@@ -1525,11 +1659,12 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	goal_box.visible = false
 	dock_node.visible = false
 	if next_mode != "build": main.spot_preview({})
-	panel_changed.emit(next_mode in ["place", "more", "land", "settings", "gift"])
+	panel_changed.emit(next_mode in ["place", "more", "land", "settings", "gift", "barge"])
+	if next_mode == "barge": main.send("bargeFocus", {})
 	if was == "" or was != next_mode: pass
 
 func close() -> void:
-	var was_place := mode == "place"
+	var was_place := mode == "place" or mode == "barge"
 	mode = ""
 	place_id = ""
 	build_pick = ""
@@ -1589,6 +1724,7 @@ func _fill() -> void:
 		"land": _fill_land()
 		"settings": _fill_settings()
 		"gift": _fill_gift()
+		"barge": _fill_barge()
 	if sheet_root and was_new:
 		var target := sheet_root
 		get_tree().process_frame.connect(func(): if is_instance_valid(target): pop_in(target), CONNECT_ONE_SHOT)
@@ -2130,6 +2266,195 @@ func _sheet(title: String) -> VBoxContainer:
 
 ## The daily gift: the week's trail of baskets with today's lifted, and one
 ## Collect. Closing keeps the gift waiting on the goal ticket.
+## Rowan's Barge: when it's in, what it wants and what a full hold pays. A
+## status strip, then one paper crate per manifest line with its own Load
+## button, then the whole hold's progress. While the barge is away the next
+## manifest shows, so the next load can be planned.
+func _fill_barge() -> void:
+	var game: WorldGame = main.game
+	var info: Dictionary = game.barge()
+	if info.is_empty():
+		close.call_deferred()
+		return
+	barge_shown = {"docked": info.docked, "cycle": info.cycle, "loaded": info.loaded}
+	var column := _sheet("Rowan's Barge")
+	# Sit the screen low so the boat stays in view above it.
+	var centre: Control = sheet_root.get_child(1)
+	centre.offset_top = minf(170 * s, root.get_viewport_rect().size.y * 0.22)
+	# Status: in or away, the clock, and the full-load bonus.
+	var strip := PanelContainer.new()
+	var strip_box := tile_box(20, info.docked)
+	strip_box.set_content_margin_all(10 * s)
+	strip.add_theme_stylebox_override("panel", strip_box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", int(14 * s))
+	var boat := BoatIcon.new()
+	boat.muted = not info.docked
+	boat.custom_minimum_size = Vector2(58, 58) * s
+	boat.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(boat)
+	var words := VBoxContainer.new()
+	words.alignment = BoxContainer.ALIGNMENT_CENTER
+	words.add_theme_constant_override("separation", int(-2 * s))
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.add_child(_eyebrow("Docked at the cove" if info.docked else ("Shipped · on the river" if info.filled else "On the river")))
+	barge_clock = _number(26)
+	barge_clock.text = _barge_status(info)
+	words.add_child(barge_clock)
+	row.add_child(words)
+	var reward := VBoxContainer.new()
+	reward.alignment = BoxContainer.ALIGNMENT_CENTER
+	reward.add_theme_constant_override("separation", int(-2 * s))
+	var reward_head := _eyebrow("Full load")
+	reward_head.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	reward.add_child(reward_head)
+	var bonus := HBoxContainer.new()
+	bonus.alignment = BoxContainer.ALIGNMENT_END
+	bonus.add_theme_constant_override("separation", int(6 * s))
+	bonus.add_child(_icon(icons["coin"], 28))
+	var bonus_label := _number(26)
+	bonus_label.text = "+%d" % info.bonus
+	bonus_label.add_theme_color_override("font_color", GOLD)
+	bonus.add_child(bonus_label)
+	reward.add_child(bonus)
+	row.add_child(reward)
+	strip.add_child(row)
+	column.add_child(strip)
+	column.add_child(_eyebrow("Manifest" if info.docked else "Next manifest"))
+	var crates := HBoxContainer.new()
+	crates.alignment = BoxContainer.ALIGNMENT_CENTER
+	crates.add_theme_constant_override("separation", int(12 * s))
+	for line in info.lines: crates.add_child(_barge_crate(line, info.docked))
+	column.add_child(crates)
+	# The whole hold, with what's been shipped so far.
+	var hold := HBoxContainer.new()
+	hold.add_theme_constant_override("separation", int(12 * s))
+	var bar := FillBar.new()
+	bar.share = float(info.loaded) / maxf(1.0, float(info.wanted))
+	bar.track = Color(1, 1, 1, 0.1)
+	bar.fill = GOLD
+	bar.custom_minimum_size = Vector2(0, 10) * s
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hold.add_child(bar)
+	var tally := Label.new()
+	tally.text = "%d/%d crates" % [info.loaded, info.wanted] + ("  ·  %d shipped" % info.shipped if info.shipped > 0 else "")
+	tally.add_theme_font_size_override("font_size", int(14 * s))
+	tally.add_theme_color_override("font_color", MUTED)
+	hold.add_child(tally)
+	column.add_child(hold)
+
+## One manifest line as a paper crate label: the good, how many are aboard,
+## the list price per crate and one action.
+func _barge_crate(line: Dictionary, docked: bool) -> Control:
+	var game: WorldGame = main.game
+	var have: int = game.state.stock.get(line.good, 0)
+	var full: bool = line.loaded >= line.count
+	var card := PanelContainer.new()
+	var box := StyleBoxFlat.new()
+	box.bg_color = PAPER
+	box.set_corner_radius_all(int(12 * s))
+	box.border_color = PAPER_READY if full else PAPER_EDGE
+	box.set_border_width_all(int((3.0 if full else 1.5) * s))
+	box.shadow_color = Color(0, 0, 0, 0.3)
+	box.shadow_size = int(8 * s)
+	box.shadow_offset = Vector2(0, 4 * s)
+	box.set_content_margin_all(12 * s)
+	box.anti_aliasing_size = 0.8
+	card.add_theme_stylebox_override("panel", box)
+	var stack := VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", int(6 * s))
+	stack.custom_minimum_size = Vector2(170, 0) * s
+	var name_label := _eyebrow(C.title(line.good))
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.add_theme_color_override("font_color", AWNING_RED)
+	stack.add_child(name_label)
+	var top := HBoxContainer.new()
+	top.alignment = BoxContainer.ALIGNMENT_CENTER
+	top.add_theme_constant_override("separation", int(8 * s))
+	top.add_child(_icon(icons.get(line.good), 58))
+	var count := _number(26)
+	count.text = "%d/%d" % [line.loaded, line.count]
+	count.add_theme_color_override("font_color", PAPER_READY if full else PAPER_INK)
+	top.add_child(count)
+	stack.add_child(top)
+	var bar := FillBar.new()
+	bar.share = float(line.loaded) / maxf(1.0, float(line.count))
+	bar.custom_minimum_size = Vector2(130, 8) * s
+	bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(bar)
+	var each := HBoxContainer.new()
+	each.alignment = BoxContainer.ALIGNMENT_CENTER
+	each.add_theme_constant_override("separation", int(4 * s))
+	each.add_child(_icon(icons["coin"], 18))
+	var price := Label.new()
+	price.text = "%d each" % line.price
+	price.add_theme_font_size_override("font_size", int(13 * s))
+	price.add_theme_color_override("font_color", PAPER_INK)
+	each.add_child(price)
+	stack.add_child(each)
+	var want: int = mini(have, line.count - line.loaded)
+	if full:
+		var stowed := Label.new()
+		stowed.text = "Stowed"
+		stowed.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		stowed.add_theme_font_override("font", DISPLAY_SEMI)
+		stowed.add_theme_font_size_override("font_size", int(17 * s))
+		stowed.add_theme_color_override("font_color", PAPER_READY)
+		stowed.custom_minimum_size = Vector2(0, 46) * s
+		stowed.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		stack.add_child(stowed)
+	elif docked and want > 0:
+		var load_button: Button
+		load_button = _button("Load %d" % want, func(): fly_from = load_button.get_global_rect().get_center(); _act(game.load_barge(line.good)), true)
+		load_button.custom_minimum_size = Vector2(130, 46) * s
+		load_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		stack.add_child(load_button)
+	else:
+		var make := _button("Have %d · Make" % have, func(): _open_source(line.good), true, "", true)
+		make.custom_minimum_size = Vector2(130, 46) * s
+		make.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		stack.add_child(make)
+	card.add_child(stack)
+	return card
+
+## A filled hold: confetti, a heavy haptic and a banner; the barge sails off.
+func _celebrate_barge(bonus: int) -> void:
+	sfx("celebrate")
+	haptic(F.HAPTIC_BIG)
+	_confetti()
+	var banner := PanelContainer.new()
+	var box := glass(32, GLASS_DEEP)
+	box.border_color = Color(GOLD, 0.7)
+	box.set_border_width_all(int(2 * s))
+	box.content_margin_left = 30 * s; box.content_margin_right = 30 * s
+	box.content_margin_top = 14 * s; box.content_margin_bottom = 16 * s
+	banner.add_theme_stylebox_override("panel", box)
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", int(14 * s))
+	var boat := BoatIcon.new()
+	boat.custom_minimum_size = Vector2(64, 64) * s
+	line.add_child(boat)
+	var words := VBoxContainer.new()
+	words.alignment = BoxContainer.ALIGNMENT_CENTER
+	words.add_theme_constant_override("separation", int(-2 * s))
+	words.add_child(_eyebrow("Barge filled"))
+	var title := _number(40)
+	title.text = "+%d bonus" % bonus
+	words.add_child(title)
+	line.add_child(words)
+	banner.add_child(line)
+	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fly_layer.add_child(banner)
+	await get_tree().process_frame
+	banner.position = Vector2((root.size.x - banner.size.x) / 2, root.size.y * 0.16)
+	pop_in(banner)
+	var tween := create_tween()
+	tween.tween_interval(2.4)
+	tween.tween_property(banner, "modulate:a", 0.0, 0.4)
+	tween.tween_callback(banner.queue_free)
+
 func _fill_gift() -> void:
 	var game: WorldGame = main.game
 	if not game.gift_ready():

@@ -99,6 +99,45 @@ func season() -> Dictionary:
 	return {"good": state.season_good(at, length), "next": state.season_good(at, length, 1), "left": state.season_left(at, length),
 		"window": state.season_window(at, length)}
 
+## The barge as the player sees it: docked now (with time until it leaves) or
+## away (with time until the next one and that barge's manifest).
+func barge() -> Dictionary:
+	if not state.owns(C.BARGE_OPENS) or not host.features().get("market", false): return {}
+	var length := float(C.duration(C.BARGE_CYCLE_SECONDS))
+	var stay := float(C.duration(C.BARGE_STAY_SECONDS))
+	var at := now()
+	var cycle := state.barge_cycle(at, length)
+	var docked: bool = state.barge_docked(at, length, stay)
+	var filled: bool = state.barge.get("cycle", -1) == cycle and state.barge_complete()
+	var shown := cycle if docked else cycle + 1
+	var manifest := state.barge_manifest(shown)
+	if manifest.is_empty(): return {}
+	var lines := []
+	var wanted := 0
+	var loaded := 0
+	for line in manifest:
+		var have := state.barge_loaded(line.good, shown)
+		lines.append({"good": line.good, "count": int(line.count), "loaded": have, "price": int(C.SELL_PRICE[line.good])})
+		wanted += int(line.count); loaded += have
+	var left := ceili(cycle * length + stay - at) if docked else ceili((cycle + 1) * length - at)
+	return {"docked": docked, "filled": filled, "cycle": shown, "left": left, "lines": lines, "wanted": wanted, "loaded": loaded,
+		"value": C.barge_value(manifest), "bonus": C.barge_bonus(manifest), "shipped": state.barges_filled}
+
+## Loads as many crates of `good` as the barge still wants and the farm has.
+func load_barge(good: String) -> String:
+	var info := barge()
+	if info.is_empty(): return "unavailable"
+	if not info.docked: return "departed"
+	var lines: Array = info.lines.filter(func(l): return l.good == good)
+	if lines.is_empty(): return "invalid"
+	var count := mini(int(state.stock.get(good, 0)), int(lines[0].count) - int(lines[0].loaded))
+	if count < 1: return "short" if int(lines[0].loaded) < int(lines[0].count) else "hold-full"
+	var record := _record("barge", {"cycle": int(info.cycle), "cycle_len": C.duration(C.BARGE_CYCLE_SECONDS), "stay": C.duration(C.BARGE_STAY_SECONDS), "good": good, "count": count})
+	# Each crate pays the list price; the load that fills the hold adds the bonus.
+	record.amount = count * int(lines[0].price)
+	if int(info.loaded) + count == int(info.wanted): record.amount += int(info.bonus)
+	return _commit(record, 0, record.amount)
+
 func deliver(slot: int) -> String:
 	if not host.features().get("market", false): return "unavailable"
 	if slot < 0 or slot >= C.ORDER_SLOTS.size() or not state.owns(C.ORDER_SLOTS[slot].opens): return "invalid"
@@ -123,4 +162,8 @@ func next_level_progress() -> Vector2:
 	return Vector2(host.earned() % per, per)
 
 func snapshot() -> Dictionary:
-	return state.snapshot(now(), host.progress(), host.player().get("reduced_motion", false))
+	var out := state.snapshot(now(), host.progress(), host.player().get("reduced_motion", false))
+	var info := barge()
+	out["barge"] = info.get("docked", false)
+	out["bargeCargo"] = float(info.loaded) / maxf(1.0, float(info.wanted)) if info.get("docked", false) else 0.0
+	return out

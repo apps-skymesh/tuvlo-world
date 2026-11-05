@@ -27,6 +27,8 @@ var gift_streak := 0
 var notice := ""
 var glut := {}  # good -> {"units", "at", "recover"}: recent sales not yet recovered
 var speech := {}  # the last neighbour to speak: {"name", "line"}
+var barge := {}  # the barge being loaded: {"cycle", "manifest", "loaded": {good: count}}
+var barges_filled := 0
 
 func _init() -> void:
 	for spec in C.STARTER:
@@ -131,6 +133,25 @@ func quote(good: String, count: int, at: float, season := 0.0) -> int:
 	for i in count: total += C.unit_price(good, base + i, hot)
 	return total
 
+## The barge's schedule: which cycle `at` falls in, and whether it is docked.
+## A barge that has been filled leaves early.
+func barge_cycle(at: float, length: float) -> int: return floori(at / maxf(1.0, length))
+func barge_docked(at: float, length: float, stay: float) -> bool:
+	var cycle := barge_cycle(at, length)
+	if at - cycle * length >= stay: return false
+	return not (barge.get("cycle", -1) == cycle and barge_complete())
+func barge_manifest(cycle: int) -> Array:
+	if not owns(C.BARGE_OPENS): return []
+	if barge.get("cycle", -1) == cycle: return barge.manifest
+	return C.barge_manifest(cycle, makeable_goods())
+func barge_loaded(good: String, cycle: int) -> int:
+	return int(barge.loaded.get(good, 0)) if barge.get("cycle", -1) == cycle else 0
+func barge_complete() -> bool:
+	if barge.is_empty(): return false
+	for line in barge.manifest:
+		if int(barge.loaded.get(line.good, 0)) < int(line.count): return false
+	return true
+
 ## Goods the homestead can make now, in GOODS order.
 func makeable_goods() -> Array:
 	var kinds := owned_kinds()
@@ -226,6 +247,37 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			stock[good] -= count
 			lifetime_sales += amount
 			notice = "Sold %d %s" % [count, C.title(good).to_lower()]
+		"barge":
+			var length := float(r.get("cycle_len", C.BARGE_CYCLE_SECONDS))
+			var stay := float(r.get("stay", C.BARGE_STAY_SECONDS))
+			var cycle := int(r.get("cycle", -1))
+			if cycle != barge_cycle(at, length) or not barge_docked(at, length, stay): return "departed"
+			var manifest := barge_manifest(cycle)
+			if manifest.is_empty(): return "invalid"
+			var good := C.good_id(str(r.get("good", "")))
+			var count := int(r.get("count", 0))
+			var lines := manifest.filter(func(l): return l.good == good)
+			if lines.is_empty() or count < 1: return "invalid"
+			var loaded := barge_loaded(good, cycle)
+			if loaded + count > int(lines[0].count): return "hold-full"
+			if stock.get(good, 0) < count: return "short"
+			# Check the pay before changing anything: the load that fills the
+			# hold also carries the bonus.
+			var completes := true
+			for line in manifest:
+				var after := loaded + count if line.good == good else barge_loaded(line.good, cycle)
+				if after < int(line.count): completes = false
+			var amount := count * int(C.SELL_PRICE[good]) + (C.barge_bonus(manifest) if completes else 0)
+			if int(r.get("amount", -1)) != amount: return "price"
+			if barge.get("cycle", -1) != cycle: barge = {"cycle": cycle, "manifest": manifest, "loaded": {}}
+			barge.loaded[good] = loaded + count
+			stock[good] -= count
+			lifetime_sales += amount
+			notice = "Barge loaded"
+			if completes:
+				barges_filled += 1
+				notice = "Barge filled"
+				speech = {"name": "Rowan the Bargeman", "line": C.BARGE_THANKS[barges_filled % C.BARGE_THANKS.size()]}
 		"order":
 			var slot := int(r.get("slot", -1))
 			if slot < 0 or slot >= C.FOLK.size() or int(r.get("nth", -1)) != orders_filled[slot]: return "invalid"

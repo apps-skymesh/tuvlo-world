@@ -10,6 +10,7 @@ const REASONS := {
 	"read-only": "Read only", "invalid": "Can't do that now", "occupied": "That spot is taken",
 	"claimed": "Already collected today",
 	"price": "Prices just changed. Try again",
+	"departed": "The barge has sailed", "hold-full": "That crate is already full",
 }
 var host: WorldHost
 var game: WorldGame

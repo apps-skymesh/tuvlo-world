@@ -4,6 +4,7 @@ signal host_message(json: String)
 var data=HomesteadWorldData.new()
 var navigation=HomesteadNavigation.new()
 var presentation=HomesteadPresentation.new()
+var barge: HomesteadBarge
 var resident=HomesteadResident.new()
 var guests: Array[HomesteadResident]=[]
 var creature: HomesteadCreature
@@ -268,6 +269,13 @@ func receive_host_json(json: String):
    if is_instance_valid(creature): creature.world_changed()
   update_guest()
   presentation.update_harvest()
+  # The barge glides in or out when its state changes after the first look.
+  if barge==null:
+   barge=HomesteadBarge.new()
+   add_child(barge)
+  barge.reduced_motion=reduced_motion
+  barge.set_docked(payload.get("barge",false)==true,not first_snapshot and not changing_child)
+  barge.set_cargo(float(payload.get("bargeCargo",0.0)))
   # A replayed construction state can remove a deck without changing its grid.
   if resident.place_visit!=null and not data.building(resident.target_id).is_empty():
    resident.cancel_place_visit()
@@ -303,6 +311,14 @@ func receive_host_json(json: String):
   return
  if packet.get("session")!=session or session=="": return
  match type:
+  "bargeFocus":
+   # Frames the barge for its screen; never changes what is saved.
+   camera_mode="pan"; zoom=1.0
+   # The boat sits in the top of the view, above its screen.
+   pan_focus=HomesteadBarge.DOCK+Vector3(0.4,0.8,7.1)
+   pan_size=11.0
+   camera_initialized=false
+   wake_menu_preview()
   "punch": presentation.punch(str(payload.get("id","")),clampf(float(payload.get("strength",1.0)),0.5,2.0),str(payload.get("good","")))
   "feedbackAnchor":
    var item_id=str(payload.get("id",""))

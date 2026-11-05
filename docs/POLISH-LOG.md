@@ -305,3 +305,23 @@ Changes (tuning in `feel.gd`):
   - Reduce Motion keeps only the haptic.
 
 Tests: feel spam 32/0 (4 new checks: tiers, hit-stop release, badge settle, closed boxes freed), rules 92/0, runtime and collect pass. Checked in 1280×720 captures; haptic strength hasn't been felt on a device.
+
+## Pass 12 · 2026-11-05 (owner request: The Barge, first challenge)
+
+Saeed picked The Barge from the challenges doc as the first thing to break up the produce-and-build loop.
+
+What it is:
+- Once the windmill is built, Rowan's barge docks at the east cove every 2 hours and stays 45 minutes (both shortened 5× in quick play).
+- Each visit brings a manifest of 2–3 goods the player can make, with counts sized to about 12 coins a line. The manifest rotates with the market season, so it rarely matches what the market favours.
+- Each crate loaded pays the normal sale price at once. Filling the whole hold adds a +50% bonus, and the barge then sails early.
+- A missed barge costs nothing. The next manifest is always shown, so the player can plan.
+
+Save rules: one append-only `barge` record per load, carrying the frozen cycle length, stay and pay. `apply` checks departure, the manifest, the line's remaining count, stock and exact pay (including the bonus on the filling load) before changing anything. Replay rebuilds the same hold.
+
+Presentation:
+- A low-poly barge (hull, cabin, sail, lantern, crates that fill with the hold) glides in, bobs and sails off. Reduce Motion keeps it still.
+- A gold-edged map ticket under the goal ("Barge · n/m · Leaves in …"), plain glass while it's away.
+- "Rowan's Barge" screen: status strip with clock and full-load bonus, one paper crate card per line with its own Load button or a "Make" shortcut, and the hold's progress. The camera frames the boat above the screen.
+- Filling the hold: celebrate sound, big haptic, confetti and a "Barge filled" banner.
+
+Tests: rules 110/0 (18 new barge checks), feel spam 32/0, runtime and collect pass. Checked in 1280×720 captures 15–16; not yet played on a device.
