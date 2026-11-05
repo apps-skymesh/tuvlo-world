@@ -397,3 +397,24 @@ Changes:
 - **Enhancement:** the barge's arrival is now a moment. The ticket turns gold with a bump, a soft chime and a "Rowan's barge is in" note, once per barge and never for the state found when opening the game.
 
 Tests: rules 118/0, feel spam 36/0, runtime and collect pass. Captures 00–19 unchanged. On-device frame cost not measured.
+
+## Pass 16 · 2026-11-05 (owner request: a premium production window instead of the camera jump)
+
+- **The map stays still.** Tapping a place no longer moves the camera. Instead, a framed window opens over a soft scrim, with the map paused behind it. Closing the window leaves the camera where it was.
+- **An animated interior, drawn in code** (`scripts/ui/production_scene.gd`), in the same palette as the glossy goods art:
+  - A lamplit workroom with board walls, a window and its light shaft, and a perspective floor.
+  - A brass-trimmed conveyor. Its slats and rollers turn while the place works, inputs ride into the machine and products ride out to a tray.
+  - One machine per station: the mill has a turning gear, a grain hopper and stones; the oven is a brick dome with a breathing fire and chimney smoke; the kitchen has a jar shelf and a packing crate whose lid lifts; the barn has hay, a manger, a churn and two eating sheep; the grill has coals, flames and a copper hood. Construction shows a scaffold and a swinging hammer.
+  - The field and the orchard are outdoors under a sky with drifting clouds and hills. The field's beds show seeds, sprouts, stalks and golden ears. The orchard's tree grows its fruit.
+  - A ready product glows on its tray with orbiting sparkles.
+  - A clock pill shows the time left with a fine progress line.
+  - The whole window lights gold while something is dragged over it.
+- **Top: product tabs.** Each tab shows its picture and yield, a clock with the time (seconds or minutes, live while running) and its star price. The cottage lists the oven's and the kitchen's products together.
+- **Left: what the product needs.** Goods show have/need, and a good that's short is red and opens its source. Ready goods lean toward the scene every so often. Dragging (or tapping) them in drops them on the belt with a hop. The farm takes the seed pouch and the water can, both dragged, then plants and waters every bed.
+- **Stars, new.** A soft currency kept in the save records (`WorldState.stars()`):
+  - Earning: 10 to start, +2 per daily gift, +5 per filled barge, +1 per neighbour order. These count from replay, so existing saves get credit for past gifts, barges and orders.
+  - Spending: "Finish now" costs one star per started minute left, at normal speed. A `rush` record freezes the minute length and is priced at its own moment, so replay agrees. A wrong price or too few stars is rejected.
+  - From idle, Finish now starts the job, finishes it and collects it, each step saved in turn.
+  - The stars sit in the wallet capsule after the coins.
+
+Tests: rules 130/0 (12 new for stars and rushing), feel spam 36/0, runtime and collect pass. Captures 20–23 added (oven baking, seed dropped, field growing, finished with stars). Not yet tried on a device: drag feel on touch, and the scene's frame cost on iPad 9th Gen.

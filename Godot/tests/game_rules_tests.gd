@@ -319,6 +319,37 @@ func _initialize() -> void:
 	var wgame2 := WorldGame.new(whost2)
 	wgame2.clock = func(): return wclock2.t
 	check(wgame2.tend(0) == "" and wgame2.tend(0) == "" and int(whost2.records[-1].seconds) == WorldCatalogue.duration(WorldCatalogue.FIRST_FIELD_SECONDS) and not whost2.records[-1].has("weather"), "a sunny spell leaves timers as they are")
+	# Stars: a starting purse, earned from gifts, barges and orders (checked by
+	# replay totals), spent to finish a running timer at one star per minute left.
+	WorldCatalogue.weather_override = "sunny"
+	var shost := MemoryHost.new()
+	var sclock := {"t": 5000.0}
+	var sgame := WorldGame.new(shost)
+	sgame.clock = func(): return sclock.t
+	check(sgame.state.stars() == WorldCatalogue.STARTING_STARS, "a new farm starts with its purse of stars")
+	check(sgame.rush("field") == "not-running", "nothing to rush before anything grows")
+	sgame.tend(0); sgame.tend(0)
+	var sleft := sgame.state.rush_left("field", sclock.t)
+	var sprice := sgame.rush_price("field")
+	check(sleft == int(WorldCatalogue.FIRST_FIELD_SECONDS) and sprice == 1, "a 20 s field costs one star (%d)" % sprice)
+	check(sgame.rush("field") == "" and sgame.state.field_stage(0, sclock.t) == 4 and sgame.state.stars() == WorldCatalogue.STARTING_STARS - 1, "stars finish the field at once")
+	check(WorldState.replay(shost.records).stars() == sgame.state.stars() and WorldState.replay(shost.records).field_stage(0, sclock.t) == 4, "replay keeps the rush and its price")
+	check(sgame.tend(0) == "" and sgame.state.stock.wheat == 2, "a rushed field harvests as usual")
+	sgame.tend(1); sgame.tend(1)
+	sclock.t += 30
+	var sid := WorldGame.new_id()
+	var cheap := {"v": 1, "id": sid, "type": "rush", "at": sclock.t, "seq": 999, "target": "field", "price": 0, "minute": 60}
+	check(WorldState.replay(shost.records + [cheap]).field_stage(1, sclock.t) != 4, "a rush with the wrong price is ignored")
+	var sfield := sgame.rush_price("field")
+	check(sfield == WorldCatalogue.rush_price(WorldCatalogue.FIELD_SECONDS - 30, 60) and sfield == 2, "one star per started minute left (%d)" % sfield)
+	var spoor := WorldState.replay(shost.records)
+	spoor.stars_spent = 1000
+	check(spoor.apply({"v": 1, "id": "poor", "type": "rush", "at": sclock.t, "seq": 1000, "target": "field", "price": sfield, "minute": 60}) == "stars", "no rush without enough stars")
+	check(WorldCatalogue.rush_price(60, 60) == 1 and WorldCatalogue.rush_price(61, 60) == 2 and WorldCatalogue.rush_price(600, 120) == 5, "rush prices count started minutes at the frozen minute length")
+	check(sgame.rush_price("oven", 300) == 5 and sgame.rush_price("mill") == 0, "a fresh job is quoted at its full length")
+	var sbefore := sgame.state.stars()
+	var sgift := WorldState.replay(shost.records + [{"v": 1, "id": "sg", "type": "gift", "at": sclock.t + 86400 * 2, "seq": 2000, "day": WorldCatalogue.local_day(sclock.t + 86400 * 2)}])
+	check(sgift.stars() == sbefore + WorldCatalogue.GIFT_STARS, "the daily gift adds stars")
 	print("game rules: %d checks, %d failed" % [checks, failures])
 	host.free()
 	quit(1 if failures > 0 else 0)

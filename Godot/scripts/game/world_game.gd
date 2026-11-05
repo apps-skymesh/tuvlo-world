@@ -80,6 +80,24 @@ func make(recipe: String) -> String:
 	if not C.RECIPES.has(recipe): return "invalid"
 	return _commit(_record("make", _timed({"recipe": recipe}, C.RECIPES[recipe].seconds, C.RECIPES[recipe].station)))
 func collect(station: String) -> String: return _commit(_record("collect", {"station": station}))
+## Stars to finish `target` (a station, "field" or "orchard") right now, or
+## to run a fresh timer of `seconds` (normal speed) start to finish.
+func rush_price(target: String, seconds := 0.0) -> int:
+	var left := state.rush_left(target, now())
+	if left <= 0:
+		if seconds <= 0: return 0
+		left = C.duration(seconds / C.weather_boost(weather(), target))
+	return C.rush_price(left, C.duration(C.RUSH_MINUTE))
+func rush(target: String) -> String:
+	var left := state.rush_left(target, now())
+	if left <= 0: return "not-running"
+	var minute := C.duration(C.RUSH_MINUTE)
+	var price := C.rush_price(left, minute)
+	if state.stars() < price: return "stars"
+	var record := _record("rush", {"target": target, "minute": minute})
+	# Priced at the record's own time (never later than now), so replay agrees.
+	record.price = C.rush_price(state.rush_left(target, record.at), minute)
+	return _commit(record)
 func tend_orchard() -> String: return _commit(_record("orchard", _timed({}, C.ORCHARD_SECONDS, "orchard")))
 
 ## A job's frozen length under the current sky; a favoured job also notes the

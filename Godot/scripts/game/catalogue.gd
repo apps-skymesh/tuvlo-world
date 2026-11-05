@@ -194,6 +194,19 @@ static func weather_boost(weather: String, station: String) -> float:
 const SOLO_STARTING_COINS := 6
 const SOLO_SALES_PER_LEVEL := 5
 
+## SOLO Stars: a soft currency kept in the save records (never the host's
+## coins). A new farm starts with a small purse; the daily gift, a filled barge
+## and each neighbour's order add more. Stars finish a running timer at once:
+## one star per started minute left (at normal speed; the minute's length is
+## frozen in each rush record, so quick play prices the same).
+const STARTING_STARS := 10
+const GIFT_STARS := 2
+const BARGE_STARS := 5
+const ORDER_STARS := 1
+const RUSH_MINUTE := 60.0
+static func rush_price(seconds_left: float, minute: float) -> int:
+	return maxi(1, ceili(seconds_left / maxf(1.0, minute) - 0.0001))
+
 ## SOLO daily gift: the first visit of each later day finds a basket on the
 ## farm. Consecutive days climb the week below and then loop; a missed day
 ## starts again at day 1. Goods only: gifts never pay coins or count as sales.

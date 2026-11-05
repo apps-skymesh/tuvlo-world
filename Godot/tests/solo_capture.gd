@@ -96,6 +96,21 @@ func _process(delta: float) -> bool:
 		39: shot("18-rain-field-card")
 		40: main.ui.close(); main.ui.open("weather"); wait = 1.5
 		41: shot("19-forecast")
-		42: return true
+		42:
+			# The cottage window: oven and kitchen products along the top, a
+			# loaf in the oven.
+			main.ui.close()
+			game.state.stock.flour += 2; game.state.stock.fruit += 2; game.state.stock.bread += 1
+			main.ui.open("place", "base:cottage", "oven"); wait = 1.2
+		43: main.ui.ring.working = true; main.ui.ring.label = "0:42"; main.ui.ring.progress = 0.35; wait = 1.0
+		44: shot("20-oven-baking")
+		45: main.ui.close(); main.ui.open("place", "base:garden"); wait = 0.6
+		46: main.ui._ring_dropped("seed"); wait = 1.0
+		47: shot("21-field-seed-dropped")
+		48: main.ui._ring_dropped("water"); wait = 2.0
+		49: shot("22-field-growing")
+		50: main.ui._instant(); wait = 2.0
+		51: shot("23-field-finished-with-stars")
+		52: return true
 	step += 1
 	return false

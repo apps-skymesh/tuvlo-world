@@ -29,6 +29,9 @@ var glut := {}  # good -> {"units", "at", "recover"}: recent sales not yet recov
 var speech := {}  # the last neighbour to speak: {"name", "line"}
 var barge := {}  # the barge being loaded: {"cycle", "manifest", "loaded": {good: count}}
 var barges_filled := 0
+var stars_earned := 0
+var stars_spent := 0
+func stars() -> int: return C.STARTING_STARS + stars_earned - stars_spent
 
 func _init() -> void:
 	for spec in C.STARTER:
@@ -84,6 +87,17 @@ func field_remaining(index: int, now: float) -> int:
 func job_remaining(station: String, now: float) -> int:
 	if not jobs.has(station): return 0
 	return maxi(0, ceili(jobs[station].started + job_total(station) - now))
+## Seconds left on a rushable timer: a station, "field" (the longest growing
+## field) or "orchard". 0 when nothing is running or it is already done.
+func rush_left(target: String, now: float) -> int:
+	match target:
+		"field":
+			var left := 0
+			for i in fields.size():
+				if field_stage(i, now) in [2, 3]: left = maxi(left, field_remaining(i, now))
+			return left
+		"orchard": return orchard_remaining(now)
+		_: return job_remaining(target, now) if C.STATIONS.has(target) else 0
 func orchard_remaining(now: float) -> int:
 	if orchard_watered < 0: return 0
 	return maxi(0, ceili(orchard_grow - (now - orchard_watered)))
@@ -283,6 +297,7 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			notice = "Barge loaded"
 			if completes:
 				barges_filled += 1
+				stars_earned += C.BARGE_STARS
 				notice = "Barge filled"
 				speech = {"name": "Rowan the Bargeman", "line": C.BARGE_THANKS[barges_filled % C.BARGE_THANKS.size()]}
 		"order":
@@ -297,6 +312,7 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			if count < 1 or stock.get(good, -1) < count: return "short"
 			stock[good] -= count
 			orders_filled[slot] += 1
+			stars_earned += C.ORDER_STARS
 			lifetime_sales += int(r.get("amount", 0))
 			if current:
 				for gift in want.keepsake: stock[gift] += want.keepsake[gift]
@@ -310,7 +326,25 @@ func _apply(type: String, r: Dictionary, at: float) -> String:
 			gift_day = day
 			var basket := C.gift_basket(gift_streak)
 			for good in basket: stock[good] += basket[good]
+			stars_earned += C.GIFT_STARS
 			notice = "Daily gift"
+		"rush":
+			# Stars finish a running timer now. The price is checked against
+			# the time left at the record's own moment, so replay agrees.
+			var target := str(r.get("target", ""))
+			var left := rush_left(target, at)
+			if left <= 0: return "not-running"
+			var price := int(r.get("price", -1))
+			if price != C.rush_price(left, float(r.get("minute", C.RUSH_MINUTE))): return "price"
+			if stars() < price: return "stars"
+			match target:
+				"field":
+					for i in fields.size():
+						if field_stage(i, at) in [2, 3]: fields[i].grow = at - fields[i].watered
+				"orchard": orchard_grow = at - orchard_watered
+				_: jobs[target].seconds = at - jobs[target].started
+			stars_spent += price
+			notice = "Finished with stars"
 		"swap":
 			var a := find(str(r.get("a", "")))
 			var b := find(str(r.get("b", "")))
