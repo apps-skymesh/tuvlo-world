@@ -242,6 +242,53 @@ func _initialize() -> void:
 	check(ss.quote(hot, 4, 1000.0, 600.0) < hot_price * 4, "demand still drops a season good per unit")
 	check(ss.apply({"v": 1, "id": "h1", "type": "sell", "at": 1000.0, "good": hot, "count": 1, "amount": base_price, "recover": 45}) == "", "a demand-era sale without a season keeps the plain price")
 	check(ss.apply({"v": 1, "id": "h2", "type": "sell", "at": 1001.0, "good": hot, "count": 1, "amount": base_price, "recover": 45, "season": 600}) == "price", "replay rejects a season sale at the plain price")
+	# The Barge: docks on a schedule, asks for crates of makeable goods, pays the
+	# list price per crate plus a bonus for a full hold, then leaves early.
+	var bs := WorldState.new()
+	check(bs.barge_manifest(0).is_empty(), "no barge before the windmill")
+	bs.items.append({"id": "w", "kind": "windmill", "cell": Vector2i(1, 13), "rotation": 0, "style": ""})
+	var blen := 7200.0
+	var bstay := 2700.0
+	var bcyc := 100
+	var bstart := bcyc * blen
+	var bman := bs.barge_manifest(bcyc)
+	check(bman.size() == 2 and bman.all(func(l): return l.good != "wheat" and l.count >= 2), "a windmill farm's barge wants two crates of made goods (%s)" % [bman])
+	check(bman[0].good != bman[1].good, "a manifest never repeats a good")
+	check(bs.barge_docked(bstart + 10.0, blen, bstay) and not bs.barge_docked(bstart + bstay + 1.0, blen, bstay), "the barge waits its stay, then is away")
+	for line in bman: bs.stock[line.good] = 20
+	var line_a: Dictionary = bman[0]
+	var line_b: Dictionary = bman[1]
+	var p1: int = WorldCatalogue.SELL_PRICE[line_a.good]
+	var p2: int = WorldCatalogue.SELL_PRICE[line_b.good]
+	var bbonus := WorldCatalogue.barge_bonus(bman)
+	var bload := func(id: String, at: float, good: String, count: int, amount: int, c := bcyc) -> String:
+		return bs.apply({"v": 1, "id": id, "type": "barge", "at": at, "cycle": c, "cycle_len": blen, "stay": bstay, "good": good, "count": count, "amount": amount})
+	check(bload.call("b0", bstart + bstay + 5.0, line_a.good, 1, p1) == "departed", "nothing loads once the barge has gone")
+	check(bload.call("b1", bstart + 20.0, line_a.good, 1, p1 + 1) == "price", "a crate pays exactly the list price")
+	check(bload.call("b2", bstart + 20.0, line_a.good, int(line_a.count), p1 * int(line_a.count)) == "", "a part load pays at once")
+	check(bs.barge_loaded(line_a.good, bcyc) == line_a.count and bs.glut_at(line_a.good, bstart + 21.0) == 0.0, "loaded crates count and never dip the market")
+	check(bload.call("b3", bstart + 30.0, line_a.good, 1, p1) == "hold-full", "a full crate takes no more")
+	check(bload.call("b4", bstart + 40.0, line_b.good, int(line_b.count), p2 * int(line_b.count)) == "price", "the load that fills the hold must include the bonus")
+	var sales_before := bs.lifetime_sales
+	check(bload.call("b5", bstart + 40.0, line_b.good, int(line_b.count), p2 * int(line_b.count) + bbonus) == "", "filling the hold pays the bonus")
+	check(bs.barges_filled == 1 and bs.lifetime_sales == sales_before + p2 * int(line_b.count) + bbonus, "a filled barge is counted and its pay counts as sales")
+	check(not bs.barge_docked(bstart + 50.0, blen, bstay), "a filled barge sails early")
+	var next_manifest := bs.barge_manifest(bcyc + 1)
+	check(not next_manifest.is_empty() and bs.barge_loaded(next_manifest[0].good, bcyc + 1) == 0, "the next barge starts empty")
+	# Through the game: the next barge is shown while this one is away, and an
+	# empty farm can't load.
+	var bhost := MemoryHost.new()
+	var bclock := {"t": bstart + 10.0}
+	bhost.records.append({"v": 1, "id": "wm", "type": "build", "at": bstart, "seq": 1, "kind": "windmill", "place": "place:windmill:t", "x": 1, "z": 13, "price": 0, "seconds": 0})
+	var bgame := WorldGame.new(bhost)
+	bgame.clock = func(): return bclock.t
+	var binfo := bgame.barge()
+	check(binfo.get("docked", false) and binfo.left == int(bstay) - 10 and binfo.lines.size() == 2, "the game shows a docked barge and its time left")
+	check(bgame.load_barge(binfo.lines[0].good) == "short", "an empty farm can't load the barge")
+	bclock.t = bstart + bstay + 100.0
+	binfo = bgame.barge()
+	check(not binfo.docked and binfo.cycle == bcyc + 1 and binfo.left == int(blen - bstay) - 100, "while away, the next barge and its manifest are shown")
+	check(bgame.snapshot().barge == false, "the renderer is told the barge is away")
 	print("game rules: %d checks, %d failed" % [checks, failures])
 	host.free()
 	quit(1 if failures > 0 else 0)

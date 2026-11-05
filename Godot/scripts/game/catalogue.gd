@@ -137,6 +137,36 @@ static func season_good(window: int, makeable: Array) -> String:
 static func unit_price(good: String, glut: float, in_season := false) -> int:
 	var base: float = SELL_PRICE[good] * (1.0 + SEASON_BONUS if in_season else 1.0)
 	return maxi(1, roundi(base * maxf(DEMAND_FLOOR, 1.0 - DEMAND_DROP * glut)))
+## SOLO the Barge: Rowan's barge docks at the cove at the start of every
+## BARGE_CYCLE_SECONDS and waits BARGE_STAY_SECONDS (normal speed; both frozen
+## in each load record). Its manifest asks for a few crates of goods the farm
+## can make. Every crate pays the list price straight away, with no market dip,
+## and a full manifest pays a bonus and sends the barge off early. A missed
+## barge costs nothing; the next one brings a new manifest, shown in advance.
+const BARGE_OPENS := "windmill"
+const BARGE_CYCLE_SECONDS := 7200.0
+const BARGE_STAY_SECONDS := 2700.0
+const BARGE_LINE_VALUE := 12.0  # roughly the coins asked for per manifest line
+const BARGE_BONUS_RATE := 0.5   # the full-load bonus, as a share of the manifest's value
+const BARGE_THANKS := ["Full hold, fair wind. The towns will eat well.", "That's the finest load on the river.", "Every crate stowed. See you next tide!"]
+## The barge's manifest for `cycle`: two or three lines of goods the farm can
+## make (wheat only when there's nothing else), never the same good twice.
+static func barge_manifest(cycle: int, makeable: Array) -> Array:
+	var goods: Array = makeable.filter(func(g): return g != "wheat") if makeable.size() >= 3 else makeable.duplicate()
+	if goods.size() < 2: return []
+	var lines := 3 if goods.size() >= 4 else 2
+	var start := posmod(cycle * SEASON_STEP + 5, goods.size())
+	var manifest := []
+	for i in lines:
+		var good: String = goods[(start + i) % goods.size()]
+		manifest.append({"good": good, "count": maxi(2, roundi(BARGE_LINE_VALUE / SELL_PRICE[good])) + posmod(cycle + i, 2)})
+	return manifest
+static func barge_value(manifest: Array) -> int:
+	var total := 0
+	for line in manifest: total += int(line.count) * int(SELL_PRICE[line.good])
+	return total
+static func barge_bonus(manifest: Array) -> int: return ceili(barge_value(manifest) * BARGE_BONUS_RATE)
+
 ## SOLO: coins a new player starts with, and lifetime sales per level.
 const SOLO_STARTING_COINS := 6
 const SOLO_SALES_PER_LEVEL := 5

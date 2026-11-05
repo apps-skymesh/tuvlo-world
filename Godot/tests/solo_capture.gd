@@ -67,6 +67,21 @@ func _process(delta: float) -> bool:
 		29: shot("13-level-up")
 		30: main.ui.open("settings"); wait = 0.8
 		31: shot("14-settings")
-		32: return true
+		32:
+			# Jump to just after the next barge docks; it glides into the cove.
+			main.ui.close()
+			var length := float(WorldCatalogue.duration(WorldCatalogue.BARGE_CYCLE_SECONDS))
+			var at: float = game.now()
+			offset.s += (floorf(at / length) + 1.0) * length + 30.0 - at
+			main.push(); wait = 4.5
+		33: shot("15-barge-docked")
+		34:
+			# Display only: some goods in stock and part of the hold loaded.
+			var info: Dictionary = game.barge()
+			for line in info.lines: game.state.stock[line.good] = int(line.count) + 1
+			game.state.barge = {"cycle": info.cycle, "manifest": info.lines.map(func(l): return {"good": l.good, "count": l.count}), "loaded": {info.lines[0].good: info.lines[0].count}}
+			main.ui.open("barge"); wait = 2.5
+		35: shot("16-barge-screen")
+		36: return true
 	step += 1
 	return false
