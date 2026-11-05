@@ -104,6 +104,9 @@ const ATMOSPHERE_FPS := 30.0
 # Weather rain over the map: streak count and how long a shower takes to
 # fade in or out (seconds).
 const RAIN_DROPS := 70
+# How often the HUD's clocks and chips (barge, sky, season) update. Their
+# text only changes once a second; a box opening updates them at once.
+const HUD_TICK := 0.2
 # Loading the barge (barge_art.set_cargo): the hull's damped spring. A kick
 # of 0.9 m/s with these values sinks it about 10 cm, then bobs back up with
 # a couple of shrinking bounces over about a second.
