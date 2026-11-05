@@ -147,6 +147,10 @@ func _process(delta: float) -> bool:
 		70: shot("31-cottage-card")
 		71: main.ui.open("place", "base:cottage", "pantry"); wait = 1.0
 		72: shot("32-kitchen-card")
-		73: return true
+		73:
+			# The finish light running round the window, caught mid-lap.
+			main.ui.ring.done = true; main.ui.ring.output = "meal"; main.ui.ring.finish_at = Time.get_ticks_msec() / 1000.0 - 0.3; wait = 0.0
+		74: shot("33-finish-sweep")
+		75: return true
 	step += 1
 	return false

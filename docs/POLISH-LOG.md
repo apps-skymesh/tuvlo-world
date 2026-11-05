@@ -468,3 +468,25 @@ The production window was clean and consistent: one glass card, gold rims, one i
 - **Cost:** roughly 40 more 2D draw commands per frame, all inside the one scene control, using cached 4×128 gradient textures with no shaders or blurs. There is no new motion, so Reduce Motion is unaffected.
 
 Tests: rules 136/0, feel spam 36/0. Before and after captures: 20, 22, 26, 29. Not seen: a real device, or iPad 9th Gen frame time.
+
+## Pass 19 · 2026-11-05 (owner request: art-direction pass on the production window, rung 3 Dimensional → 4 Alive)
+
+Pass 18 added light and depth, but the room itself was a still picture, a state change was a hard cut, and the unselected tabs and greyed-out buttons were muddy. This pass fixes the readability first, then adds life. Every value is a named constant: the "Life" block in `production_scene.gd`, and `TAB_*` and `DISABLED_*` in `world_ui.gd`.
+
+- **Readability first:**
+  - Unselected tabs now have a lighter fill and edge (`TAB_FILL`, `TAB_EDGE`).
+  - A tab locked by a running job shows at 62% instead of 50%.
+  - Greyed-out buttons such as Working and Growing use an ink at 80% on a lighter fill (`DISABLED_*`).
+- **Ambient life:**
+  - 14 dust motes turn slowly in the window's daylight shaft. It is a fixed pool, so nothing is allocated.
+  - The pendant lamp swings gently, and its pool of light follows it.
+  - Two far birds glide over the outdoor scenes.
+- **Light that follows the work:**
+  - When a job starts, the lamp's pool rises 45% over 0.6 s and settles back when it stops. The level is kept per place across rebuilt windows, so the light eases instead of jumping.
+  - In the oven and grill, firelight flickers over the whole room.
+- **A finish moment:** when a job completes, one gold light runs round the window's edge in 0.9 s. With Reduce Motion on, the rim warms and fades in place instead.
+- **The selected tab:** its gold edge breathes in and out over 2.4 s so the eye finds it.
+- **Reduce Motion:** motes, sway, birds, breathing and the sweep are all off, and light levels change instantly.
+- **Cost:** about 20 circles and 3 polylines per frame, plus one tween. There are no shaders, blurs or allocations.
+
+Tests: rules 136/0, feel spam 36/0. Captures: 20, 23, 26 and 30, before and after, plus 33 (the finish sweep, new). Not seen: motion on a device. Stills show only one frame of each effect.

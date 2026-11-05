@@ -53,9 +53,26 @@ const HAZE := 0.3           # far hills fade toward the sky
 const INSET_DEPTH := 22.0   # inner shadow along the window's top edge (pt)
 const INSET_ALPHA := 0.42
 const LIP_ALPHA := 0.12     # the window's lit bottom lip
+# Life (rung 4): the room breathes while it works. Reduce Motion stills all of it.
+const MOTES := 14           # dust motes drifting in the window's shaft (fixed pool)
+const MOTE_ALPHA := 0.4
+const MOTE_SIZE := 1.6      # pt
+const MOOD_TIME := 0.6      # s for the working light to rise or fall
+const MOOD_LAMP := 0.45     # how much brighter the lamp's pool gets while working
+const FIRE_WASH := 0.08     # firelight flickering over the oven and grill rooms
+const LAMP_SWAY := 0.03     # rad, the pendant's slow swing
+const SWEEP_TIME := 0.9     # s for the finish light to run round the window
+const SWEEP_ALPHA := 0.9
+const SWEEP_SPAN := 0.16    # share of the rim lit at once
+const BIRDS := 2            # far birds gliding over outdoor scenes
 
 static var _vertical := {}
 static var _radial: GradientTexture2D
+# Kept per place across rebuilt windows, so light eases instead of jumping.
+static var _moods := {}
+static var _was_done := {}
+var mood := 0.0
+var finish_at := -10.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -64,6 +81,12 @@ func _process(delta: float) -> void:
 	if not is_visible_in_tree(): return
 	# One clock for every scene, so a rebuilt window carries on mid-motion.
 	if not ui.reduce_motion: t = Time.get_ticks_msec() / 1000.0
+	var target := 1.0 if working else 0.0
+	mood = target if ui.reduce_motion else move_toward(float(_moods.get(kind, 0.0)), target, delta / MOOD_TIME)
+	_moods[kind] = mood
+	# A job that just finished sends one light round the window.
+	if done and not bool(_was_done.get(kind, false)): finish_at = _now()
+	_was_done[kind] = done
 	queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:
@@ -222,6 +245,34 @@ func _draw_inset() -> void:
 	draw_texture_rect(_gradient(Color(0, 0, 0, INSET_ALPHA * 0.6), Color(0, 0, 0, 0), true), Rect2(0, 0, d * 0.7, size.y), false)
 	draw_texture_rect(_gradient(Color(0, 0, 0, 0), Color(0, 0, 0, INSET_ALPHA * 0.6), true), Rect2(size.x - d * 0.7, 0, d * 0.7, size.y), false)
 	draw_line(Vector2(24 * k, size.y - 1.5 * k), Vector2(size.x - 24 * k, size.y - 1.5 * k), Color(1, 1, 1, LIP_ALPHA), maxf(1, 1.5 * k))
+	var e := (_now() - finish_at) / SWEEP_TIME
+	if e >= 0 and e < 1:
+		if ui.reduce_motion:
+			# Still: the rim simply warms and fades.
+			_round_rect(Rect2(Vector2(2, 2) * k, size - Vector2(4, 4) * k), 22 * k, Color(0, 0, 0, 0), Color(WorldUI.GOLD, SWEEP_ALPHA * (1.0 - e)), 3 * k)
+		else:
+			var trail := PackedVector2Array()
+			var head := ease(e, 0.6)
+			for i in 25:
+				trail.append(_rim_point(head - SWEEP_SPAN * (1.0 - i / 24.0), 3 * k))
+			var fade := minf(1.0, (1.0 - e) * 3.0)
+			draw_polyline(trail, Color(WorldUI.GOLD, SWEEP_ALPHA * fade * 0.45), 8 * k, true)
+			draw_polyline(trail, Color(1, 0.97, 0.85, SWEEP_ALPHA * fade), 3 * k, true)
+
+## A point a share u of the way round the window's edge, clockwise from the top middle.
+func _rim_point(u: float, inset: float) -> Vector2:
+	var r := Rect2(Vector2(inset, inset), size - Vector2(inset, inset) * 2)
+	var perimeter := (r.size.x + r.size.y) * 2
+	var d := fposmod(u, 1.0) * perimeter
+	var half := r.size.x / 2
+	if d < half: return Vector2(r.get_center().x + d, r.position.y)
+	d -= half
+	if d < r.size.y: return Vector2(r.end.x, r.position.y + d)
+	d -= r.size.y
+	if d < r.size.x: return Vector2(r.end.x - d, r.end.y)
+	d -= r.size.x
+	if d < r.size.y: return Vector2(r.position.x, r.end.y - d)
+	return Vector2(r.position.x + d, r.position.y)
 
 ## A good or a field tool, with an optional squash.
 func _item(good: String, at: Vector2, side: float, alpha := 1.0, squash := Vector2.ONE) -> void:
@@ -403,6 +454,15 @@ func _draw_workroom() -> void:
 	var shaft := PackedVector2Array([win.position + Vector2(0, win.size.y * 0.2), win.end - Vector2(0, win.size.y * 0.05),
 		Vector2(win.end.x + w * 0.22, floor_y + h * 0.1), Vector2(win.position.x + w * 0.1, floor_y + h * 0.1)])
 	draw_colored_polygon(shaft, Color(1, 0.95, 0.8, 0.07))
+	if not ui.reduce_motion:
+		# Dust turning slowly in the daylight.
+		for i in MOTES:
+			var u := fposmod(t * 0.025 + i * 0.618, 1.0)
+			var across := fposmod(i * 0.381, 1.0)
+			var top := win.position.lerp(win.end, across)
+			var low := Vector2(win.position.x + w * 0.1, floor_y).lerp(Vector2(win.end.x + w * 0.22, floor_y), across)
+			var p := top.lerp(low, u) + Vector2(sin(t * 0.6 + i * 1.7) * 6 * k, 0)
+			draw_circle(p, MOTE_SIZE * k * (0.7 + 0.5 * fposmod(i * 0.29, 1.0)), Color(1, 0.96, 0.82, MOTE_ALPHA * sin(PI * u)))
 	_round_rect(win.grow(5 * k), 8 * k, Color("2A1D15"))
 	draw_texture_rect(_gradient(SKY_TOP, SKY_LOW), win, false)
 	var hill := PackedVector2Array([Vector2(win.position.x, win.end.y)])
@@ -414,8 +474,10 @@ func _draw_workroom() -> void:
 	draw_rect(Rect2(win.position.x - 8 * k, win.end.y + 4 * k, win.size.x + 16 * k, 6 * k), Color("5A3E2C"))
 	# A pendant lamp over the machine, its pool of warm light on the wall.
 	var lamp := Vector2(w * (0.68 if kind == "mill" else 0.5), h * 0.13)
-	var flicker := 1.0 + (0.04 * sin(t * 7.3) + 0.03 * sin(t * 13.1) if working else 0.0)
-	_glow(Vector2(w * 0.5, h * 0.42), Vector2(w * 0.42, h * 0.5) * flicker, Color(LAMP, 0.32))
+	var swing := 0.0 if ui.reduce_motion else sin(t * 0.8) * LAMP_SWAY
+	lamp += Vector2(sin(swing), cos(swing) - 1.0) * (lamp.y - h * 0.06)
+	var flicker := 1.0 + (0.04 * sin(t * 7.3) + 0.03 * sin(t * 13.1)) * mood
+	_glow(Vector2(w * 0.5 + (lamp.x - w * (0.68 if kind == "mill" else 0.5)) * 2.0, h * 0.42), Vector2(w * 0.42, h * 0.5) * flicker, Color(LAMP, 0.32 * (1.0 + MOOD_LAMP * mood)))
 	draw_line(Vector2(lamp.x, h * 0.06), lamp, Color("1C1410"), 2 * k)
 	draw_colored_polygon(PackedVector2Array([lamp + Vector2(-16, 12) * k, lamp + Vector2(16, 12) * k, lamp + Vector2(8, 0) * k, lamp + Vector2(-8, 0) * k]), Color("C98A1C"))
 	_ellipse(lamp + Vector2(0, 13 * k), Vector2(7, 4) * k, Color(1, 0.93, 0.7))
@@ -446,6 +508,10 @@ func _draw_workroom() -> void:
 	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	_draw_goods_on_belt(belt_y, machine)
 	_draw_tray(Vector2(w * 0.86, belt_y))
+	if kind in ["oven", "grill"] and mood > 0:
+		# Firelight plays over the whole room while it bakes or grills.
+		var dance := 0.75 + 0.15 * sin(t * 6.1) + 0.1 * sin(t * 11.7)
+		_glow(machine + Vector2(0, -h * 0.1), Vector2(w * 0.62, h * 0.7), Color(1, 0.55, 0.2, FIRE_WASH * mood * dance))
 	# Corners fall into shadow: depth, and the frame reads as a window.
 	_glow(Vector2(0, 0), Vector2(w * 0.35, h * 0.45), Color(0, 0, 0, 0.35))
 	_glow(Vector2(w, 0), Vector2(w * 0.35, h * 0.45), Color(0, 0, 0, 0.35))
@@ -739,6 +805,14 @@ func _draw_outdoors() -> void:
 		var cx := fposmod(w * (0.15 + i * 0.33) + t * 6 * k, w + 160 * k) - 80 * k
 		var cy := h * (0.1 + 0.05 * i)
 		for p in [Vector2(-22, 4), Vector2(0, -6), Vector2(22, 4)]: _ellipse(Vector2(cx, cy) + p * k, Vector2(22, 12) * k, Color(1, 1, 1, 0.85))
+	if not ui.reduce_motion:
+		# Two far birds glide across, wings beating now and then.
+		for i in BIRDS:
+			var u := fposmod(t * 0.02 + i * 0.47, 1.0)
+			var bird := Vector2(lerpf(-30 * k, w + 30 * k, u), h * (0.2 + 0.08 * i) + sin(t * 0.7 + i) * 6 * k)
+			var beat := 0.35 + 0.65 * maxf(0.0, sin(t * 5.0 + i * 2.0))
+			var span := 7.0 * k
+			draw_polyline(PackedVector2Array([bird + Vector2(-span, -span * 0.6 * beat), bird, bird + Vector2(span, -span * 0.6 * beat)]), Color(0.2, 0.25, 0.3, 0.55), maxf(1, 1.4 * k), true)
 	# Rolling hills, far then near.
 	var far := PackedVector2Array([Vector2(0, h)])
 	for i in 25: far.append(Vector2(w * i / 24.0, horizon - 18 * k - sin(i * 0.6) * 14 * k))
