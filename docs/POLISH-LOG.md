@@ -380,3 +380,20 @@ Changes (tuning in `feel.gd`):
 - Reduce Motion keeps the haptics and the instant state changes only. Nothing here delays a tap or covers the map.
 
 Tests: feel spam 36/0 (4 new: sky morph spam, bar re-spring, hull kick and settle), rules 118/0, runtime and collect pass. Captures 00–19 unchanged. The haptic strengths and the boat's bounce haven't been felt on a device.
+
+## Pass 15 · 2026-11-05 (owner request: enhance and optimise the recent changes)
+
+Profiled with a new probe (`tests/hud_cost_probe.gd`) on a farm with a windmill, barn and orchard. Findings:
+- **The HUD did its full upkeep every frame.** That covered the barge ticket, the sky pill and the season clock: 78 µs per frame headless on desktop, likely a few hundred µs on a phone, for text that changes once a second.
+- Each upkeep recomputed the barge's manifest, which re-walks every place to list the makeable goods.
+- The barge ticket re-applied its stylebox and font colour on every update.
+- A gust easing in pushed a shader parameter to every swaying surface on almost every frame for several seconds.
+
+Changes:
+- **The HUD upkeep runs 5 times a second** (`F.HUD_TICK` 0.2 s). It also runs at once when a box opens or closes, or after any refresh, so chips never lag a change. UI `_process` dropped from 78 µs to 15 µs per frame.
+- **The makeable-goods list is cached** by place count. Places are only ever added, and a swap keeps both. The list is copied out, so callers can't change the cache.
+- **The barge ticket restyles only when the barge arrives or leaves.**
+- **Gust steps are coarser (0.03)**, so a breeze easing in touches the wind materials only a handful of times.
+- **Enhancement:** the barge's arrival is now a moment. The ticket turns gold with a bump, a soft chime and a "Rowan's barge is in" note, once per barge and never for the state found when opening the game.
+
+Tests: rules 118/0, feel spam 36/0, runtime and collect pass. Captures 00–19 unchanged. On-device frame cost not measured.

@@ -153,9 +153,16 @@ func barge_complete() -> bool:
 	return true
 
 ## Goods the homestead can make now, in GOODS order.
+## Cached by place count: kinds only change when a place is added (places
+## are never removed, and a swap keeps both), and the HUD asks every tick.
+var _makeable: Array = []
+var _makeable_for := -1
 func makeable_goods() -> Array:
-	var kinds := owned_kinds()
-	return C.GOODS.filter(func(g): return kinds.has(C.GOOD_SOURCE.get(g, "")))
+	if _makeable_for != items.size():
+		var kinds := owned_kinds()
+		_makeable = C.GOODS.filter(func(g): return kinds.has(C.GOOD_SOURCE.get(g, "")))
+		_makeable_for = items.size()
+	return _makeable.duplicate()
 func season_window(at: float, season: float) -> int: return floori(at / maxf(1.0, season))
 ## The good in season at `at`; `ahead` 1 gives the next window's good.
 func season_good(at: float, season: float, ahead := 0) -> String:

@@ -1412,6 +1412,7 @@ var barge_docked_style: StyleBoxFlat
 var barge_away_style: StyleBoxFlat
 var barge_clock: Label
 var barge_shown := {}
+var barge_chip_docked := -1  # -1 unseen, 0 away, 1 docked: restyle only on change
 var barge_load := {}  # the load just committed, landed once the screen rebuilds
 
 ## A load lands: crates arc from the Load button into the hold bar, the bar
@@ -1485,14 +1486,24 @@ func _update_barge_chip() -> void:
 	# The screen rebuilds when the barge arrives, leaves or is loaded.
 	if mode == "barge" and [info.docked, info.cycle, info.loaded] != [barge_shown.get("docked"), barge_shown.get("cycle"), barge_shown.get("loaded")]:
 		_fill()
+	# Arrival is a moment: the ticket turns gold with a bump and a short note,
+	# once per barge (never for the state found on opening the game).
+	var docked: bool = info.docked
+	var arrived := docked and barge_chip_docked == 0
+	if barge_chip_docked != int(docked):
+		barge_chip_docked = int(docked)
+		barge_chip.add_theme_stylebox_override("panel", barge_docked_style if docked else barge_away_style)
+		barge_chip_icon.muted = not docked
+		barge_chip_icon.queue_redraw()
+		barge_chip_status.add_theme_color_override("font_color", IVORY if docked else MUTED)
+	if arrived and title_layer == null:
+		sfx("place_set")
+		show_toast("Rowan's barge is in")
 	if not show: return
 	barge_chip.position = goal_box.position + Vector2(0, goal_box.size.y + 10 * s)
-	barge_chip.add_theme_stylebox_override("panel", barge_docked_style if info.docked else barge_away_style)
-	barge_chip_icon.muted = not info.docked
-	barge_chip_icon.queue_redraw()
-	barge_chip_eyebrow.text = ("BARGE · %d/%d" % [info.loaded, info.wanted]) if info.docked else "BARGE"
+	barge_chip_eyebrow.text = ("BARGE · %d/%d" % [info.loaded, info.wanted]) if docked else "BARGE"
 	barge_chip_status.text = _barge_status(info)
-	barge_chip_status.add_theme_color_override("font_color", IVORY if info.docked else MUTED)
+	if arrived: bump(barge_chip, 1.15)
 
 ## The next most useful step, computed from the save. Never a dead end.
 func _goal() -> Array:
@@ -1799,6 +1810,23 @@ func show_speech(who: String, line: String) -> void:
 func _process(delta: float) -> void:
 	# A hit-stop can never outlive its moment, whatever happened to its timer.
 	if Engine.time_scale != 1.0 and Time.get_ticks_msec() > hitstop_until: Engine.time_scale = 1.0
+	# HUD clocks and chips tick a few times a second, not every frame; a mode
+	# change (a box opening or closing) updates them at once.
+	hud_wait -= delta
+	var hud_state := [mode, title_layer == null]
+	if hud_wait <= 0.0 or hud_state != hud_seen:
+		hud_wait = F.HUD_TICK
+		hud_seen = hud_state
+		_hud_upkeep()
+	if ambience and main and main.game:
+		ambience.tick(delta, main.game.state.job_remaining("mill", main.game.now()) > 0)
+	if toast_left > 0:
+		toast_left -= delta
+		if toast_left <= 0: toast.text = ""; toast_box.visible = false
+
+var hud_wait := 0.0
+var hud_seen := []
+func _hud_upkeep() -> void:
 	_update_barge_chip()
 	_update_weather()
 	if is_instance_valid(season_clock) and main and main.game:
@@ -1806,13 +1834,9 @@ func _process(delta: float) -> void:
 		season_clock.text = _time(int(season.left))
 		# A new window reprices everything on the stall.
 		if int(season.window) != season_shown: refresh()
-	if ambience and main and main.game:
-		ambience.tick(delta, main.game.state.job_remaining("mill", main.game.now()) > 0)
-	if toast_left > 0:
-		toast_left -= delta
-		if toast_left <= 0: toast.text = ""; toast_box.visible = false
 
 func refresh() -> void:
+	hud_wait = 0.0  # chips follow a change on the next frame
 	var game: WorldGame = main.game
 	var coins := game.host.wallet()
 	var level := game.host.progress()

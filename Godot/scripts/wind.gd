@@ -56,7 +56,7 @@ static func set_still(on: bool) -> void:
 
 ## Weather: scales every sway (1 is a calm day). Ignored under Reduce Motion.
 static func set_gust(level: float) -> void:
-	if still or absf(level - gust) < 0.01: return
+	if still or absf(level - gust) < 0.03: return  # coarse steps: a gust easing in touches every twin only a few times
 	gust = level
 	for key in twins.keys():
 		if is_instance_valid(twins[key]): twins[key].set_shader_parameter("strength", gust)
