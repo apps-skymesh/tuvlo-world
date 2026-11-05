@@ -24,7 +24,7 @@ Passes 1–19 used the earlier 12-pillar score and the art-direction rung ladder
   - Non-goals: survival pressure, decay, aggressive monetisation.
 - **Core loop:** plant and water → mill/bake/craft on timers → sell at the market, fill orders and the barge → level up and build. Stars are a soft currency for finishing a job early.
 - **Real player evidence:** none yet. Builds are installed on Saeed's iPhone and three family iPads (the iPhone missed the latest build, PR #26), but there has been no playtest feedback so far. Every "fun" and "feel" claim since Pass 1 is design judgment, not a measured result.
-- **Pending, unmeasured changes on the same outcome (session feel):** Passes 16–20 (production window, drag, depth and life, pressed states, transitions and level-up). Passes 20 and later were explicit owner asks. Don't stack more feel and polish changes on this outcome until players have been observed.
+- **Pending, unmeasured changes on the same outcome (session feel):** Passes 16–21 (production window, drag, depth and life, pressed states, transitions and level-up, HIG text sizes in place cards). Passes 20 and later were explicit owner asks. Don't stack more feel and polish changes on this outcome until players have been observed.
 - **Rejected or retired:** noise-based ambience (Saeed disliked it, Pass 15→16); camera jumps when opening a place (replaced by the window, Pass 16); free placement (superseded by fixed spots).
 - **Next hypothesis:** observe the family playing a 10-minute session and note where they stop, hesitate or ask. Then run an M1 pass on seed choices: choosing what to plant should be a real decision with trade-offs, not a single default crop.
 - **Alternatives:**
@@ -537,3 +537,13 @@ Four asks done as one feel batch. The audit came first and decided where the wor
 - **Intensity:** unchanged ladder. Taps are crisp (press only), gains scale by reward tier (Pass 14), and the level-up is the one layered celebration.
 
 Tests: rules 136/0, feel spam 38/0 (two new: release from anywhere, back to full size and brightness). Not seen: any of this on a device.
+
+## Pass 21 · 2026-11-05 (owner requests: premium place menus with HIG text sizes; game UI/UX audit)
+
+- **Audit (4-second rule, Fitts):** on the map the state (wallet, level) and goal ticket read at once. On a landscape iPhone, though, the place cards failed: text was sized in layout units scaled to a 720-tall canvas, so 17 "units" came out near 10 pt, and the ✕ was 26 pt, under the 44 pt touch minimum. The iPads were fine (each unit is about 1 pt there). Wording was heavier than needed: "Finish now", "Rain ×2", and a Close button repeating the ✕.
+- **Change 1, a point-based type scale (`world_ui.gd` `TYPE_*`, `pt`, `fs()`, `title_px()`, `tap_px()`):** text is sized in points with the screen's own scale, and never below the old layout size. Body 17 pt minimum; button labels 20 pt; the card title a 34 pt large title, capped at 6.5% of the screen height (about 28 pt on a landscape iPhone). The ✕ and the action buttons are at least 44 pt. `TW_POINT_SCALE` forces the scale for device-sized renders.
+- **Change 2, fit without scrolling:** need counts became a badge on the tile's lower edge instead of a line below, so three needs fit the shortest screen. The ribbon, card top margin, ✕ position and the scene's clock pill size themselves from the title and text sizes. The tab time keeps a fixed width so a countdown never nudges the row.
+- **Change 3, less wording:** "Finish now" → "Finish"; the weather badge shows its sky picture and "×2", without the word; the quiet place drops its Close button (✕ or a tap outside closes it). The Finish button sizes itself to its content.
+- **Fallback:** if the screen scale would make the screen implausibly short (the viewport is not in pixels), the layout scale is used, which is the old behaviour.
+
+Tests: rules 136/0, feel spam 38/0, runtime 0 failures. The collect-feedback test fails one check ("new bubble pops in") on main as well, so it is not from this pass. Renders: an iPhone 15 Pro Max ratio (1864×860 at 2 px/pt) and an iPad 9th gen ratio (1080×810 at 1 px/pt), in `captures/place-menus/`. Not seen: a real device. The screen-scale reading on iOS is the main risk.

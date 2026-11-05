@@ -944,15 +944,16 @@ func _draw_clock_pill() -> void:
 	var text := "Ready" if done else label
 	if text == "": return
 	var font: Font = WorldUI.DISPLAY_SEMI
-	var fs := int(19 * k)
+	var fs: int = ui.fs(WorldUI.TYPE_HEADLINE)
 	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	var pill := Rect2(size.x / 2 - (tw + 56 * k) / 2, 12 * k, tw + 56 * k, 34 * k)
+	var tall := maxf(34 * k, fs * 1.6)
+	var pill := Rect2(size.x / 2 - (tw + 56 * k) / 2, 12 * k, tw + 56 * k, tall)
 	var box: StyleBoxFlat = ui.glass(17, WorldUI.GLASS_DEEP, false)
 	if done: box.border_color = Color(WorldUI.MINT, 0.8)
 	draw_style_box(box, pill)
 	var clock := pill.position + Vector2(20 * k, pill.size.y / 2)
 	WorldUI.draw_clock(self, clock, 9 * k, WorldUI.MINT if done else WorldUI.GOLD, 1.0 if progress < 0 else progress)
-	draw_string(font, Vector2(pill.position.x + 36 * k, pill.position.y + 24 * k), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.MINT if done else WorldUI.IVORY)
+	draw_string(font, Vector2(pill.position.x + 36 * k, pill.position.y + tall / 2 + fs * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.MINT if done else WorldUI.IVORY)
 	if progress >= 0 and not done:
 		# A fine progress line along the pill's foot.
 		var foot := Rect2(pill.position.x + 14 * k, pill.end.y - 4 * k, (pill.size.x - 28 * k), 2.5 * k)
