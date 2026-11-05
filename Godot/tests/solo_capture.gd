@@ -111,6 +111,38 @@ func _process(delta: float) -> bool:
 		49: shot("22-field-growing")
 		50: main.ui._instant(); wait = 2.0
 		51: shot("23-field-finished-with-stars")
-		52: return true
+		52:
+			# New producing places (built straight into the save for the shots).
+			main.ui.close()
+			var at: float = game.now()
+			var recs := [
+				{"v": 1, "id": "cap-pond", "type": "build", "at": at, "seq": 90001, "kind": "pond", "place": "place:pond:cap", "x": 8, "z": 8, "price": 0, "seconds": 0},
+				{"v": 1, "id": "cap-th", "type": "build", "at": at, "seq": 90002, "kind": "treehouse", "place": "place:treehouse:cap", "x": 14, "z": 2, "price": 0, "seconds": 0},
+				{"v": 1, "id": "cap-ws", "type": "build", "at": at, "seq": 90003, "kind": "workshop", "place": "place:workshop:cap", "x": 7, "z": 14, "price": 0, "seconds": 0},
+				{"v": 1, "id": "cap-land", "type": "land", "at": at, "seq": 90004, "side": "west", "price": 0},
+				{"v": 1, "id": "cap-gh", "type": "build", "at": at, "seq": 90005, "kind": "greenhouse", "place": "place:greenhouse:cap", "x": -6, "z": 2, "price": 0, "seconds": 0}]
+			game.host.append_records(recs); game.refresh(); main.push()
+			main.ui.open("place", "place:pond:cap"); wait = 1.0
+		53:
+			# A held good over the scene: the slot reaches for it.
+			var sc: ProductionScene = main.ui.ring
+			sc.hover_good = "wheat"; sc.hover_valid = true; sc.hover_at = sc.size * Vector2(0.62, 0.3); sc.hover_until = 1e12
+			wait = 0.5
+		54: shot("24-pond-drag-hover")
+		55: main.ui.ring.hover_until = 0.0; main.ui._ring_dropped("wheat"); wait = 0.25
+		56: shot("25-pond-landing")
+		57: wait = 2.5
+		58: shot("26-pond-fishing")
+		59: main.ui.close(); main.ui.open("place", "place:treehouse:cap"); wait = 0.6
+		60: main.ui._ring_dropped("x"); main.ui._act(main.game.make("honey")); wait = 1.5
+		61: shot("27-hive")
+		62: main.ui.close(); main.ui.open("place", "place:greenhouse:cap"); wait = 0.6
+		63: main.ui._act(main.game.make("herbs")); wait = 1.5
+		64: shot("28-greenhouse")
+		65: main.ui.close(); main.ui.open("place", "place:workshop:cap"); wait = 1.5
+		66: shot("29-workshop")
+		67: main.ui.close(); main.ui.open("place", "base:cottage", "oven"); wait = 1.0
+		68: shot("30-cottage-five-products")
+		69: return true
 	step += 1
 	return false

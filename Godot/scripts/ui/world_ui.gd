@@ -477,18 +477,70 @@ class ClockIcon extends Control:
 	func _draw() -> void: WorldUI.draw_clock(self, size / 2, minf(size.x, size.y) * 0.46, color, share)
 
 ## A field tool that can be dragged into the scene.
+## What follows the finger while a good is dragged: the good lifted and a
+## little larger, with a soft shadow below, leaning into the direction of travel
+## and settling as the finger slows.
+class DragGhost extends Control:
+	var picture: Control
+	var side := 64.0
+	var last := Vector2.ZERO
+	var lean := 0.0
+	var lift := 0.0
+	var reduce := false
+	func _ready() -> void:
+		picture.size = Vector2(side, side)
+		picture.pivot_offset = picture.size / 2
+		picture.position = -picture.size / 2 - Vector2(0, side * 0.2)
+		add_child(picture)
+		last = global_position
+		if not reduce:
+			picture.scale = Vector2.ONE * 0.8
+			create_tween().tween_property(picture, "scale", Vector2.ONE * 1.18, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		else: picture.scale = Vector2.ONE * 1.1
+	func _process(delta: float) -> void:
+		var v := (global_position - last) / maxf(delta, 0.001)
+		last = global_position
+		if reduce: return
+		lean = lerpf(lean, clampf(v.x * 0.0009, -0.45, 0.45), 1.0 - exp(-delta * 14.0))
+		lift += delta
+		picture.rotation = lean + sin(lift * 5.0) * 0.03
+		queue_redraw()
+	func _draw() -> void:
+		var r := side * (0.42 + 0.04 * sin(lift * 5.0))
+		var points := PackedVector2Array()
+		for i in 24: points.append(Vector2(cos(TAU * i / 24.0) * r, side * 0.42 + sin(TAU * i / 24.0) * r * 0.25))
+		draw_colored_polygon(points, Color(0, 0, 0, 0.25))
+
+static func _drag_start(source: Control, ui, picture: Control, good: String) -> Dictionary:
+	var ghost := DragGhost.new()
+	ghost.picture = picture
+	ghost.side = source.size.x
+	ghost.reduce = ui.reduce_motion
+	ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	source.set_drag_preview(ghost)
+	source.modulate.a = 0.3
+	ui.haptic(0.3)
+	ui.sfx("tap", 1.2)
+	return {"good": good}
+
+## When a drag ends without landing anywhere, the good drifts back to its socket.
+static func _drag_end(source: Control, ui, texture: Texture2D, tool: String) -> void:
+	source.modulate.a = 1.0
+	if source.get_viewport().gui_is_drag_successful(): return
+	ui.fly_back(texture, tool, source.get_viewport().get_mouse_position(), source)
+
+## A field tool that can be dragged into the scene.
 class DragTool extends ToolIcon:
 	var draggable := false
+	var ui
 	func _get_drag_data(_at: Vector2) -> Variant:
 		if not draggable: return null
 		var preview := ToolIcon.new()
 		preview.tool = tool
-		preview.size = size
-		preview.position = -size / 2
-		var holder := Control.new()
-		holder.add_child(preview)
-		set_drag_preview(holder)
-		return {"good": tool}
+		preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		return WorldUI._drag_start(self, ui, preview, tool)
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_DRAG_END and draggable and modulate.a < 1.0: WorldUI._drag_end(self, ui, null, tool)
 
 class GoodTile extends TextureRect:
 	var good := ""
@@ -499,13 +551,11 @@ class GoodTile extends TextureRect:
 		var preview := TextureRect.new()
 		preview.texture = texture
 		preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		preview.size = size
-		preview.modulate.a = 0.9
-		var holder := Control.new()
-		holder.add_child(preview)
-		preview.position = -size / 2
-		set_drag_preview(holder)
-		return {"good": good}
+		preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		return WorldUI._drag_start(self, ui, preview, good)
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_DRAG_END and draggable and modulate.a < 1.0: WorldUI._drag_end(self, ui, texture, "")
 
 # --- setup -------------------------------------------------------------------
 
@@ -1820,7 +1870,7 @@ func refresh() -> void:
 	level_badge.progress = float(bar.x) / bar.y if bar.y > 0 else 0.0
 	level_badge.queue_redraw()
 	var from := fly_from if fly_from.x >= 0 else root.get_viewport_rect().size / 2
-	if ring and is_instance_valid(ring): from = ring.get_global_rect().get_center()
+	if ring and is_instance_valid(ring): from = ring.tray_global()
 	if last_coins >= 0 and coins > last_coins:
 		# Feedback scales with the gain: a coin or two is crisp and small,
 		# a big sale lands heavier, louder and larger.
@@ -1960,6 +2010,7 @@ func _close_out(holder: Control) -> void:
 
 func _act(result: String) -> void:
 	filled = {}
+	if result == "" and mode == "place": burst_at = Time.get_ticks_msec() / 1000.0
 	main.after_action(result)
 	if result != "":
 		sfx("soft_fail")
@@ -2049,6 +2100,9 @@ func _good_tile(good: String, count_text: String, short := false, draggable := f
 ## the left to be dragged into the scene, and one action sits below.
 var tab_refs: Array = []   # {"time": Label, "star": Label, "target", "seconds", "recipe"}
 var finish_button: Button
+var need_sockets := {}  # good -> its socket on the left, where taps and returns start
+var burst_at := -10.0   # a job just started or was collected: the machine kicks
+var poke_at := -10.0    # a tap on a working place
 var finish_price: Label
 var star_pill: Control
 var stars_label: Label
@@ -2073,6 +2127,7 @@ func _place_products(item: Dictionary) -> Array:
 		for id in C.recipes_for(each):
 			var r: Dictionary = C.RECIPES[id]
 			out.append({"target": each, "recipe": id, "output": r.output, "quantity": r.quantity, "seconds": float(r.seconds)})
+	for p in out: p.twin = out.filter(func(o): return o.output == p.output).size() > 1
 	return out
 
 ## The goods the field still needs this round: seeds for bare soil, water for
@@ -2227,6 +2282,14 @@ func _product_tab(product: Dictionary, selected: bool, busy: bool) -> Control:
 	yield_label.add_theme_constant_override("outline_size", int(5 * s))
 	yield_label.position = Vector2(30, 30) * s
 	picture.add_child(yield_label)
+	if product.recipe != "" and product.get("twin", false):
+		# Two products share a picture (bread, meals): a small badge names what
+		# makes this one different.
+		var inputs: Array = C.RECIPES[product.recipe].input.keys()
+		if not inputs.is_empty():
+			var badge := _icon(icons.get(inputs[-1]), 24)
+			badge.position = Vector2(-6, -4) * s
+			picture.add_child(badge)
 	row.add_child(picture)
 	var facts := VBoxContainer.new()
 	facts.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -2284,6 +2347,7 @@ func _need_slot(good: String, text: String, state: String) -> Control:
 	var tap := func(): if state == "short": _open_source(good) elif state == "ready": _ring_dropped(good)
 	if good in ["seed", "water"]:
 		var tool := DragTool.new()
+		tool.ui = self
 		tool.tool = good
 		tool.draggable = draggable
 		tool.custom_minimum_size = Vector2(60, 60) * s
@@ -2305,6 +2369,7 @@ func _need_slot(good: String, text: String, state: String) -> Control:
 		tile.gui_input.connect(func(e): if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed): tap.call())
 		socket.add_child(tile)
 	if state == "used": socket.modulate.a = 0.45
+	need_sockets[good] = socket
 	column.add_child(socket)
 	var label := Label.new()
 	label.text = text
@@ -2329,6 +2394,7 @@ func _fill_place() -> void:
 	var now := game.now()
 	tab_refs = []
 	finish_button = null
+	need_sockets = {}
 	var products := _place_products(item)
 	if products.is_empty() and not st.is_building(place_id, now):
 		_fill_quiet_place(item)
@@ -2392,6 +2458,14 @@ func _fill_place() -> void:
 				var have: int = st.stock[good]
 				var state := "used" if working else ("filled" if filled.get(good, false) else ("ready" if have >= need else "short"))
 				needs.add_child(_need_slot(good, "✓" if state in ["filled", "used"] else "%d/%d" % [mini(have, need), need], state))
+			if spec.input.is_empty():
+				# Nothing to bring: the place makes it from sun and time alone.
+				var sun := WeatherIcon.new()
+				sun.sky = "sunny"
+				sun.custom_minimum_size = Vector2(64, 64) * s
+				sun.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				sun.tooltip_text = "Needs nothing"
+				needs.add_child(sun)
 			scene.inputs = spec.input.keys()
 			var done := working and st.job_remaining(station, now) == 0
 			if working: primary = _button("Collect" if done else "Working", func(): _act(main.game.collect(station)), done, spec.output if done else "")
@@ -2600,6 +2674,13 @@ func _ring_tapped() -> void:
 	var st := game.state
 	var item := st.find(place_id)
 	if item.is_empty() or st.is_building(place_id, game.now()): return
+	var target := _target()
+	if st.rush_left(target, game.now()) > 0:
+		# A working place answers a tap: the machine kicks and throws sparks.
+		poke_at = Time.get_ticks_msec() / 1000.0
+		sfx("place_set", 1.3 + randf() * 0.2)
+		haptic(F.HAPTIC_TAP)
+		return
 	if item.kind == "garden": _tend_all(); return
 	if item.kind == "orchard": _act(game.tend_orchard()); return
 	if station == "": return
@@ -2618,7 +2699,10 @@ func _ring_dropped(good: String) -> void:
 	if C.STATIONS.has(target):
 		if recipe == "" or st.jobs.has(station) or st.stock[good] < C.RECIPES[recipe].input[good]: return
 	filled[good] = true
-	landed[good] = Time.get_ticks_msec() / 1000.0
+	var now_s := Time.get_ticks_msec() / 1000.0
+	if now_s - float(landed.get(good, {}).get("at", -10.0)) > 0.25:
+		var socket: Control = need_sockets.get(good)
+		landed[good] = {"at": now_s, "from": socket.get_global_rect().get_center() if is_instance_valid(socket) else Vector2(-1, -1)}
 	for g in wanted:
 		if not filled.get(g, false):
 			_fill()
@@ -2632,6 +2716,31 @@ func _ring_dropped(good: String) -> void:
 		"field": _plant_and_water()
 		"orchard": _act(main.game.tend_orchard())
 		_: _act(main.game.make(recipe))
+
+## A good that wasn't taken drifts back to its socket.
+func fly_back(texture: Texture2D, tool: String, from: Vector2, socket: Control) -> void:
+	sfx("soft_fail")
+	if reduce_motion or not is_instance_valid(socket): return
+	var sprite: Control
+	if texture: sprite = _icon(texture, 64)
+	else:
+		var t := ToolIcon.new(); t.tool = tool; sprite = t
+	sprite.size = socket.size
+	sprite.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sprite.position = from - sprite.size / 2
+	sprite.pivot_offset = sprite.size / 2
+	fly_layer.add_child(sprite)
+	var to := socket.get_global_rect().get_center() - sprite.size / 2
+	var tween := sprite.create_tween()
+	tween.tween_property(sprite, "position", to, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(sprite, "rotation", 0.0, 0.32).from(0.3)
+	tween.tween_callback(sprite.queue_free)
+	tween.tween_callback(func(): if is_instance_valid(socket): bump(socket))
+
+func reject_drop(good: String, at: Vector2) -> void:
+	var socket: Control = need_sockets.get(good)
+	fly_back(icons.get(good), good if good in ["seed", "water"] else "", at, socket)
+	show_toast("Not needed here" if not filled.get(good, false) else "Already in")
 
 func _punch_scene() -> void:
 	if ring and is_instance_valid(ring): bump(ring.get_parent() as Control, F.SLOT_PUNCH)

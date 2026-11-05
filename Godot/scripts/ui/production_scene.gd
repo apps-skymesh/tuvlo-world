@@ -55,16 +55,51 @@ func _process(delta: float) -> void:
 func _gui_input(event: InputEvent) -> void:
 	var up: bool = (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed) or (event is InputEventScreenTouch and not event.pressed)
 	if up: tapped.emit()
-func _can_drop_data(_at: Vector2, data: Variant) -> bool:
+
+var hover_at := Vector2(-1, -1)
+var hover_good := ""
+var hover_valid := false
+func _can_drop_data(at: Vector2, data: Variant) -> bool:
 	var ok: bool = data is Dictionary and data.has("good")
-	if ok: hover_until = t + 0.15 if not ui.reduce_motion else 1e9
-	return ok
-func _drop_data(_at: Vector2, data: Variant) -> void:
+	if not ok: return false
+	hover_until = _now() + 0.15
+	hover_at = at
+	hover_good = str(data.good)
+	var valid := wants(hover_good)
+	# A light tick the moment a held good finds somewhere it can go.
+	if valid and not hover_valid: ui.haptic(0.25); ui.sfx("tap", 1.5)
+	hover_valid = valid
+	return true
+func _drop_data(at: Vector2, data: Variant) -> void:
 	hover_until = 0.0
-	dropped.emit(str(data.good))
+	hover_valid = false
+	var good := str(data.good)
+	if wants(good): ui.landed[good] = {"at": _now(), "from": get_global_transform() * at}
+	else: ui.reject_drop(good, get_global_transform() * at)
+	dropped.emit(good)
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_DRAG_END: hover_until = 0.0
+	if what == NOTIFICATION_DRAG_END: hover_until = 0.0; hover_valid = false
 	if what == NOTIFICATION_READY and not ui.reduce_motion: t = Time.get_ticks_msec() / 1000.0
+
+static func _now() -> float: return Time.get_ticks_msec() / 1000.0
+func wants(good: String) -> bool: return good in inputs and not filled.get(good, false) and not working and not done
+
+## Where each input waits to be dropped, per scene.
+func slot_point(i: int) -> Vector2:
+	var k := _k()
+	match kind:
+		"field": return Vector2(size.x * (0.27 + 0.32 * i), size.y * 0.42)
+		"orchard": return Vector2(size.x * 0.62, size.y * 0.72)
+		"fishing": return Vector2(size.x * 0.33 + i * 56 * k, size.y * 0.5)
+	return Vector2(size.x * 0.12 + i * 44.0 * k * 1.15, size.y * 0.69 - 44.0 * k * 0.42)
+
+## The tray (or cart, bucket, jar) where products wait: goods fly home from here.
+func tray_global() -> Vector2:
+	var at := Vector2(size.x * 0.86, size.y * 0.6)
+	match kind:
+		"field": at = Vector2(size.x * 0.86, size.y * 0.7)
+		"orchard": at = Vector2(size.x * 0.8, size.y * 0.72)
+	return get_global_transform() * at
 
 # --- shared paint ------------------------------------------------------------
 
@@ -121,13 +156,179 @@ func _k() -> float: return ui.s
 # --- the scene ---------------------------------------------------------------
 
 func _draw() -> void:
-	if kind in ["field", "orchard"]: _draw_outdoors()
-	else: _draw_workroom()
+	match kind:
+		"field", "orchard", "fishing", "hive": _draw_outdoors()
+		"greenhouse": _draw_greenhouse()
+		_: _draw_workroom()
+	if not working and not done and kind != "build": _draw_slots()
+	elif working: _draw_last_drop()
+	_draw_bursts()
 	_draw_clock_pill()
-	if hover_until > t:
-		# A dragged good is over the scene: the whole window lights up to take it.
-		_round_rect(Rect2(Vector2(3, 3) * _k(), size - Vector2(6, 6) * _k()), 22 * _k(), Color(0, 0, 0, 0), Color(WorldUI.GOLD, 0.9), 3 * _k())
-		_glow(size / 2, size * 0.6, Color(WorldUI.GOLD, 0.12))
+	if hover_until > _now():
+		# A held good over the scene: gold when it can go in, a cool rim when not.
+		var rim := WorldUI.GOLD if hover_valid else Color(1, 1, 1, 0.5)
+		_round_rect(Rect2(Vector2(3, 3) * _k(), size - Vector2(6, 6) * _k()), 22 * _k(), Color(0, 0, 0, 0), Color(rim, 0.9), 3 * _k())
+		if hover_valid: _glow(size / 2, size * 0.6, Color(WorldUI.GOLD, 0.1))
+
+## A good or a field tool, with an optional squash.
+func _item(good: String, at: Vector2, side: float, alpha := 1.0, squash := Vector2.ONE) -> void:
+	_ellipse(at + Vector2(0, side * 0.42), Vector2(side * 0.34 * squash.x, side * 0.09), Color(0, 0, 0, 0.28 * alpha))
+	draw_set_transform(at + Vector2(0, side * 0.4), 0, squash)
+	var local := Vector2(0, -side * 0.4)
+	if good in ["seed", "water"]: _tool(good, local, side, alpha)
+	else:
+		var tex: Texture2D = ui.icons.get(good)
+		if tex: draw_texture_rect(tex, Rect2(local - Vector2(side, side) / 2, Vector2(side, side)), false, Color(1, 1, 1, alpha))
+	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+
+func _tool(tool: String, c: Vector2, side: float, alpha: float) -> void:
+	var r := side * 0.38
+	if tool == "water":
+		var points := PackedVector2Array()
+		for i in 33:
+			var a := float(i) / 32.0 * TAU
+			var y := -cos(a)
+			var x := sin(a) * (1.0 - 0.55 * maxf(0, y))
+			points.append(c + Vector2(x * r * 0.85, y * r * -1.15 + r * 0.25))
+		draw_colored_polygon(points, Color("5BA8D8", alpha))
+		draw_polyline(points, Color("2F6F9E", alpha), 3.0, true)
+		draw_circle(c + Vector2(-r * 0.28, r * 0.1), r * 0.16, Color(1, 1, 1, 0.7 * alpha))
+	else:
+		draw_circle(c + Vector2(0, r * 0.2), r * 0.85, Color("C08A4E", alpha))
+		draw_arc(c + Vector2(0, r * 0.2), r * 0.85, 0, TAU, 48, Color("7A5028", alpha), 3.0, true)
+		draw_rect(Rect2(c + Vector2(-r * 0.45, -r * 0.85), Vector2(r * 0.9, r * 0.35)), Color("9E6B38", alpha))
+		for offset in [Vector2(-0.3, 0.2), Vector2(0.25, 0.05), Vector2(0.05, 0.5)]:
+			draw_circle(c + offset * r, r * 0.13, Color("F3D98B", alpha))
+
+const LAND_TIME := 0.42
+const SETTLE_TIME := 0.38
+## Inputs waiting to be dropped (breathing ghosts that reach for a held good),
+## and dropped ones flying in, landing with a squash and a puff of dust.
+func _draw_slots() -> void:
+	var k := _k()
+	var side := 44.0 * k if kind not in ["field", "orchard"] else 58.0 * k
+	var now := _now()
+	for i in inputs.size():
+		var good: String = inputs[i]
+		var at := slot_point(i)
+		if filled.get(good, false):
+			var land: Dictionary = ui.landed.get(good, {})
+			var e: float = now - float(land.get("at", -10.0))
+			if ui.reduce_motion or e > LAND_TIME + SETTLE_TIME + 0.6:
+				_item(good, at, side)
+				continue
+			if e < LAND_TIME:
+				# An arc from where the finger let go, easing in and shrinking to size.
+				var from: Vector2 = get_global_transform().affine_inverse() * land.get("from", get_global_transform() * Vector2(-40 * k, at.y))
+				var u := ease(e / LAND_TIME, 0.6)
+				var peak := (from + at) / 2 - Vector2(0, 70 * k + from.distance_to(at) * 0.15)
+				var p := from.lerp(peak, u).lerp(peak.lerp(at, u), u)
+				_item(good, p, side * lerpf(1.3, 1.0, u), 1.0, Vector2(1, 1).lerp(Vector2(0.92, 1.1), sin(u * PI)))
+			else:
+				var e2 := e - LAND_TIME
+				var wob := 0.0 if e2 > SETTLE_TIME else sin(e2 / SETTLE_TIME * PI * 2.0) * (1.0 - e2 / SETTLE_TIME) * 0.22
+				_item(good, at, side, 1.0, Vector2(1.0 + wob, 1.0 - wob))
+				_landing_fx(good, at, e2, side)
+		else:
+			_ghost_slot(good, at, side, i)
+
+## The good that completed the set flies on into the machine as it starts.
+func _draw_last_drop() -> void:
+	if ui.reduce_motion: return
+	var k := _k()
+	for good in inputs:
+		var land: Dictionary = ui.landed.get(good, {})
+		var e: float = _now() - float(land.get("at", -10.0))
+		if e < 0 or e > 0.55: continue
+		var from: Vector2 = get_global_transform().affine_inverse() * land.get("from", get_global_transform() * Vector2(-40 * k, size.y / 2))
+		var to := machine_point()
+		var u := ease(e / 0.55, 0.5)
+		var peak := (from + to) / 2 - Vector2(0, 80 * k)
+		var p := from.lerp(peak, u).lerp(peak.lerp(to, u), u)
+		_item(good, p, 50 * k * lerpf(1.3, 0.5, u), 1.0 - u * 0.6)
+
+func _ghost_slot(good: String, at: Vector2, side: float, i: int) -> void:
+	var k := _k()
+	var pulse := 0.5 + 0.5 * sin(t * 3.0 + i)
+	var reach := 0.0
+	if hover_until > _now() and hover_good == good:
+		# The slot leans toward the held good: it swells and lights as it nears.
+		reach = clampf(1.0 - hover_at.distance_to(at) / (size.x * 0.6), 0.0, 1.0)
+		var dots := 9
+		for d in dots:
+			var u := fposmod(float(d) / dots + t * 1.2, 1.0)
+			var mid := (hover_at + at) / 2 - Vector2(0, 40 * k)
+			var p := hover_at.lerp(mid, u).lerp(mid.lerp(at, u), u)
+			draw_circle(p, (2.0 + 2.0 * u) * k, Color(WorldUI.GOLD, 0.25 + 0.6 * u))
+	var r := side * (0.55 + 0.25 * reach)
+	if reach > 0: _glow(at, Vector2(r, r) * 2.0, Color(WorldUI.GOLD, 0.35 * reach + 0.15))
+	draw_arc(at + Vector2(0, 2 * k), r, 0, TAU, 40, Color(WorldUI.GOLD, 0.35 + 0.35 * pulse + 0.3 * reach), (2 + 2 * reach) * k, true)
+	# Dashes turn slowly around the ring: a place waiting to be filled.
+	for d in 12:
+		var a := t * 0.6 + TAU * d / 12.0
+		draw_arc(at + Vector2(0, 2 * k), r + 6 * k, a, a + 0.22, 6, Color(WorldUI.GOLD, 0.3 + 0.2 * pulse), 1.5 * k, true)
+	_item(good, at, side * (0.86 + 0.14 * reach), 0.3 + 0.45 * reach)
+
+func _landing_fx(good: String, at: Vector2, e: float, side: float) -> void:
+	var k := _k()
+	if e < 0.5:
+		var u := e / 0.5
+		draw_arc(at, side * (0.4 + 0.9 * u), 0, TAU, 40, Color(WorldUI.GOLD, 0.7 * (1.0 - u)), 3 * k * (1.0 - u) + 0.5, true)
+		for d in 7:
+			var a := PI + PI * d / 6.0
+			var p := at + Vector2(0, side * 0.4) + Vector2(cos(a) * side * (0.3 + 0.6 * u), sin(a) * side * 0.25 * u - 10 * k * u)
+			draw_circle(p, (5 - 3 * u) * k, Color(0.95, 0.88, 0.72, 0.6 * (1.0 - u)))
+	if kind == "field" and e < 1.1:
+		# Seeds scatter into the beds; water falls on them as a bright shower.
+		var u := e / 1.1
+		for d in 18:
+			var bed := Vector2(size.x * (0.18 + 0.035 * d), size.y * (0.66 + 0.04 * (d % 3)))
+			var lead := clampf(u * 1.6 - d * 0.03, 0, 1)
+			if lead <= 0 or lead >= 1: continue
+			var p := at.lerp(bed, lead) - Vector2(0, sin(lead * PI) * 40 * k)
+			if good == "seed": draw_circle(p, 3 * k, Color("F3D98B", 1.0 - lead * 0.5))
+			else: draw_line(p, p + Vector2(-1, 7) * k, Color(0.6, 0.85, 1.0, 0.85 * (1.0 - lead)), 2.5 * k)
+	if kind == "orchard" and good == "water" and e < 1.0:
+		var u := e / 1.0
+		for d in 8:
+			var p := at + Vector2((d - 4) * 10 * k, u * 30 * k + (d % 3) * 6 * k)
+			draw_circle(p, 2.5 * k, Color(0.6, 0.85, 1.0, 0.8 * (1.0 - u)))
+
+## Starting, collecting and taps on a working place kick the machine and throw
+## sparks: the place answers every touch.
+func _draw_bursts() -> void:
+	if ui.reduce_motion: return
+	var k := _k()
+	var centre := machine_point()
+	for key in ["burst_at", "poke_at"]:
+		var e: float = _now() - float(ui.get(key))
+		var length := 0.9 if key == "burst_at" else 0.5
+		if e < 0 or e > length: continue
+		var u := e / length
+		draw_arc(centre, (40 + 200 * u) * k, 0, TAU, 64, Color(WorldUI.GOLD, 0.6 * (1.0 - u)), (5 - 4 * u) * k, true)
+		var count := 12 if key == "burst_at" else 7
+		for d in count:
+			var a := TAU * d / count + (0.3 if key == "poke_at" else 0.0)
+			var p := centre + Vector2.from_angle(a) * (30 + 150 * ease(u, 0.4)) * k
+			_sparkle(p, (4.0 * (1.0 - u) + 1.0) * k)
+
+func machine_point() -> Vector2:
+	match kind:
+		"field": return Vector2(size.x * 0.4, size.y * 0.7)
+		"orchard": return Vector2(size.x * 0.42, size.y * 0.5)
+		"fishing": return Vector2(size.x * 0.55, size.y * 0.68)
+		"hive": return Vector2(size.x * 0.5, size.y * 0.55)
+		"greenhouse": return Vector2(size.x * 0.48, size.y * 0.55)
+	return Vector2(size.x * 0.5, size.y * 0.5)
+
+## How much the machine is kicked right now (a quick scale punch).
+func _kick() -> float:
+	if ui.reduce_motion: return 1.0
+	var best := 1.0
+	for key in ["burst_at", "poke_at"]:
+		var e: float = _now() - float(ui.get(key))
+		if e >= 0 and e < 0.35: best = maxf(best, 1.0 + 0.07 * sin(e / 0.35 * PI))
+	return best
 
 func _draw_workroom() -> void:
 	var k := _k()
@@ -175,13 +376,17 @@ func _draw_workroom() -> void:
 	var belt_y := h * 0.69
 	var machine := Vector2(w * 0.5, belt_y)
 	_draw_belt(belt_y)
+	var kick := _kick()
+	draw_set_transform(machine * (1.0 - kick), 0, Vector2(kick, kick))
 	match kind:
+		"workshop": _draw_workshop(machine)
 		"mill": _draw_mill(machine)
 		"oven": _draw_oven(machine)
 		"pantry": _draw_pantry(machine)
 		"barn": _draw_barn(machine)
 		"grill": _draw_grill(machine)
 		"build": _draw_build(machine)
+	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	_draw_goods_on_belt(belt_y, machine)
 	_draw_tray(Vector2(w * 0.86, belt_y))
 	# Corners fall into shadow: depth, and the frame reads as a window.
@@ -247,20 +452,6 @@ func _draw_goods_on_belt(y: float, machine: Vector2) -> void:
 				var a := clampf(u / 0.15, 0, 1) * clampf((1.0 - u) / 0.15, 0, 1)
 				_good(output, Vector2(lerpf(exit, tray, u), ride), side * (0.8 + 0.2 * clampf(u / 0.2, 0, 1)), a)
 		return
-	if done or kind == "build": return
-	var gap := side * 1.15
-	for i in inputs.size():
-		var good: String = inputs[i]
-		var at := Vector2(start + i * gap, ride)
-		if filled.get(good, false):
-			var since: float = t - float(ui.landed.get(good, -10.0))
-			var hop := 0.0 if since > 0.45 or ui.reduce_motion else sin(since / 0.45 * PI) * 14 * k * (1.0 - since / 0.45)
-			_good(good, at - Vector2(0, hop), side)
-		else:
-			# A ghost of the good, breathing softly: drop it here.
-			var pulse := 0.5 + 0.5 * sin(t * 3.0 + i)
-			draw_arc(at + Vector2(0, 2 * k), side * 0.52, 0, TAU, 36, Color(WorldUI.GOLD, 0.35 + 0.35 * pulse), 2 * k, true)
-			_good(good, at, side * 0.86, 0.28)
 
 func _draw_tray(at: Vector2) -> void:
 	var k := _k()
@@ -502,8 +693,23 @@ func _draw_outdoors() -> void:
 	near.append(Vector2(w, h))
 	draw_colored_polygon(near, HILL_NEAR)
 	draw_rect(Rect2(0, h * 0.62, w, h * 0.38), Color("7DB06A"))
-	if kind == "field": _draw_fields()
-	else: _draw_orchard()
+	if kind != "fishing":
+		# Tufts of grass and a few wildflowers on the near meadow.
+		for i in 16:
+			var gx := w * fposmod(i * 0.137 + 0.05, 1.0)
+			var gy := h * (0.66 + 0.3 * fposmod(i * 0.311, 1.0))
+			var sway := 0.0 if ui.reduce_motion else sin(t * 1.6 + i) * 2 * k
+			for b in 3: draw_line(Vector2(gx + (b - 1) * 4 * k, gy), Vector2(gx + (b - 1) * 6 * k + sway, gy - 10 * k), Color("5E9A4E"), 2 * k)
+			if i % 4 == 0: draw_circle(Vector2(gx + sway, gy - 12 * k), 3 * k, [Color("F7C04A"), Color("FFF8EA"), Color("E88AA0")][i % 3])
+	var kick := _kick()
+	var pivot := machine_point()
+	draw_set_transform(pivot * (1.0 - kick), 0, Vector2(kick, kick))
+	match kind:
+		"field": _draw_fields()
+		"orchard": _draw_orchard()
+		"fishing": _draw_fishing()
+		"hive": _draw_hive()
+	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	_glow(Vector2(0, h), Vector2(w * 0.3, h * 0.35), Color(0, 0, 0, 0.22))
 	_glow(Vector2(w, h), Vector2(w * 0.3, h * 0.35), Color(0, 0, 0, 0.22))
 
@@ -616,3 +822,186 @@ func _draw_clock_pill() -> void:
 		var foot := Rect2(pill.position.x + 14 * k, pill.end.y - 4 * k, (pill.size.x - 28 * k), 2.5 * k)
 		draw_rect(foot, Color(1, 1, 1, 0.12))
 		draw_rect(Rect2(foot.position, Vector2(foot.size.x * clampf(progress, 0, 1), foot.size.y)), WorldUI.GOLD)
+
+# --- more places -----------------------------------------------------------------
+
+## A finished product glowing where it waits, with sparkles orbiting it.
+func _ready_product(at: Vector2, side := 60.0) -> void:
+	if not done or output == "": return
+	var k := _k()
+	var lift := 0.0 if ui.reduce_motion else sin(t * 2.4) * 4 * k
+	_glow(at, Vector2(72, 72) * k, Color(WorldUI.GOLD, 0.6))
+	_good(output, at - Vector2(0, lift), side * k)
+	for i in 5:
+		var a := t * 1.4 + TAU * i / 5.0
+		_sparkle(at + Vector2(cos(a) * 44 * k, sin(a) * 28 * k), (3.0 + 2.0 * sin(t * 4 + i)) * k)
+
+## The pond: a little jetty, a rod whose float bobs, fish that leap while the
+## line is out, and a bucket for the catch.
+func _draw_fishing() -> void:
+	var k := _k()
+	var w := size.x
+	var h := size.y
+	var shore := h * 0.6
+	var water := Rect2(0, shore, w, h - shore)
+	draw_texture_rect(_gradient(Color("6DB7D6"), Color("2F7EA6")), water, false)
+	for i in 7:
+		var y := shore + (14 + i * 18) * k
+		var drift := fposmod(t * (10 + i * 3) * k + i * 90 * k, w + 140 * k) - 70 * k
+		draw_line(Vector2(drift, y), Vector2(drift + (40 + i * 6) * k, y), Color(1, 1, 1, 0.22), 2 * k)
+	# Reeds at the edge and lily pads.
+	for i in 7:
+		var rx := w * (0.04 + i * 0.022)
+		var sway := 0.0 if ui.reduce_motion else sin(t * 1.4 + i) * 3 * k
+		draw_line(Vector2(rx, shore + 12 * k), Vector2(rx + sway, shore - (30 + (i % 3) * 10) * k), Color("4E8A3E"), 3 * k)
+		if i % 2 == 0: _ellipse(Vector2(rx + sway, shore - (30 + (i % 3) * 10) * k), Vector2(3, 8) * k, Color("8A5A3B"), 12)
+	for p in [Vector2(0.72, 0.78), Vector2(0.84, 0.9), Vector2(0.62, 0.92)]:
+		_ellipse(Vector2(w * p.x, h * p.y), Vector2(22, 8) * k, Color("5FA352"))
+		draw_circle(Vector2(w * p.x + 8 * k, h * p.y - 3 * k), 3.5 * k, Color("F4B6C8"))
+	# The jetty and the angler's rod.
+	var deck := Rect2(w * 0.16, shore - 6 * k, w * 0.3, 16 * k)
+	for leg in [0.2, 0.32, 0.44]: draw_rect(Rect2(w * leg - 4 * k, shore, 8 * k, 46 * k), Color("5E3F2A"))
+	_round_rect(deck, 4 * k, Color("A0703F"))
+	for i in 7: draw_line(Vector2(deck.position.x + i * deck.size.x / 7, deck.position.y), Vector2(deck.position.x + i * deck.size.x / 7, deck.end.y), Color(0, 0, 0, 0.2), 1.5 * k)
+	var rod_base := Vector2(w * 0.42, shore - 8 * k)
+	var tip := Vector2(w * 0.62, shore - 110 * k)
+	draw_line(rod_base, tip, Color("6E4A31"), 4 * k)
+	var bob := Vector2(w * 0.66, shore + 40 * k) + Vector2(0, (sin(t * 2.2) * 3 + (maxf(0, sin(t * 0.9)) * 6 if working else 0.0)) * k)
+	draw_line(tip, bob, Color(1, 1, 1, 0.6), 1.2 * k)
+	draw_arc(bob + Vector2(0, 6 * k), 12 * k + fposmod(t, 1.5) * 10 * k, PI * 0.1, PI * 0.9, 12, Color(1, 1, 1, 0.3), 1.5 * k)
+	draw_circle(bob, 6 * k, Color("C8553D"))
+	draw_circle(bob - Vector2(0, 4 * k), 4 * k, Color(1, 1, 1))
+	if working and not ui.reduce_motion:
+		# Now and then a fish arcs out of the water and back.
+		var u := fposmod(t / 2.6, 1.0)
+		if u < 0.4:
+			var j := u / 0.4
+			var fx := w * (0.75 + 0.1 * j)
+			var fy := shore + 30 * k - sin(j * PI) * 70 * k
+			draw_set_transform(Vector2(fx, fy), (j - 0.5) * 2.2, Vector2.ONE)
+			_ellipse(Vector2.ZERO, Vector2(16, 7) * k, Color("7FC8E0"))
+			draw_colored_polygon(PackedVector2Array([Vector2(14, 0) * k, Vector2(24, -8) * k, Vector2(24, 8) * k]), Color("4C9AC4"))
+			draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+			for d in 3: draw_circle(Vector2(fx - 20 * k * d, fy + 10 * k * d), 2 * k, Color(1, 1, 1, 0.5))
+	# The catch bucket on the jetty.
+	var bucket := Vector2(w * 0.2, shore - 6 * k)
+	draw_colored_polygon(PackedVector2Array([bucket + Vector2(-20, -36) * k, bucket + Vector2(20, -36) * k, bucket + Vector2(15, 0), bucket + Vector2(-15, 0)]), Color("9AA9AE"))
+	draw_arc(bucket + Vector2(0, -36 * k), 20 * k, PI, TAU, 16, Color("5E6B70"), 2.5 * k, true)
+	_ready_product(bucket - Vector2(0, 64 * k), 56)
+
+## The old tree's beehive: bees drift between the hive and the meadow flowers,
+## and honey gathers in a jar on the stump.
+func _draw_hive() -> void:
+	var k := _k()
+	var w := size.x
+	var h := size.y
+	var trunk := Vector2(w * 0.22, h * 0.9)
+	draw_colored_polygon(PackedVector2Array([trunk + Vector2(-26, 0) * k, trunk + Vector2(26, 0) * k, trunk + Vector2(16, -200) * k, trunk + Vector2(-16, -200) * k]), Color("7A5235"))
+	for p in [Vector2(-60, -230), Vector2(0, -270), Vector2(60, -230), Vector2(-20, -200), Vector2(40, -190)]:
+		draw_circle(trunk + p * k, 58 * k, Color("4E9A45"))
+	for p in [Vector2(-40, -250), Vector2(20, -280), Vector2(50, -220)]:
+		draw_circle(trunk + p * k, 30 * k, Color("6CBF5C"))
+	# The hive: stacked white boxes with a little roof.
+	var hive := Vector2(w * 0.5, h * 0.82)
+	draw_rect(Rect2(hive.x - 40 * k, hive.y, 80 * k, 30 * k), Color("6E4A31"))
+	for i in 3:
+		var box := Rect2(hive.x - 46 * k, hive.y - (i + 1) * 34 * k, 92 * k, 32 * k)
+		_round_rect(box, 4 * k, Color("F4E8CF") if i != 1 else Color("EBD9B4"))
+		draw_line(box.position + Vector2(4 * k, 2 * k), Vector2(box.end.x - 4 * k, box.position.y + 2 * k), Color(1, 1, 1, 0.5), 1.5 * k)
+	var roof := hive.y - 3 * 34 * k
+	draw_colored_polygon(PackedVector2Array([Vector2(hive.x - 58 * k, roof), Vector2(hive.x + 58 * k, roof), Vector2(hive.x, roof - 34 * k)]), Color("C8553D"))
+	_round_rect(Rect2(hive.x - 14 * k, hive.y - 14 * k, 28 * k, 8 * k), 3 * k, Color("3B2C22"))
+	# Flowers the bees visit.
+	for i in 6:
+		var fx := w * (0.62 + 0.06 * i)
+		var fy := h * (0.78 + 0.05 * (i % 2))
+		draw_line(Vector2(fx, fy + 20 * k), Vector2(fx, fy), Color("5E9A4E"), 2.5 * k)
+		for p in 5: draw_circle(Vector2(fx, fy) + Vector2.from_angle(TAU * p / 5) * 6 * k, 5 * k, [Color("F7C04A"), Color("E88AA0"), Color("FFF8EA")][i % 3])
+		draw_circle(Vector2(fx, fy), 3.5 * k, Color("C98A1C"))
+	var bees := 7 if working else 3
+	for i in bees:
+		var u := fposmod(t * (0.12 + i * 0.015) + i * 0.17, 1.0)
+		var flower := Vector2(w * (0.62 + 0.06 * (i % 6)), h * 0.76)
+		var p := (hive - Vector2(0, 60 * k)).lerp(flower, 0.5 - 0.5 * cos(u * TAU)) + Vector2(sin(t * 7 + i) * 6 * k, sin(u * TAU * 2 + i) * 26 * k)
+		_ellipse(p, Vector2(5, 3.5) * k, Color("F7C04A"), 12)
+		draw_line(p + Vector2(-1.5 * k, -3 * k), p + Vector2(-1.5 * k, 3 * k), Color("2A1D15"), 1.5 * k)
+		var flap := 0.5 + 0.5 * sin(t * 40 + i)
+		_ellipse(p + Vector2(0, -5 * k), Vector2(3, 2 + 2 * flap) * k, Color(1, 1, 1, 0.7), 10)
+	# The honey jar waits on a stump.
+	var stump := Vector2(w * 0.86, h * 0.86)
+	_ellipse(stump, Vector2(34, 10) * k, Color("8A5A3B"))
+	draw_rect(Rect2(stump.x - 34 * k, stump.y, 68 * k, 26 * k), Color("7A5235"))
+	_ready_product(stump - Vector2(0, 40 * k), 58)
+
+## The greenhouse: glass walls full of light, shelves of pots whose herbs grow
+## with the timer, and a fine mist while it works.
+func _draw_greenhouse() -> void:
+	var k := _k()
+	var w := size.x
+	var h := size.y
+	draw_texture_rect(_gradient(Color("CFEDE4"), Color("9FD2BF")), Rect2(0, 0, w, h), false)
+	var pane := 70.0 * k
+	var x := fmod(w / 2, pane)
+	while x < w:
+		draw_line(Vector2(x, 0), Vector2(x, h * 0.78), Color(1, 1, 1, 0.75), 3 * k)
+		x += pane
+	for y in [h * 0.18, h * 0.42]: draw_line(Vector2(0, y), Vector2(w, y), Color(1, 1, 1, 0.75), 3 * k)
+	for i in 4:
+		var sx := w * (0.1 + 0.25 * i) + (0.0 if ui.reduce_motion else fposmod(t * 8 * k, 60 * k))
+		draw_colored_polygon(PackedVector2Array([Vector2(sx, 0), Vector2(sx + 26 * k, 0), Vector2(sx - 40 * k, h * 0.78), Vector2(sx - 66 * k, h * 0.78)]), Color(1, 1, 1, 0.12))
+	draw_rect(Rect2(0, h * 0.78, w, h * 0.22), Color("8A6A4E"))
+	draw_rect(Rect2(0, h * 0.78, w, 3 * k), Color(1, 1, 1, 0.15))
+	var grow := 1.0 if done else (progress if progress >= 0 else 0.15)
+	for row in 2:
+		var shelf := h * (0.48 + row * 0.24)
+		draw_rect(Rect2(w * 0.1, shelf, w * 0.66, 9 * k), Color("A0703F"))
+		for p in 6:
+			var px := w * (0.15 + p * 0.11)
+			var pot := Rect2(px - 18 * k, shelf - 28 * k, 36 * k, 28 * k)
+			draw_colored_polygon(PackedVector2Array([pot.position, Vector2(pot.end.x, pot.position.y), pot.end - Vector2(4 * k, 0), Vector2(pot.position.x + 4 * k, pot.end.y)]), Color("C8693D"))
+			draw_rect(Rect2(pot.position.x - 2 * k, pot.position.y, pot.size.x + 4 * k, 6 * k), Color("D9814F"))
+			var tall := (6 + 34 * grow) * k
+			var sway := 0.0 if ui.reduce_motion else sin(t * 1.8 + p + row) * 2 * k
+			for leaf in 5:
+				var a := -PI / 2 + (leaf - 2) * 0.45
+				var tipp := Vector2(px, pot.position.y) + Vector2(cos(a) * tall * 0.6 + sway, sin(a) * tall)
+				draw_line(Vector2(px, pot.position.y), tipp, Color("3F9A45"), 2.5 * k)
+				_ellipse(tipp, Vector2(5, 3) * k * (0.6 + grow * 0.6), Color("7EDB9C" if leaf % 2 else "5FBF6A"), 12)
+	if working and not ui.reduce_motion:
+		for i in 14:
+			var u := fposmod(t * 0.4 + i * 0.07, 1.0)
+			var p := Vector2(w * (0.12 + 0.05 * i), h * 0.2 + u * h * 0.5)
+			draw_circle(p, 2 * k, Color(1, 1, 1, 0.55 * (1.0 - u)))
+	var tray := Vector2(w * 0.88, h * 0.7)
+	_round_rect(Rect2(tray.x - 40 * k, tray.y, 80 * k, 14 * k), 6 * k, Color("8A5E3C"))
+	_ready_product(tray - Vector2(0, 34 * k), 58)
+
+## The workshop's loom: straw goes in, a shuttle flies across the warp and the
+## basket grows row by row.
+func _draw_workshop(base: Vector2) -> void:
+	var k := _k()
+	var frame := Rect2(base.x - 90 * k, base.y - size.y * 0.5, 180 * k, size.y * 0.42)
+	for side in [frame.position.x, frame.end.x - 10 * k]:
+		draw_rect(Rect2(side, frame.position.y, 10 * k, frame.size.y + 8 * k), Color("6E4A31"))
+	draw_rect(Rect2(frame.position.x - 6 * k, frame.position.y - 6 * k, frame.size.x + 12 * k, 12 * k), Color("8A5A3B"))
+	draw_rect(Rect2(frame.position.x - 6 * k, frame.end.y - 8 * k, frame.size.x + 12 * k, 12 * k), Color("8A5A3B"))
+	for i in 14:
+		var wx := frame.position.x + 18 * k + i * (frame.size.x - 36 * k) / 13.0
+		draw_line(Vector2(wx, frame.position.y + 6 * k), Vector2(wx, frame.end.y - 8 * k), Color("E8D3A0"), 1.5 * k)
+	var woven := (progress if progress >= 0 else 0.0) if working else (1.0 if done else 0.0)
+	var rows := int(woven * 10)
+	for r in rows:
+		var ry := frame.end.y - 14 * k - r * 8 * k
+		draw_line(Vector2(frame.position.x + 14 * k, ry), Vector2(frame.end.x - 14 * k, ry), Color("D9A84E") if r % 2 else Color("C08A3E"), 5 * k)
+	if working:
+		var u := 0.5 - 0.5 * cos(t * 2.4)
+		var sy := frame.end.y - 14 * k - rows * 8 * k
+		var shuttle := Vector2(lerpf(frame.position.x + 20 * k, frame.end.x - 20 * k, u), sy)
+		_ellipse(shuttle, Vector2(16, 5) * k, Color("8A5A3B"))
+		draw_line(shuttle - Vector2(14 * k, 0), shuttle + Vector2(14 * k, 0), Color("E3B65A"), 1.5 * k)
+	# A sheaf of straw ready by the loom, and a hanging lantern of tools.
+	for i in 5: draw_line(Vector2(frame.position.x - 40 * k + i * 4 * k, base.y - 4 * k), Vector2(frame.position.x - 50 * k + i * 6 * k, base.y - 70 * k), Color("E8C06A"), 3 * k)
+	for i in 3:
+		var tx := frame.end.x + 26 * k + i * 16 * k
+		draw_line(Vector2(tx, frame.position.y), Vector2(tx, frame.position.y + (30 + i * 8) * k), Color("6E4A31"), 3 * k)
+		draw_circle(Vector2(tx, frame.position.y + (34 + i * 8) * k), 5 * k, Color("9AA9AE"))

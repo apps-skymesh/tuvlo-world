@@ -394,11 +394,15 @@ func snapshot(now: float, progress: int, reduced_motion := false) -> Dictionary:
 		production.append({"placeID": garden.id, "station": "field", "good": "wheat", "state": 2 if ripe else (1 if not growing.is_empty() else 0),
 			"remaining": left, "progress": 1.0 if ripe else (0.0 if growing.is_empty() else clampf(1.0 - left / field_total(0), 0, 1))})
 	for station in C.STATIONS:
+		# The renderer knows a fixed set of stations and goods; newer ones show
+		# in their production window only.
+		if not HomesteadWorldData.STATION_KINDS.has(station): continue
 		var place := first_of(C.STATIONS[station])
 		if place.is_empty(): continue
 		var job: Dictionary = jobs.get(station, {})
 		var remaining := job_remaining(station, now)
 		var good: String = C.RECIPES[job.recipe].output if not job.is_empty() else C.RECIPES[C.recipes_for(station)[0]].output
+		if good not in HomesteadWorldData.STATION_GOODS[station]: good = HomesteadWorldData.STATION_GOODS[station][0]
 		production.append({"placeID": place.id, "station": station, "good": good, "state": 0 if job.is_empty() else (1 if remaining > 0 else 2),
 			"remaining": remaining, "progress": 0.0 if job.is_empty() else clampf(1.0 - float(remaining) / job.get("seconds", C.RECIPES[job.recipe].seconds), 0, 1)})
 	var orchard := first_of("orchard")
