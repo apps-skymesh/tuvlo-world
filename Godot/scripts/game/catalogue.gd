@@ -168,6 +168,29 @@ static func barge_value(manifest: Array) -> int:
 static func barge_bonus(manifest: Array) -> int: return ceili(barge_value(manifest) * BARGE_BONUS_RATE)
 
 ## SOLO: coins a new player starts with, and lifetime sales per level.
+## SOLO weather. The sky changes every WEATHER_SECONDS (normal speed) on a
+## fixed 12-step pattern that never repeats a spell twice in a row, so the
+## forecast is always known. Weather only helps: a spell shortens the timers
+## of the places it favours while it lasts. The shortened time is frozen in
+## the job's own record, so a timer never changes once it has started and
+## replay needs nothing new.
+const WEATHER_SECONDS := 900.0
+const WEATHER := {
+	"sunny":  {"title": "Sunny",  "line": "A fair day", "boost": {}},
+	"rain":   {"title": "Rain",   "line": "Fields and orchard grow 2× faster", "boost": {"field": 2.0, "orchard": 2.0}},
+	"breeze": {"title": "Breezy", "line": "The windmill grinds 2× faster", "boost": {"mill": 2.0}},
+	"warm":   {"title": "Warm",   "line": "Oven and grill work 1.5× faster", "boost": {"oven": 1.5, "grill": 1.5}},
+}
+const WEATHER_PATTERN := ["sunny", "rain", "sunny", "breeze", "warm", "sunny", "rain", "breeze", "sunny", "warm", "rain", "breeze"]
+## Tests that time other timers exactly can hold the sky still.
+static var weather_override := ""
+static func weather_in(window: int) -> String:
+	if weather_override != "": return weather_override
+	return WEATHER_PATTERN[posmod(window, WEATHER_PATTERN.size())]
+## How much faster `station` works under `weather` (1 when it isn't favoured).
+static func weather_boost(weather: String, station: String) -> float:
+	return float(WEATHER.get(weather, WEATHER.sunny).boost.get(station, 1.0))
+
 const SOLO_STARTING_COINS := 6
 const SOLO_SALES_PER_LEVEL := 5
 

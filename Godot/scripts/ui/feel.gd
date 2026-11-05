@@ -101,6 +101,10 @@ const SHAKE_TIME := 0.28
 const ATMOSPHERE_MOTES := 26
 const ATMOSPHERE_POLLEN := 14  # the rest are fireflies
 const ATMOSPHERE_FPS := 30.0
+# Weather rain over the map: streak count and how long a shower takes to
+# fade in or out (seconds).
+const RAIN_DROPS := 70
+const RAIN_FADE := 2.5
 
 # Closing a box (world_ui._close_out): a quick shrink and fade; taps pass
 # through to the map on the same frame.

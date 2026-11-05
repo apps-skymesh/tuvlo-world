@@ -75,12 +75,33 @@ func buy_land(side: String) -> String:
 
 func tend(field: int) -> String:
 	var grow := C.FIRST_FIELD_SECONDS if state.harvests == 0 else C.FIELD_SECONDS
-	return _commit(_record("tend", {"field": field, "seconds": C.duration(grow)}))
+	return _commit(_record("tend", _timed({"field": field}, grow, "field")))
 func make(recipe: String) -> String:
 	if not C.RECIPES.has(recipe): return "invalid"
-	return _commit(_record("make", {"recipe": recipe, "seconds": C.duration(C.RECIPES[recipe].seconds)}))
+	return _commit(_record("make", _timed({"recipe": recipe}, C.RECIPES[recipe].seconds, C.RECIPES[recipe].station)))
 func collect(station: String) -> String: return _commit(_record("collect", {"station": station}))
-func tend_orchard() -> String: return _commit(_record("orchard", {"seconds": C.duration(C.ORCHARD_SECONDS)}))
+func tend_orchard() -> String: return _commit(_record("orchard", _timed({}, C.ORCHARD_SECONDS, "orchard")))
+
+## A job's frozen length under the current sky; a favoured job also notes the
+## weather that sped it (display only, replay reads just "seconds").
+func _timed(fields: Dictionary, seconds: float, station: String) -> Dictionary:
+	var sky := weather()
+	var boost := C.weather_boost(sky, station)
+	fields.seconds = C.duration(seconds / boost)
+	if boost > 1.0: fields.weather = sky
+	return fields
+
+## The sky now; `ahead` 1 is the next spell.
+func weather_window() -> int: return floori(now() / maxf(1.0, C.duration(C.WEATHER_SECONDS)))
+func weather(ahead := 0) -> String: return C.weather_in(weather_window() + ahead)
+## How much faster a station works right now.
+func weather_boost(station: String) -> float: return C.weather_boost(weather(), station)
+## Now and the next two spells, with the time left on this one.
+func forecast() -> Dictionary:
+	var length := maxf(1.0, C.duration(C.WEATHER_SECONDS))
+	var window := weather_window()
+	return {"now": weather(), "next": [weather(1), weather(2)], "window": window,
+		"left": ceili((window + 1) * length - now()), "length": int(length)}
 
 func sell(good: String, count: int) -> String:
 	if not host.features().get("market", false): return "unavailable"
@@ -166,4 +187,5 @@ func snapshot() -> Dictionary:
 	var info := barge()
 	out["barge"] = info.get("docked", false)
 	out["bargeCargo"] = float(info.loaded) / maxf(1.0, float(info.wanted)) if info.get("docked", false) else 0.0
+	out["weather"] = weather()
 	return out

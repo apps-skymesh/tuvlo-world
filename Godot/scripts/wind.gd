@@ -15,6 +15,7 @@ const PROFILES := {
 }
 static var twins := {}
 static var still := false
+static var gust := 1.0
 
 static func apply(node: Node, profile: String) -> void:
 	if node is MeshInstance3D and node.mesh != null:
@@ -42,7 +43,7 @@ static func twin_of(source: Material, profile: String) -> ShaderMaterial:
 	twin.set_shader_parameter("use_vertex_color", base.vertex_color_use_as_albedo)
 	twin.set_shader_parameter("roughness", base.roughness)
 	for name in PROFILES[profile]: twin.set_shader_parameter(name, PROFILES[profile][name])
-	twin.set_shader_parameter("strength", 0.0 if still else 1.0)
+	twin.set_shader_parameter("strength", 0.0 if still else gust)
 	twins[key] = twin
 	return twin
 
@@ -50,5 +51,13 @@ static func twin_of(source: Material, profile: String) -> ShaderMaterial:
 static func set_still(on: bool) -> void:
 	still = on
 	for key in twins.keys():
-		if is_instance_valid(twins[key]): twins[key].set_shader_parameter("strength", 0.0 if on else 1.0)
+		if is_instance_valid(twins[key]): twins[key].set_shader_parameter("strength", 0.0 if on else gust)
+		else: twins.erase(key)
+
+## Weather: scales every sway (1 is a calm day). Ignored under Reduce Motion.
+static func set_gust(level: float) -> void:
+	if still or absf(level - gust) < 0.01: return
+	gust = level
+	for key in twins.keys():
+		if is_instance_valid(twins[key]): twins[key].set_shader_parameter("strength", gust)
 		else: twins.erase(key)

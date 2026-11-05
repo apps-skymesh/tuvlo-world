@@ -82,6 +82,20 @@ func _process(delta: float) -> bool:
 			game.state.barge = {"cycle": info.cycle, "manifest": info.lines.map(func(l): return {"good": l.good, "count": l.count}), "loaded": {info.lines[0].good: info.lines[0].count}}
 			main.ui.open("barge"); wait = 2.5
 		35: shot("16-barge-screen")
-		36: return true
+		36:
+			# A rain spell: streaks over the map, cooler light, the sky pill.
+			main.ui.close()
+			var wlen := float(WorldCatalogue.duration(WorldCatalogue.WEATHER_SECONDS))
+			var wat: float = game.now()
+			var wnext := floori(wat / wlen) + 1
+			while WorldCatalogue.weather_in(wnext) != "rain": wnext += 1
+			offset.s += wnext * wlen + 20.0 - wat
+			main.push(); wait = 4.0
+		37: shot("17-weather-rain")
+		38: main.ui.open("place", "base:garden"); wait = 3.0
+		39: shot("18-rain-field-card")
+		40: main.ui.close(); main.ui.open("weather"); wait = 1.5
+		41: shot("19-forecast")
+		42: return true
 	step += 1
 	return false

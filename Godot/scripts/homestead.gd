@@ -39,6 +39,12 @@ var zoom=1.0
 var pan_focus=Vector3.ZERO
 var pan_size=12.0
 var camera_initialized=false
+# A framed pan (the barge) glides in; a finger drag turns it back into a direct pan.
+var pan_glide=false
+# Camera easing rate (per second). Lower is calmer: focus, zoom and the card's
+# framing offsets all ease together, so opening, switching or closing a
+# place reads as one glide instead of a jump.
+const CAMERA_EASE=6.5
 var orbit_yaw=0.25
 var orbit_focus=Vector3.ZERO
 var orbit_pitch=OVERVIEW_PITCH
@@ -276,6 +282,7 @@ func receive_host_json(json: String):
   barge.reduced_motion=reduced_motion
   barge.set_docked(payload.get("barge",false)==true,not first_snapshot and not changing_child)
   barge.set_cargo(float(payload.get("bargeCargo",0.0)))
+  set_weather(str(payload.get("weather","sunny")),first_snapshot or changing_child)
   # A replayed construction state can remove a deck without changing its grid.
   if resident.place_visit!=null and not data.building(resident.target_id).is_empty():
    resident.cancel_place_visit()
@@ -317,7 +324,7 @@ func receive_host_json(json: String):
    # The boat sits in the top of the view, above its screen.
    pan_focus=HomesteadBarge.DOCK+Vector3(0.4,0.8,7.1)
    pan_size=11.0
-   camera_initialized=false
+   pan_glide=true
    wake_menu_preview()
   "punch": presentation.punch(str(payload.get("id","")),clampf(float(payload.get("strength",1.0)),0.5,2.0),str(payload.get("good","")))
   "feedbackAnchor":
@@ -352,7 +359,10 @@ func receive_host_json(json: String):
     camera_mode="pan"; zoom=1.0
     pan_focus=HomesteadItems.center(spot,size)+Vector3(0,0.7,0)
     pan_size=minf(pan_size,11.0) if pan_size>0 else 11.0
-    camera_initialized=false # An explicit reframe, allowed while a menu holds the camera.
+    # An explicit reframe: it glides on a live map and snaps only when a
+    # native menu holds the paused view (which renders just a frame or two).
+    if paused: camera_initialized=false
+    else: pan_glide=true
    wake_menu_preview()
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "sunrise": begin_sunrise()
@@ -369,6 +379,7 @@ func receive_host_json(json: String):
    if paused and panel_preview:
     process_mode=Node.PROCESS_MODE_INHERIT
     RenderingServer.render_loop_enabled=true
+   pan_glide=false
    if payload.get("mode") in ["arrival","overview","home","follow","detail","place","pan"]:
     if camera_mode!=payload.mode: zoom=1.0
     camera_mode=payload.mode
@@ -646,6 +657,9 @@ func pan_camera(from: Vector2,to: Vector2):
   zoom=1.0
   camera_mode="pan"
   emit_message("cameraPanned",{})
+ if pan_glide:
+  pan_glide=false
+  pan_focus=orbit_focus # keep the map under the finger from where the glide is now
  pan_focus+=start-finish
  # Camera movement never unlocks land. Bound the center to the owned world.
  var bounds=HomesteadItems.BASE_BOUNDS
@@ -935,7 +949,8 @@ func _process(delta):
  var viewport=get_viewport().get_visible_rect().size
  var aspect=viewport.x/maxf(1,viewport.y)
  var immediate=reduced_motion or not camera_initialized
- var blend=1-exp(-delta*12.0)
+ # Follow tracks the walking resident tightly; framing moves glide calmly.
+ var blend=1-exp(-delta*(12.0 if camera_mode in ["follow","detail"] else CAMERA_EASE))
  yaw=FIXED_YAW
  orbit_yaw=FIXED_YAW
  var overview=overview_fit(aspect,orbit_yaw)
@@ -989,7 +1004,7 @@ func _process(delta):
     break
  # Overview and terrain drags use their exact center so plots remain fitted
  # and the map stays under the finger. Follow eases toward the resident.
- orbit_focus=focus if immediate or camera_mode in ["overview","pan"] else orbit_focus.lerp(focus,blend)
+ orbit_focus=focus if immediate or camera_mode=="overview" or (camera_mode=="pan" and not pan_glide) else orbit_focus.lerp(focus,blend)
  orbit_pitch=pitch if immediate else lerpf(orbit_pitch,pitch,blend)
  if envelope_revision!=presentation.visual_revision:
   scenery_radius=0.0
@@ -1016,8 +1031,11 @@ func _process(delta):
  # A fitted place sits a touch below the ring's centre, so roofs and sails stay inside.
  var lowered=ring_share*0.04 if not fit.is_empty() else 0.0
  var centre: Vector2=fit.get("center",Vector2.ZERO)
- camera.h_offset=centre.x-shift.x*camera.size*view_aspect
- camera.v_offset=centre.y+camera.size*(top-bottom-framing)*0.5+(shift.y+lowered)*camera.size
+ # Offsets ease with focus and size; snapping them alone made the view jump.
+ var h_target=centre.x-shift.x*camera.size*view_aspect
+ var v_target=centre.y+camera.size*(top-bottom-framing)*0.5+(shift.y+lowered)*camera.size
+ camera.h_offset=h_target if immediate else lerpf(camera.h_offset,h_target,blend)
+ camera.v_offset=v_target if immediate else lerpf(camera.v_offset,v_target,blend)
  camera.look_at(orbit_focus)
  camera_initialized=true
 
@@ -1144,6 +1162,32 @@ func update_sunrise(delta: float):
  # A sunny day lifts the light from wherever the day cycle has it now.
  sun.light_energy=day.sun_energy*SUN_REST_ENERGY/0.92+0.22*lift
  sun.rotation_degrees.x=day.sun_pitch+6.0*lift
+ ease_weather(delta)
+## The sky's mood over the day cycle: rain dims and cools the sun, a warm
+## spell gilds it, a breeze quickens the sway. Changes ease in over a few
+## seconds so a new spell never pops.
+const WEATHER_LOOK={"sunny":{"sun":1.0,"warm":0.0,"cool":0.0,"gust":1.0},
+ "rain":{"sun":0.6,"warm":0.0,"cool":0.55,"gust":1.25},
+ "breeze":{"sun":1.0,"warm":0.0,"cool":0.1,"gust":1.9},
+ "warm":{"sun":1.08,"warm":0.55,"cool":0.0,"gust":0.8}}
+var weather:="sunny"
+var weather_mix:={"sun":1.0,"warm":0.0,"cool":0.0,"gust":1.0}
+func set_weather(next: String,immediate: bool):
+ if not WEATHER_LOOK.has(next): next="sunny"
+ weather=next
+ if presentation: presentation.weather=next
+ if immediate or reduced_motion: weather_mix=WEATHER_LOOK[next].duplicate()
+func ease_weather(delta: float):
+ var target: Dictionary=WEATHER_LOOK[weather]
+ var blend=1.0-exp(-delta*0.9)
+ for key in weather_mix: weather_mix[key]=lerpf(weather_mix[key],target[key],blend)
+ HomesteadWind.set_gust(weather_mix.gust)
+ if sun:
+  sun.light_energy*=weather_mix.sun
+  sun.light_color=day.sun_color.lerp(Color(1.0,0.78,0.5),weather_mix.warm*0.45).lerp(Color(0.78,0.85,0.95),weather_mix.cool*0.5)
+ if environment_settings:
+  environment_settings.ambient_light_color=day.ambient_color.lerp(Color(0.7,0.78,0.88),weather_mix.cool*0.35)
+
 ## Retunes the existing sun, ambient light and haze to the local hour.
 func apply_day_cycle():
  day=HomesteadDayCycle.at(HomesteadDayCycle.local_hour())

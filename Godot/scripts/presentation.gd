@@ -8,6 +8,7 @@ var land_root: Node3D
 var foliage: Array[Node3D]=[]
 var waters: Array[ShaderMaterial]=[]
 var sails: Array[Node3D]=[]
+var weather:="sunny" # the sky, from the game snapshot
 var pet_parts: Array[Node3D]=[]
 var clock=0.0
 var reduced_motion=false
@@ -1092,7 +1093,7 @@ func _process(delta):
 		if is_instance_valid(pivot) and not reduced_motion and data.building(str(pivot.get_meta("item_id",""))).is_empty() and not station_ready("mill"):
 			var camera=get_viewport().get_camera_3d()
 			if camera and not camera.is_position_behind(pivot.global_position) and camera.unproject_position(pivot.global_position).x>=0 and get_viewport().get_visible_rect().has_point(camera.unproject_position(pivot.global_position)):
-				pivot.rotation.z+=delta*(0.95 if station_working("mill") else 0.14) # milling turns the sails briskly; no smoke
+				pivot.rotation.z+=delta*(0.95 if station_working("mill") else 0.14)*(1.7 if weather=="breeze" else 1.0) # milling turns the sails briskly; a breeze turns them faster; no smoke
 	for part in pet_parts:
 		if not is_instance_valid(part): continue
 		HomesteadAnimalArt.animate(part,clock,reduced_motion)
