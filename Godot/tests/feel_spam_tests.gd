@@ -144,6 +144,18 @@ func _process(delta: float) -> bool:
 			check(HomesteadDayCycle.at(21.0).glow > 0.9 and HomesteadDayCycle.at(13.0).sun_energy > HomesteadDayCycle.at(19.0).sun_energy, "afternoon is brightest, evening glows")
 			check(HomesteadDayCycle.at(23.999).sun_color.is_equal_approx(HomesteadDayCycle.at(0.0).sun_color), "the cycle joins at midnight")
 			check(HomesteadDayCycle.phase(6.0) == "dawn" and HomesteadDayCycle.phase(18.0) == "dusk", "day phases are named for sound")
+			# Ground light: a cool blue hour around a warm hearth, cloud shadows by
+			# day only, and Reduce Motion holds the clouds exactly where they are.
+			var night := HomesteadDayCycle.at(21.0)
+			check(night.ambient_color.b > night.ambient_color.r and night.pool_dim > morning.pool_dim, "evening shade is cool and the far ground settles")
+			check(morning.cloud_depth > 0.0 and night.cloud_depth == 0.0, "cloud shadows drift by day, not at night")
+			var held := GroundLight.cloud
+			GroundLight.advance(5.0, 1.0, true)
+			check(GroundLight.cloud == held, "Reduce Motion holds the cloud shadows")
+			GroundLight.advance(5.0, 1.0, false)
+			check(GroundLight.cloud != held, "cloud shadows move on with the wind")
+			GroundLight.advance(1.0e6, 1.0, false)
+			check(GroundLight.cloud.x < GroundLight.CLOUD_PERIOD and GroundLight.cloud.y < GroundLight.CLOUD_PERIOD, "the cloud offset wraps at the noise period")
 			# Wind: leaves sway in the shader, and Reduce Motion holds them still.
 			var swaying := 0
 			for mesh in main.world.presentation.find_children("*", "MeshInstance3D", true, false):
