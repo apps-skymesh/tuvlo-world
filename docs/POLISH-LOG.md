@@ -418,3 +418,34 @@ Tests: rules 118/0, feel spam 36/0, runtime and collect pass. Captures 00–19 u
   - The stars sit in the wallet capsule after the coins.
 
 Tests: rules 130/0 (12 new for stars and rushing), feel spam 36/0, runtime and collect pass. Captures 20–23 added (oven baking, seed dropped, field growing, finished with stars). Not yet tried on a device: drag feel on touch, and the scene's frame cost on iPad 9th Gen.
+
+## Pass 17 · 2026-11-05 (owner request: premium drag into the line, more producing places, richer interiors)
+
+- **Drag and drop:**
+  - The good lifts out of its socket. It grows to 1.18× with a back-ease, leans into the direction of travel, sways a little and casts a soft shadow, and the socket dims to show where it came from.
+  - A light haptic and tick fire when the drag starts, and again the moment the held good is over a scene that wants it.
+  - The waiting slot reaches for the held good: it swells and glows as the good nears, a trail of gold dots marches from the finger to the slot, and dashes circle the ring.
+  - On release, the good arcs from the fingertip into its slot, lands with a squash-and-stretch wobble, a dust puff and a gold ring.
+  - The good that completes the set flies on into the machine, which kicks with a shockwave and a burst of sparks as the job starts.
+  - A drop the place doesn't need drifts back to its socket.
+  - Seeds scatter into the farm's beds and water showers over them.
+  - Tapping a working place makes the machine bump and throw sparks.
+  - Collected goods now fly home from the tray, cart, bucket or jar.
+- **Almost every place makes something:**
+  - Pond: fish, using 1 wheat as bait.
+  - Treehouse beehive: honey, from time alone.
+  - Greenhouse: herbs.
+  - Workshop: straw baskets, woven from 3 wheat.
+  - New products at existing places: wool at the barn, jam in the kitchen, a herb loaf in the oven, grilled fish on the grill.
+  - The cottage now offers five products, the barn and the grill two each.
+  - Six new goods (fish, honey, herbs, wool, jam, basket) have glossy icons in the house style and join the market, seasons and barge.
+  - A tab whose picture matches another tab's gets a small badge for the ingredient that makes it different.
+- **New animated interiors:**
+  - Pond: a jetty, a rod with a bobbing float, leaping fish, lily pads and reeds.
+  - Hive: bees drifting between the hive and the flowers.
+  - Greenhouse: glass panes with sliding light, pots whose herbs grow with the timer, and mist.
+  - Workshop: a loom where the shuttle flies and the basket grows row by row.
+  - The meadows gained swaying grass and wildflowers.
+- **Renderer safety:** the map renderer validates stations and goods, so the newer stations stay out of its snapshot. Their state shows in the production window only, and a rules test checks that the snapshot is still accepted.
+
+Tests: rules 136/0 (6 new), feel spam 36/0, runtime and collect pass. Captures 24–30 added. Not yet tried on a device: drag feel and haptics on touch.

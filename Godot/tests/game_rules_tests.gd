@@ -350,6 +350,24 @@ func _initialize() -> void:
 	var sbefore := sgame.state.stars()
 	var sgift := WorldState.replay(shost.records + [{"v": 1, "id": "sg", "type": "gift", "at": sclock.t + 86400 * 2, "seq": 2000, "day": WorldCatalogue.local_day(sclock.t + 86400 * 2)}])
 	check(sgift.stars() == sbefore + WorldCatalogue.GIFT_STARS, "the daily gift adds stars")
+	# More places make things: the pond (bait → fish), the treehouse's hive
+	# (nothing → honey); newer stations stay out of the renderer's snapshot.
+	var phost := MemoryHost.new()
+	var pclock := {"t": 9000.0}
+	var pgame := WorldGame.new(phost)
+	pgame.clock = func(): return pclock.t
+	phost.records.append({"v": 1, "id": "pond", "type": "build", "at": 8000.0, "seq": 1, "kind": "pond", "place": "place:pond:t", "x": 8, "z": 8, "price": 0, "seconds": 0})
+	phost.records.append({"v": 1, "id": "th", "type": "build", "at": 8000.0, "seq": 2, "kind": "treehouse", "place": "place:treehouse:t", "x": 14, "z": 2, "price": 0, "seconds": 0})
+	pgame.refresh()
+	check(pgame.make("fish") == "short", "fishing needs bait")
+	pgame.tend(0); pgame.tend(0); pclock.t += 30; pgame.tend(0)
+	check(pgame.make("fish") == "" and pgame.state.stock.wheat == 1, "a wheat for bait starts the line")
+	check(pgame.make("honey") == "", "the hive needs nothing but time")
+	pclock.t += 600
+	check(pgame.collect("fishing") == "" and pgame.collect("hive") == "" and pgame.state.stock.fish == 2 and pgame.state.stock.honey == 1, "the catch and the honey come in")
+	var psnap := pgame.snapshot()
+	check(psnap.production.all(func(p): return HomesteadWorldData.STATION_KINDS.has(p.station)) and HomesteadWorldData.new().apply_snapshot(psnap), "the renderer still accepts the snapshot")
+	check(pgame.state.makeable_goods().has("fish") and pgame.state.makeable_goods().has("honey"), "new goods join the market's seasons")
 	print("game rules: %d checks, %d failed" % [checks, failures])
 	host.free()
 	quit(1 if failures > 0 else 0)

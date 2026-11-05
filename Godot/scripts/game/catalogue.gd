@@ -91,13 +91,18 @@ const FIRST_FIELD_SECONDS := 20.0
 const FIELD_YIELD := 2
 const ORCHARD_SECONDS := 360.0
 const ORCHARD_YIELD := 3
-const GOODS := ["wheat", "flour", "bread", "fruit", "tart", "cheese", "meal"]
+const GOODS := ["wheat", "flour", "bread", "fruit", "tart", "cheese", "meal", "fish", "honey", "herbs", "wool", "jam", "basket"]
 ## Goods renamed since earlier saves. Replay reads the old name as the new
 ## good, so a save that made "meat" now holds the same count of cheese.
 const LEGACY_GOODS := {"meat": "cheese"}
 static func good_id(good: String) -> String: return LEGACY_GOODS.get(good, good)
 ## station -> the place kind that hosts it
-const STATIONS := {"mill": "windmill", "oven": "cottage", "pantry": "cottage", "barn": "barn", "grill": "grill"}
+## SOLO 2026-11-05: almost every place now makes something. The pond is fished
+## with a little wheat for bait, the treehouse keeps a beehive, the greenhouse
+## grows herbs and the workshop weaves straw baskets; several places offer more
+## than one product.
+const STATIONS := {"mill": "windmill", "oven": "cottage", "pantry": "cottage", "barn": "barn", "grill": "grill",
+	"fishing": "pond", "hive": "treehouse", "greenhouse": "greenhouse", "workshop": "workshop"}
 const RECIPES := {
 	"flour":       {"station": "mill",   "input": {"wheat": 2},             "output": "flour", "quantity": 1, "seconds": 180},
 	"bread":       {"station": "oven",   "input": {"flour": 1},             "output": "bread", "quantity": 1, "seconds": 300},
@@ -106,10 +111,20 @@ const RECIPES := {
 	# Recipe ids stay as saved; the flock's milk now makes cheese.
 	"livestock":   {"station": "barn",   "input": {"wheat": 2},             "output": "cheese", "quantity": 2, "seconds": 480},
 	"grilledMeal": {"station": "grill",  "input": {"cheese": 1, "bread": 1}, "output": "meal",  "quantity": 4, "seconds": 360},
+	# SOLO 2026-11-05 products.
+	"herbLoaf":    {"station": "oven",   "input": {"flour": 1, "herbs": 1}, "output": "bread", "quantity": 2, "seconds": 300},
+	"jam":         {"station": "pantry", "input": {"fruit": 3},             "output": "jam",   "quantity": 2, "seconds": 240},
+	"wool":        {"station": "barn",   "input": {"wheat": 1},             "output": "wool",  "quantity": 1, "seconds": 300},
+	"grilledFish": {"station": "grill",  "input": {"fish": 2},              "output": "meal",  "quantity": 3, "seconds": 180},
+	"fish":        {"station": "fishing", "input": {"wheat": 1},            "output": "fish",  "quantity": 2, "seconds": 240},
+	"honey":       {"station": "hive",   "input": {},                       "output": "honey", "quantity": 1, "seconds": 480},
+	"herbs":       {"station": "greenhouse", "input": {},                   "output": "herbs", "quantity": 2, "seconds": 180},
+	"basket":      {"station": "workshop", "input": {"wheat": 3},           "output": "basket", "quantity": 1, "seconds": 240},
 }
 
 ## SOLO market: coins paid per good sold. Roughly input value plus a little for time.
-const SELL_PRICE := {"wheat": 1, "flour": 3, "bread": 5, "fruit": 1, "tart": 10, "cheese": 3, "meal": 3}
+const SELL_PRICE := {"wheat": 1, "flour": 3, "bread": 5, "fruit": 1, "tart": 10, "cheese": 3, "meal": 3,
+	"fish": 2, "honey": 6, "herbs": 2, "wool": 3, "jam": 3, "basket": 5}
 ## SOLO market demand. Each unit sold lowers that good's next price by
 ## DEMAND_DROP of its base, down to DEMAND_FLOOR; demand recovers one unit every
 ## DEMAND_RECOVER_SECONDS (at normal speed; frozen in each sale record). Other
@@ -246,7 +261,8 @@ const ORDER_SLOTS := FOLK
 const KEEPSAKE_EVERY := 3
 ## The place each good needs, so a neighbour never asks for the impossible.
 const GOOD_SOURCE := {"wheat": "garden", "flour": "windmill", "bread": "windmill", "meal": "windmill",
-	"fruit": "orchard", "tart": "orchard", "cheese": "barn"}
+	"fruit": "orchard", "tart": "orchard", "cheese": "barn",
+	"fish": "pond", "honey": "treehouse", "herbs": "greenhouse", "wool": "barn", "jam": "orchard", "basket": "workshop"}
 
 ## The `nth` wish of a neighbour. `owned` lists the homestead's place kinds;
 ## wishes for goods it can't make yet are skipped.
@@ -269,6 +285,8 @@ const TITLES := {
 	"wheat": "Wheat", "flour": "Flour", "bread": "Bread", "fruit": "Fruit", "tart": "Tart", "cheese": "Cheese", "meal": "Meals",
 	"mill": "Mill", "oven": "Oven", "pantry": "Kitchen bench", "west": "West meadow",
 	"livestock": "Sheep's cheese", "grilledMeal": "Grilled cheese",
+	"fish": "Fish", "honey": "Honey", "herbs": "Herbs", "wool": "Wool", "jam": "Jam", "basket": "Basket",
+	"herbLoaf": "Herb loaf", "grilledFish": "Grilled fish", "fishing": "Fishing", "hive": "Beehive",
 }
 static func title(key: String) -> String: return TITLES.get(key, key.capitalize())
 
