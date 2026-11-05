@@ -1,6 +1,35 @@
 # Polish log
 
-This log is the memory for repeated improvement passes. Read it before starting a pass so finished work isn't redone, and add one entry per pass. Score each pillar 1–10 and pick the work with Priority = (Delight × Differentiation) / Risk.
+This log is the improvement record for Tuvlo World. Read the current summary before starting a pass so finished work isn't redone, then add one dated entry per pass.
+
+**Method (from 2026-11-05):** passes follow Saeed's "Premium app improvement prompts v2". M0 is the default, and the focused prompts (M1 game decisions, M2 progression, M3 balance, plus the quick prompts) are used when a specific problem is known. This file stays the record; there is no separate APP_IMPROVEMENT.md.
+
+Each entry records:
+- the objective and the one primary outcome, with its guardrails;
+- the three candidates compared (a refinement, a structural redesign and a novel idea) and why one won;
+- the files changed and the checks run;
+- technical results, design judgment and real player outcomes, kept separate (mark "not measured" or "pending" where there is no evidence);
+- rejected directions and why;
+- the next hypothesis, with up to two alternatives.
+
+Passes 1–19 used the earlier 12-pillar score and the art-direction rung ladder; the v2 prompts drop both.
+
+## Current summary (update every pass)
+
+- **Design thesis:**
+  - Audience: everyone, solo.
+  - Promise: a cosy homestead that is satisfying in short sessions.
+  - Traits: warm, tactile, calm.
+  - Principles: the map never jumps, a tap outside a box closes it, places are drawn as living interiors, there are no noise-loop ambiences, and Reduce Motion is respected.
+  - Non-goals: survival pressure, decay, aggressive monetisation.
+- **Core loop:** plant and water → mill/bake/craft on timers → sell at the market, fill orders and the barge → level up and build. Stars are a soft currency for finishing a job early.
+- **Real player evidence:** none yet. Builds are installed on Saeed's iPhone and three family iPads (the iPhone missed the latest build, PR #26), but there has been no playtest feedback so far. Every "fun" and "feel" claim since Pass 1 is design judgment, not a measured result.
+- **Pending, unmeasured changes on the same outcome (session feel):** Passes 16–19 (production window, drag, depth and life). Don't stack more feel and polish changes on this outcome until players have been observed.
+- **Rejected or retired:** noise-based ambience (Saeed disliked it, Pass 15→16); camera jumps when opening a place (replaced by the window, Pass 16); free placement (superseded by fixed spots).
+- **Next hypothesis:** observe the family playing a 10-minute session and note where they stop, hesitate or ask. Then run an M1 pass on seed choices: choosing what to plant should be a real decision with trade-offs, not a single default crop.
+- **Alternatives:**
+  - One challenge from the ideas doc, such as Fair Day or a puzzle order (M2).
+  - A balance pass on prices and timers (M3), but only after real play data exists.
 
 ## Pass 1 · 2026-11-04
 
