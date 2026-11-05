@@ -449,3 +449,22 @@ Tests: rules 130/0 (12 new for stars and rushing), feel spam 36/0, runtime and c
 - **Renderer safety:** the map renderer validates stations and goods, so the newer stations stay out of its snapshot. Their state shows in the production window only, and a rules test checks that the snapshot is still accepted.
 
 Tests: rules 136/0 (6 new), feel spam 36/0, runtime and collect pass. Captures 24–30 added. Not yet tried on a device: drag feel and haptics on touch.
+
+## Pass 18 · 2026-11-05 (owner request: art-direction pass on the production window, rung 2 Consistent → 3 Dimensional)
+
+The production window was clean and consistent: one glass card, gold rims, one icon family. But each surface was a single flat fill. This pass adds one light from the upper left, with every value a named constant at the top of `production_scene.gd`.
+
+- **Form light (`_lit_rect`, `_lit_poly`):**
+  - Surfaces brighten at the top, fall into shade at the foot and catch a bright lip.
+  - Applied to the oven's dome, plinth and chimney; the mill's tub and hopper; the kitchen's table and crate; the barn's bales, trough and churn; the grill's hood, flue and firebox; the loom; the belt rail, legs and tray; field beds and cart; the orchard basket; the jetty; the beehive and stump; and the greenhouse shelves and pots.
+- **Grounding:**
+  - Contact shadows (`_contact`) sit under machines, belt legs, the churn, beds, the cart, the basket, the hive and the stump.
+  - Where the wall meets the floor there is a soft ambient-occlusion band.
+  - The floor runs light to dark and carries the lamp's warm pool.
+- **Atmosphere outdoors:** the far hills fade toward the sky, the near hills are lit along a sunlit ridge, and the meadow darkens toward the viewer.
+- **The window is set into the card (`_draw_inset`):**
+  - Shadow falls in from the top and sides, and the bottom lip catches the light.
+  - The needs plate is now a recessed well: darker than the card and lit only along its bottom edge (`RECESS`, `RECESS_LIP` in `world_ui.gd`).
+- **Cost:** roughly 40 more 2D draw commands per frame, all inside the one scene control, using cached 4×128 gradient textures with no shaders or blurs. There is no new motion, so Reduce Motion is unaffected.
+
+Tests: rules 136/0, feel spam 36/0. Before and after captures: 20, 22, 26, 29. Not seen: a real device, or iPad 9th Gen frame time.
