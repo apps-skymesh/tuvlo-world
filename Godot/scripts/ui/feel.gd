@@ -9,6 +9,9 @@ extends RefCounted
 const POP_FROM_SCALE := 0.86
 const POP_TIME := 0.32
 const FADE_IN_TIME := 0.18
+# A box rebuilt in place (tab switch, good dropped in, job started) crossfades
+# from its old look over this long instead of snapping.
+const REBUILD_FADE_TIME := 0.16
 
 # A target acknowledging an arrival (wallet, dock button, goal ticket).
 const BUMP_SCALE := 1.18
@@ -145,10 +148,16 @@ const REWARD_HAPTIC := [0.35, 0.5, 0.8]
 const REWARD_BIG_BUMP := 1.32
 const HAPTIC_BIG := 0.9
 
-# Level up (world_ui._level_impact): wind-up, a 70 ms hold with a warm flash
-# on impact, then an elastic settle.
+# Level up (world_ui._level_impact): a short anticipation (the badge draws in
+# while its ring charges to full), then the impact (the number turns over, a
+# 70 ms hold with a warm flash, confetti and the banner slamming in), then a
+# springy settle.
 const LEVEL_WINDUP_SCALE := 0.82
-const LEVEL_WINDUP_TIME := 0.08
+const LEVEL_WINDUP_TIME := 0.28
+const LEVEL_BANNER_FROM := 1.3   # the banner lands from larger, like a stamp
+const LEVEL_BANNER_TIME := 0.45
+const LEVEL_BANNER_FADE := 0.08
+const LEVEL_NUMBER_BUMP := 1.25  # the banner's number pops once it lands
 const LEVEL_PUNCH_SCALE := 1.45
 const LEVEL_SETTLE_TIME := 0.6
 const HITSTOP_TIME := 0.07
