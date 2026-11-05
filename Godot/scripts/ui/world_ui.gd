@@ -20,6 +20,12 @@ const EDGE := Color(1, 1, 1, 0.16)
 const TILE := Color(1, 1, 1, 0.075)
 const RECESS := Color(0, 0, 0, 0.26)  # a recessed plate inside a card
 const RECESS_LIP := 0.1               # its lit bottom edge
+const TAB_FILL := Color(1, 1, 1, 0.11)  # an unselected product tab: readable, not muddy
+const TAB_EDGE := Color(1, 1, 1, 0.16)
+const TAB_BUSY_ALPHA := 0.62            # a tab locked while another job runs
+const TAB_BREATH := 2.4                 # s, the selected tab's gold edge breathing in and out
+const DISABLED_FILL := Color(1, 1, 1, 0.14)
+const DISABLED_INK := Color(1, 0.97, 0.9, 0.8)
 const IVORY := Color("FFF8EA")
 const MUTED := Color(1, 0.97, 0.9, 0.62)
 const GOLD := Color("F7C04A")
@@ -949,14 +955,14 @@ func _theme() -> Theme:
 	var primary := {
 		"normal": _lip_box(GOLD, GOLD_DEEP, 4), "hover": _lip_box(Color("FACB62"), GOLD_DEEP, 4),
 		"pressed": _lip_box(Color("EBB23C"), GOLD_DEEP, 1), "focus": _lip_box(GOLD, GOLD_DEEP, 4),
-		"disabled": _lip_box(Color(1, 1, 1, 0.1), Color(0, 0, 0, 0), 0)}
+		"disabled": _lip_box(DISABLED_FILL, Color(0, 0, 0, 0), 0)}
 	for state in primary: theme.set_stylebox(state, "Button", primary[state])
 	theme.set_font("font", "Button", DISPLAY_SEMI)
 	theme.set_color("font_color", "Button", GOLD_INK)
 	theme.set_color("font_hover_color", "Button", GOLD_INK)
 	theme.set_color("font_pressed_color", "Button", GOLD_INK)
 	theme.set_color("font_focus_color", "Button", GOLD_INK)
-	theme.set_color("font_disabled_color", "Button", MUTED)
+	theme.set_color("font_disabled_color", "Button", DISABLED_INK)
 	theme.set_font_size("font_size", "Button", int(21 * s))
 	theme.set_stylebox("separator", "HSeparator", _line_box())
 	theme.set_constant("separation", "HSeparator", int(14 * s))
@@ -2275,10 +2281,18 @@ func _product_tab(product: Dictionary, selected: bool, busy: bool) -> Control:
 	var box := tile_box(20, selected)
 	box.content_margin_left = 14 * s; box.content_margin_right = 14 * s
 	box.content_margin_top = 8 * s; box.content_margin_bottom = 8 * s
+	if not selected:
+		box.bg_color = TAB_FILL
+		box.border_color = TAB_EDGE
+	elif not reduce_motion:
+		# The chosen tab's gold edge breathes, so the eye finds it.
+		var breath := tab.create_tween().set_loops()
+		breath.tween_property(box, "border_color", Color(GOLD, 0.55), TAB_BREATH / 2).set_trans(Tween.TRANS_SINE)
+		breath.tween_property(box, "border_color", GOLD, TAB_BREATH / 2).set_trans(Tween.TRANS_SINE)
 	tab.add_theme_stylebox_override("panel", box)
 	tab.mouse_filter = Control.MOUSE_FILTER_STOP
 	tab.tooltip_text = C.title(product.output)
-	if busy and not selected: tab.modulate.a = 0.5
+	if busy and not selected: tab.modulate.a = TAB_BUSY_ALPHA
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", int(10 * s))
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
