@@ -6,6 +6,8 @@ extends SceneTree
 const F = preload("res://scripts/ui/feel.gd")
 var main
 var shaken: Button
+var bar: WorldUI.FillBar
+var boat: HomesteadBarge
 var frame := 0
 var elapsed := 0.0
 var phase := 0
@@ -95,6 +97,18 @@ func _process(delta: float) -> bool:
 			# Rewards scale with the gain; a level-up holds the frame only briefly.
 			check(WorldUI.reward_tier(1) == 0 and WorldUI.reward_tier(F.REWARD_GOOD) == 1 and WorldUI.reward_tier(F.REWARD_BIG) == 2, "reward feedback tiers follow the gain")
 			for i in 5: ui._level_impact()
+			# Pass 14: a sky change spammed mid-morph, a hold bar sprung over
+			# and over, and a barge loaded crate after crate.
+			for sky in ["rain", "breeze", "warm", "sunny", "rain"]: ui._morph_sky(sky)
+			bar = WorldUI.FillBar.new()
+			ui.root.add_child(bar)
+			bar.share = 0.75
+			for i in 6: bar.grow_from(0.1 * i, F.BAR_FILL_TIME)
+			boat = HomesteadBarge.new()
+			root.add_child(boat)
+			boat.set_docked(true, false)
+			for i in 7: boat.set_cargo(i / 6.0)
+			check(boat.dip_speed < 0.0, "loading the barge kicks the hull down")
 			phase = 2
 		3:
 			check(ui.coin_pill.scale.is_equal_approx(Vector2.ONE), "wallet coin back at rest after spam")
@@ -104,6 +118,11 @@ func _process(delta: float) -> bool:
 			check(ui.market_button.scale.is_equal_approx(Vector2.ONE), "dock button back at rest after spam")
 			check(shaken.position.is_equal_approx(Vector2(100, 100)), "a spammed shake settles where it started (at %s)" % shaken.position)
 			shaken.queue_free()
+			check(ui.weather_pill.scale.is_equal_approx(Vector2.ONE) and ui.weather_pill_label.text == "Rain", "a spammed sky change settles on the last spell")
+			check(is_equal_approx(bar.share, 0.75), "a re-sprung hold bar lands on its share (%.3f)" % bar.share)
+			bar.queue_free()
+			check(absf(boat.dip) < 0.03, "the loaded barge settles back to its waterline (%.3f)" % boat.dip)
+			boat.queue_free()
 			check(ui.coins_label.text == str(main.host.wallet()), "wallet settles on the real total (shows %s)" % ui.coins_label.text)
 			var pitch := 0.0
 			for i in 20: pitch = ui._combo_pitch()

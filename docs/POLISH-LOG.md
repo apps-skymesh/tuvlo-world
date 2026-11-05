@@ -325,3 +325,58 @@ Presentation:
 - Filling the hold: celebrate sound, big haptic, confetti and a "Barge filled" banner.
 
 Tests: rules 110/0 (18 new barge checks), feel spam 32/0, runtime and collect pass. Checked in 1280×720 captures 15–16; not yet played on a device.
+
+## Pass 13 · 2026-11-05 (owner request: weather, plus a calmer camera)
+
+**Weather.** Saeed picked weather as the second twist after The Barge.
+
+The sky changes every 15 minutes (3 in quick play) on a fixed 12-step pattern. The pattern never repeats a spell twice in a row, so the forecast is always known.
+
+| Spell | Effect |
+|---|---|
+| Sunny | A fair day, no change |
+| Rain | Fields and the orchard grow 2× faster |
+| Breezy | The windmill grinds 2× faster |
+| Warm | Oven and grill work 1.5× faster |
+
+Rules:
+- Weather only ever helps. Nothing decays or is lost.
+- A job started under a spell freezes its shortened length in its own record (`seconds`, plus a display-only `weather` tag). A running timer never changes when the sky does, and replay needs no new record type.
+- For fields, the watering step sets the timer, so the sky at watering counts.
+
+Presentation:
+- **Map:** rain draws fine slanted streaks, dims and cools the sun, and grounds the pollen. A breeze makes trees and crops sway harder, the windmill's sails turn faster and pollen drifts quicker. A warm spell gilds the sunlight. Changes ease in over a few seconds. No weather sounds, per Saeed's no-noise rule.
+- **Sky pill** beside Settings, showing the spell and its name. It opens a three-card forecast (Now / Next / Later), each with its effect and time.
+- **Place cards:** a small "Rain ×2" tag sits under the action while the sky favours that place.
+- **A new spell:** a short toast such as "Rain · Fields and orchard grow 2× faster" and a pill bump.
+
+**Calmer camera.** Saeed found the jumps when selecting, reselecting and switching places hard on the eyes. Causes found:
+1. The card's framing offsets (`h_offset`/`v_offset`) snapped in one frame while focus and zoom eased, so every open and close jolted. They now ease with focus and zoom.
+2. Framing eased at rate 12 per second. Place, arrival and pan moves now use rate 6.5, a soft glide. Follow keeps 12 so the camera stays with the walking resident.
+3. The barge view and the build-spot preview snapped (`camera_initialized=false`). On a live map they now glide (`pan_glide`) until a finger drag takes over. They still snap only when a native menu holds a paused view.
+4. Switching straight from one card to another, such as Oven ↔ Kitchen, no longer re-pops the card. It stays steady while the camera glides.
+
+Tests: rules 118/0 (8 new weather checks, and the existing exact-timer checks hold the sky sunny), feel spam 32/0, runtime and collect pass. Checked in 1280×720 captures 17–19. The camera feel hasn't been tried on a device yet.
+
+## Pass 14 · 2026-11-05 (owner request: game feel, third pass)
+
+Audit:
+- **Input:** still instant. Taps act on touch-down release, the 0.6 s timer buffer covers early taps, and nothing waits on an animation. Coyote time doesn't apply because there is no movement.
+- **Easing:** no linear snaps were left in the older interactions. The three newest ones had no impact moment:
+  - **Loading the barge** rebuilt the screen. The count, the hold bar and the boat just changed.
+  - **Dropping a good into a place's slot** silently redrew the card.
+  - **A new weather spell** swapped the pill's emblem in one frame.
+
+Changes (tuning in `feel.gd`):
+- **Barge load (impact → follow-through):**
+  - The load is saved first.
+  - On the next frame the goods arc from the Load button into the hold bar (up to 4 sprites).
+  - The bar springs from its old share to the new one with a back-ease overshoot (0.45 s), and the tally punches as the first crate lands.
+  - On the map, the hull takes a 0.9 m/s kick on a damped spring (stiffness 70, damping 6): it sinks about 10 cm and bobs back over about a second.
+  - A reward haptic fires on the commit frame.
+  - A hold bar re-sprung mid-flight keeps its goal, so spam always lands on the true share.
+- **Goods into a slot (micro-action, crisp):** a 1.07× ring punch, a tick whose pitch climbs 12% per filled slot, and a light haptic on the drop frame. The last slot still starts the job through the existing place punch.
+- **Sky change (anticipation → impact → settle):** the pill winds in to 0.8× (80 ms). At the bottom of the wind-up it swaps emblem and name with a light haptic, pops to 1.22× and settles elastically (0.5 s). Spamming it lands on the last spell.
+- Reduce Motion keeps the haptics and the instant state changes only. Nothing here delays a tap or covers the map.
+
+Tests: feel spam 36/0 (4 new: sky morph spam, bar re-spring, hull kick and settle), rules 118/0, runtime and collect pass. Captures 00–19 unchanged. The haptic strengths and the boat's bounce haven't been felt on a device.

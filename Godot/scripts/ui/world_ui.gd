@@ -343,11 +343,16 @@ class Atmosphere extends Control:
 	var since := 0.0
 	var sampled := -1.0
 	var night := 0.0
+	var sky := "sunny"
+	var rain := 0.0  # eases in and out so a shower never pops
+	var drops: Array = []
 	func _ready() -> void:
 		for i in FEEL.ATMOSPHERE_MOTES: seeds.append(Vector4(randf(), randf(), randf_range(0.4, 1.0), randf() * TAU))
+		for i in FEEL.RAIN_DROPS: drops.append(Vector3(randf(), randf(), randf_range(0.6, 1.0)))
 	func _process(delta: float) -> void:
 		since += delta
 		if since < 1.0 / FEEL.ATMOSPHERE_FPS: return
+		rain = move_toward(rain, 1.0 if sky == "rain" else 0.0, since / FEEL.RAIN_FADE)
 		since = 0.0
 		var t := Time.get_ticks_msec() / 1000.0
 		if sampled < 0.0 or t - sampled > HomesteadDayCycle.SAMPLE_SECONDS:
@@ -361,12 +366,27 @@ class Atmosphere extends Control:
 		var points := PackedVector2Array()
 		var colors := PackedColorArray()
 		var indices := PackedInt32Array()
+		# Rain: fine slanted streaks, light enough to read the map through.
+		if rain > 0.01:
+			var fall := Vector2(-0.22, 1.0).normalized()
+			for drop in drops:
+				var d: Vector3 = drop
+				var length := (16.0 + 18.0 * d.z) * k
+				var at := Vector2(fposmod(d.x + t * 0.05 * d.z, 1.0) * size.x, fposmod(d.y + t * 1.1 * d.z, 1.0) * size.y)
+				var side := Vector2(fall.y, -fall.x) * 0.7 * k
+				var base := points.size()
+				var c := Color(0.86, 0.92, 1.0, rain * (0.22 + 0.18 * d.z))
+				points.append_array([at - side, at + side, at + fall * length + side, at + fall * length - side])
+				colors.append_array([Color(c, 0.0), Color(c, 0.0), c, c])
+				indices.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+		var drift := 3.0 if sky == "breeze" else 1.0
 		for i in seeds.size():
 			var m: Vector4 = seeds[i]
-			if i < FEEL.ATMOSPHERE_POLLEN and day > 0.05:
-				# Pollen: slow sideways drift on the wind with a gentle rise.
+			if i < FEEL.ATMOSPHERE_POLLEN and day > 0.05 and rain < 0.6:
+				# Pollen: slow sideways drift on the wind with a gentle rise;
+				# a breeze carries it faster, rain grounds it.
 				var y := fposmod(m.y - t * 0.006 * m.z, 1.0)
-				var x := fposmod(m.x + t * 0.012 * m.z + sin(t * 0.4 * m.z + m.w) * 0.02, 1.0)
+				var x := fposmod(m.x + t * 0.012 * m.z * drift + sin(t * 0.4 * m.z + m.w) * 0.02, 1.0)
 				var r := (1.2 + 1.6 * m.z) * k
 				_glow(points, colors, indices, Vector2(x * size.x, y * size.y), r, r * 2.6, Color(1, 0.98, 0.88, day * (0.2 + 0.25 * m.z)))
 			elif i >= FEEL.ATMOSPHERE_POLLEN and night > 0.05:
@@ -395,6 +415,43 @@ class Atmosphere extends Control:
 			var c0 := base + 1 + j * 2
 			var c1 := base + 1 + ((j + 1) % steps) * 2
 			indices.append_array([base, c0, c1, c0, c0 + 1, c1 + 1, c0, c1 + 1, c1])
+
+## The sky as a small emblem: sun, rain cloud, breeze or warm sun. Drawn in
+## code so it stays crisp at every size; `muted` dims a later spell.
+class WeatherIcon extends Control:
+	var sky := "sunny"
+	var muted := false
+	func _draw() -> void:
+		var w := size.x
+		var h := size.y
+		var k := minf(w, h) / 48.0
+		var a := 0.6 if muted else 1.0
+		var sun := Color(1.0, 0.8, 0.3, a)
+		match sky:
+			"rain":
+				var cloud := Color(0.86, 0.9, 0.95, a)
+				for drop in 3:
+					var x := w * (0.32 + drop * 0.18)
+					draw_line(Vector2(x, h * 0.66), Vector2(x - 4 * k, h * 0.86), Color(0.5, 0.75, 0.95, a), 2.6 * k, true)
+				draw_circle(Vector2(w * 0.36, h * 0.46), 9 * k, cloud)
+				draw_circle(Vector2(w * 0.56, h * 0.38), 12 * k, cloud)
+				draw_circle(Vector2(w * 0.72, h * 0.5), 8 * k, cloud)
+				draw_rect(Rect2(w * 0.36, h * 0.46, w * 0.36, 8 * k), cloud)
+			"breeze":
+				var air := Color(0.85, 0.94, 0.92, a)
+				for row in 3:
+					var y := h * (0.3 + row * 0.2)
+					var reach := w * (0.78 - row * 0.12)
+					draw_line(Vector2(w * 0.14, y), Vector2(reach, y), air, 3 * k, true)
+					draw_arc(Vector2(reach, y - 5 * k), 5 * k, PI * 0.5, PI * 2.1, 12, air, 3 * k, true)
+			_:
+				var c := Vector2(w / 2, h / 2)
+				var warm := sky == "warm"
+				if warm: draw_circle(c, 20 * k, Color(1.0, 0.55, 0.25, 0.22 * a))
+				for ray in 8:
+					var dir := Vector2.from_angle(TAU * ray / 8.0)
+					draw_line(c + dir * 13 * k, c + dir * 19 * k, Color(1.0, 0.62, 0.3, a) if warm else sun, 2.6 * k, true)
+				draw_circle(c, 10 * k, Color(1.0, 0.68, 0.32, a) if warm else sun)
 
 ## Rowan's barge as a small emblem: hull, cabin, mast and striped sail over
 ## two strokes of water. Drawn in code so it stays crisp at every size.
@@ -426,6 +483,17 @@ class BoatIcon extends Control:
 ## A slim rounded progress bar on paper or glass.
 class FillBar extends Control:
 	var share := 0.0
+	var goal := -1.0
+	var motion: Tween
+	## Springs from `from` to the share it was given, with a small overshoot.
+	## A new spring mid-flight keeps the same goal, so it always lands there.
+	func grow_from(from: float, time: float) -> void:
+		var busy := motion != null and motion.is_valid()
+		if not busy: goal = share
+		if busy: motion.kill()
+		share = from
+		motion = create_tween()
+		motion.tween_method(func(v: float): share = v; queue_redraw(), from, goal, time).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	var track := Color(0, 0, 0, 0.12)
 	var fill := Color("3F8F5A")
 	func _draw() -> void:
@@ -1151,6 +1219,188 @@ func _build_hud() -> void:
 	sound.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	root.add_child(sound)
 	hud.append(sound)
+	settings_node = sound
+	_build_weather_pill()
+
+## The sky pill beside Settings: this spell's emblem and how long it lasts.
+## One tap opens the forecast.
+var settings_node: Control
+var weather_pill: PanelContainer
+var weather_pill_icon: WeatherIcon
+var weather_pill_label: Label
+var weather_shown := -1
+var weather_clock: Label
+var switching_place := false
+var weather_later := {}  # forecast card index -> its "in m:ss" label
+
+func _build_weather_pill() -> void:
+	weather_pill = PanelContainer.new()
+	var box := glass(22)
+	box.content_margin_left = 8 * s; box.content_margin_right = 14 * s
+	box.content_margin_top = 4 * s; box.content_margin_bottom = 4 * s
+	weather_pill.add_theme_stylebox_override("panel", box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", int(6 * s))
+	weather_pill_icon = WeatherIcon.new()
+	weather_pill_icon.custom_minimum_size = Vector2(32, 32) * s
+	weather_pill_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(weather_pill_icon)
+	weather_pill_label = Label.new()
+	weather_pill_label.add_theme_font_override("font", DISPLAY_SEMI)
+	weather_pill_label.add_theme_font_size_override("font_size", int(16 * s))
+	weather_pill_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(weather_pill_label)
+	weather_pill.add_child(row)
+	weather_pill.mouse_filter = Control.MOUSE_FILTER_STOP
+	weather_pill.gui_input.connect(func(e):
+		if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
+			sfx("tap"); bump(weather_pill); open("weather"))
+	root.add_child(weather_pill)
+	hud.append(weather_pill)
+
+func _update_weather() -> void:
+	if weather_pill == null or not main or not main.game: return
+	var cast: Dictionary = main.game.forecast()
+	var sky: String = cast.now
+	if atmosphere: atmosphere.sky = sky
+	if weather_shown < 0 or reduce_motion:
+		weather_pill_icon.sky = sky
+		weather_pill_label.text = C.WEATHER[sky].title
+	if is_instance_valid(weather_clock): weather_clock.text = "for %s" % _clock(int(cast.left))
+	for i in weather_later:
+		if is_instance_valid(weather_later[i]): weather_later[i].text = "in %s" % _clock(int(cast.left) + (int(i) - 1) * int(cast.length))
+	if int(cast.window) != weather_shown:
+		var first := weather_shown < 0
+		weather_shown = int(cast.window)
+		weather_pill_icon.queue_redraw()
+		main.push()  # the map's light and sway follow the new sky
+		if not first:
+			if mode == "weather": _fill()
+			elif mode == "place": _fill()  # its boost badge follows the sky
+			_morph_sky(sky)
+			if sky != "sunny" and title_layer == null:
+				sfx("place_set")
+				show_toast("%s · %s" % [C.WEATHER[sky].title, C.WEATHER[sky].line])
+	weather_pill.visible = mode == "" and title_layer == null
+	if weather_pill.visible and settings_node:
+		weather_pill.reset_size()
+		weather_pill.position = Vector2(settings_node.position.x - weather_pill.size.x - 10 * s,
+			settings_node.position.y + (settings_node.size.y - weather_pill.size.y) / 2)
+
+## A new spell: the pill winds in, swaps its emblem and name at the bottom of
+## the wind-up, then springs out past full size and settles. Reduce Motion
+## swaps straight away.
+func _morph_sky(sky: String) -> void:
+	if reduce_motion:
+		weather_pill_icon.sky = sky; weather_pill_label.text = C.WEATHER[sky].title
+		weather_pill_icon.queue_redraw()
+		return
+	weather_pill.pivot_offset = weather_pill.size / 2
+	var tween := _solo_tween(weather_pill, "sky")
+	tween.tween_property(weather_pill, "scale", Vector2.ONE * F.SKY_WIND_SCALE, F.SKY_WIND_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_callback(func():
+		weather_pill_icon.sky = sky
+		weather_pill_label.text = C.WEATHER[sky].title
+		weather_pill_icon.queue_redraw()
+		haptic(F.HAPTIC_TAP))
+	tween.tween_property(weather_pill, "scale", Vector2.ONE * F.SKY_POP_SCALE, F.SKY_WIND_TIME * 1.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(weather_pill, "scale", Vector2.ONE, F.SKY_SETTLE_TIME).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+## The forecast: this spell and the next two, each with what it speeds up.
+func _fill_weather() -> void:
+	var cast: Dictionary = main.game.forecast()
+	var column := _sheet("Weather")
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", int(12 * s))
+	var skies: Array = [cast.now] + cast.next
+	for i in skies.size():
+		row.add_child(_weather_card(skies[i], i, cast))
+	column.add_child(row)
+
+func _weather_card(sky: String, index: int, cast: Dictionary) -> Control:
+	var card := PanelContainer.new()
+	var box := StyleBoxFlat.new()
+	box.bg_color = PAPER if index == 0 else Color(PAPER, 0.82)
+	box.set_corner_radius_all(int(12 * s))
+	box.border_color = GOLD if index == 0 else PAPER_EDGE
+	box.set_border_width_all(int((3.0 if index == 0 else 1.5) * s))
+	box.shadow_color = Color(0, 0, 0, 0.3)
+	box.shadow_size = int(8 * s)
+	box.shadow_offset = Vector2(0, 4 * s)
+	box.set_content_margin_all(12 * s)
+	box.anti_aliasing_size = 0.8
+	card.add_theme_stylebox_override("panel", box)
+	var stack := VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", int(4 * s))
+	stack.custom_minimum_size = Vector2(168, 0) * s
+	var when := _eyebrow("Now" if index == 0 else ("Next" if index == 1 else "Later"))
+	when.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	when.add_theme_color_override("font_color", AWNING_RED)
+	stack.add_child(when)
+	var emblem := WeatherIcon.new()
+	emblem.sky = sky
+	emblem.muted = index > 0
+	emblem.custom_minimum_size = Vector2(64, 64) * s
+	emblem.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	emblem.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stack.add_child(emblem)
+	var name_label := _number(22)
+	name_label.text = C.WEATHER[sky].title
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.add_theme_color_override("font_color", PAPER_INK)
+	stack.add_child(name_label)
+	var line := Label.new()
+	line.text = C.WEATHER[sky].line
+	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	line.custom_minimum_size = Vector2(150, 0) * s
+	line.add_theme_font_size_override("font_size", int(14 * s))
+	line.add_theme_color_override("font_color", PAPER_READY if not C.WEATHER[sky].boost.is_empty() else Color(PAPER_INK, 0.7))
+	stack.add_child(line)
+	# Every card ends on its time, so the three stand level.
+	var at := Label.new()
+	at.text = "for %s" % _clock(int(cast.left)) if index == 0 else "in %s" % _clock(int(cast.left) + (index - 1) * int(cast.length))
+	at.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	at.add_theme_font_size_override("font_size", int(13 * s))
+	at.add_theme_color_override("font_color", Color(PAPER_INK, 0.6))
+	stack.add_child(at)
+	if index == 0: weather_clock = at
+	else: weather_later[index] = at
+	card.add_child(stack)
+	return card
+
+## A small "Rain ×2" tag under a card's action while the sky speeds it up.
+func _weather_badge(job: String) -> Control:
+	var boost: float = main.game.weather_boost(job)
+	if boost <= 1.0: return null
+	var sky: String = main.game.weather()
+	var tag := PanelContainer.new()
+	var box := glass(16, GLASS_DEEP, false)
+	box.border_color = Color(GOLD, 0.7)
+	box.set_border_width_all(int(1.5 * s))
+	box.content_margin_left = 6 * s; box.content_margin_right = 12 * s
+	box.content_margin_top = 2 * s; box.content_margin_bottom = 2 * s
+	tag.add_theme_stylebox_override("panel", box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", int(4 * s))
+	var emblem := WeatherIcon.new()
+	emblem.sky = sky
+	emblem.custom_minimum_size = Vector2(26, 26) * s
+	emblem.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(emblem)
+	var words := Label.new()
+	words.text = "%s ×%s" % [C.WEATHER[sky].title, ("%d" % boost) if is_equal_approx(boost, roundf(boost)) else ("%.1f" % boost)]
+	words.add_theme_font_override("font", DISPLAY_SEMI)
+	words.add_theme_font_size_override("font_size", int(14 * s))
+	words.add_theme_color_override("font_color", GOLD)
+	words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(words)
+	tag.add_child(row)
+	tag.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	tag.tooltip_text = C.WEATHER[sky].line
+	return tag
 
 ## The barge ticket under the goal: when Rowan's barge is in and how long it
 ## stays, one tap from its screen. Hidden until the windmill brings the barge.
@@ -1162,6 +1412,19 @@ var barge_docked_style: StyleBoxFlat
 var barge_away_style: StyleBoxFlat
 var barge_clock: Label
 var barge_shown := {}
+var barge_load := {}  # the load just committed, landed once the screen rebuilds
+
+## A load lands: crates arc from the Load button into the hold bar, the bar
+## springs to its new share and the tally punches as the first one arrives.
+## The load is already saved; none of this holds up the next tap.
+func _land_barge_load(load: Dictionary, bar: FillBar, tally: Label) -> void:
+	haptic(F.HAPTIC_REWARD)
+	if reduce_motion: return
+	get_tree().process_frame.connect(func():
+		if not is_instance_valid(bar): return
+		bar.grow_from(float(load.share), F.BAR_FILL_TIME)
+		fly(icons.get(load.good), load.from, bar, mini(int(load.count), F.BARGE_FLY_MAX), 40.0)
+		get_tree().create_timer(F.FLY_GROW_TIME + F.FLY_TRAVEL_TIME * 0.6).timeout.connect(func(): if is_instance_valid(tally): bump(tally, 1.25)), CONNECT_ONE_SHOT)
 var last_shipped := -1
 func _build_barge_chip() -> void:
 	barge_chip = PanelContainer.new()
@@ -1537,6 +1800,7 @@ func _process(delta: float) -> void:
 	# A hit-stop can never outlive its moment, whatever happened to its timer.
 	if Engine.time_scale != 1.0 and Time.get_ticks_msec() > hitstop_until: Engine.time_scale = 1.0
 	_update_barge_chip()
+	_update_weather()
 	if is_instance_valid(season_clock) and main and main.game:
 		var season: Dictionary = main.game.season()
 		season_clock.text = _time(int(season.left))
@@ -1649,6 +1913,7 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	build_pick = ""
 	was_new = true
 	if next_mode == "build" and was != "build": build_scroll = 0
+	switching_place = was == "place" and next_mode == "place" and sheet_root != null
 	if next_mode == "place":
 		var item: Dictionary = main.game.state.find(place_id)
 		var stations := C.stations_for(item.get("kind", ""))
@@ -1659,7 +1924,7 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	goal_box.visible = false
 	dock_node.visible = false
 	if next_mode != "build": main.spot_preview({})
-	panel_changed.emit(next_mode in ["place", "more", "land", "settings", "gift", "barge"])
+	panel_changed.emit(next_mode in ["place", "more", "land", "settings", "gift", "barge", "weather"])
 	if next_mode == "barge": main.send("bargeFocus", {})
 	if was == "" or was != next_mode: pass
 
@@ -1725,7 +1990,10 @@ func _fill() -> void:
 		"settings": _fill_settings()
 		"gift": _fill_gift()
 		"barge": _fill_barge()
-	if sheet_root and was_new:
+		"weather": _fill_weather()
+	# Switching straight from one place's card to another keeps the card
+	# steady (no second pop) while the camera glides to the new place.
+	if sheet_root and was_new and not switching_place:
 		var target := sheet_root
 		get_tree().process_frame.connect(func(): if is_instance_valid(target): pop_in(target), CONNECT_ONE_SHOT)
 
@@ -1889,6 +2157,9 @@ func _fill_place() -> void:
 	action.custom_minimum_size = Vector2(170, 52) * s
 	action.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	centre.add_child(action)
+	var job := station if station != "" else ("field" if item.kind == "garden" else ("orchard" if item.kind == "orchard" else ""))
+	var badge := _weather_badge(job) if job != "" and not st.is_building(place_id, now) else null
+	if badge: centre.add_child(badge)
 	_update_ring()
 	_frame_camera(station if station != "" else ("field" if item.kind == "garden" else ""))
 	if C.stations_for(item.kind).size() > 1:
@@ -2046,7 +2317,13 @@ func _ring_dropped(good: String) -> void:
 	filled[good] = true
 	for g in spec.input:
 		if not filled.get(g, false):
-			_fill(); return
+			_fill()
+			# The good lands in its slot: a crisp ring punch and a tick that
+			# climbs in pitch as the slots fill. Display only.
+			sfx("place_set", 1.0 + F.SLOT_PITCH_STEP * filled.size())
+			haptic(F.HAPTIC_TAP)
+			if ring: bump(ring, F.SLOT_PUNCH)
+			return
 	_act(main.game.make(recipe))
 
 func _open_source(good: String) -> void:
@@ -2342,6 +2619,9 @@ func _fill_barge() -> void:
 	tally.add_theme_font_size_override("font_size", int(14 * s))
 	tally.add_theme_color_override("font_color", MUTED)
 	hold.add_child(tally)
+	if not barge_load.is_empty():
+		_land_barge_load(barge_load, bar, tally)
+		barge_load = {}
 	column.add_child(hold)
 
 ## One manifest line as a paper crate label: the good, how many are aboard,
@@ -2407,7 +2687,12 @@ func _barge_crate(line: Dictionary, docked: bool) -> Control:
 		stack.add_child(stowed)
 	elif docked and want > 0:
 		var load_button: Button
-		load_button = _button("Load %d" % want, func(): fly_from = load_button.get_global_rect().get_center(); _act(game.load_barge(line.good)), true)
+		load_button = _button("Load %d" % want, func():
+			fly_from = load_button.get_global_rect().get_center()
+			var before := float(game.barge().get("loaded", 0)) / maxf(1.0, float(game.barge().get("wanted", 1)))
+			var result := game.load_barge(line.good)
+			if result == "": barge_load = {"good": line.good, "from": fly_from, "count": want, "share": before}
+			_act(result), true)
 		load_button.custom_minimum_size = Vector2(130, 46) * s
 		load_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		stack.add_child(load_button)

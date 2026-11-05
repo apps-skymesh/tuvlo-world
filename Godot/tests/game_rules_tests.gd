@@ -38,6 +38,7 @@ func check(condition: bool, label: String) -> void:
 
 func _initialize() -> void:
 	WorldCatalogue.speed_override = 1.0  # rules run at normal speed; quick play is checked below
+	WorldCatalogue.weather_override = "sunny"  # exact timers below; weather is checked at the end
 	var clock := {"t": 1000.0}  # lambdas capture locals by value
 	var host := MemoryHost.new()
 	var game := WorldGame.new(host)
@@ -289,6 +290,35 @@ func _initialize() -> void:
 	binfo = bgame.barge()
 	check(not binfo.docked and binfo.cycle == bcyc + 1 and binfo.left == int(blen - bstay) - 100, "while away, the next barge and its manifest are shown")
 	check(bgame.snapshot().barge == false, "the renderer is told the barge is away")
+	# Weather: a known pattern, never the same spell twice running, and only
+	# ever faster. The sped-up time is frozen in the job's record.
+	WorldCatalogue.weather_override = ""
+	var wpat: Array = WorldCatalogue.WEATHER_PATTERN
+	var wrepeat := false
+	for i in wpat.size(): wrepeat = wrepeat or wpat[i] == wpat[(i + 1) % wpat.size()]
+	check(not wrepeat and wpat.all(func(w): return WorldCatalogue.WEATHER.has(w)), "the weather never repeats a spell back to back, even across the cycle")
+	check(WorldCatalogue.WEATHER.values().all(func(w): return w.boost.values().all(func(b): return b >= 1.0)), "weather only ever speeds things up")
+	var wlen := float(WorldCatalogue.duration(WorldCatalogue.WEATHER_SECONDS))
+	var wrain := wpat.find("rain")
+	var wsun := wpat.find("sunny")
+	var whost := MemoryHost.new()
+	var wclock := {"t": wrain * wlen + 30.0}
+	var wgame := WorldGame.new(whost)
+	wgame.clock = func(): return wclock.t
+	check(wgame.weather() == "rain" and wgame.forecast().left == int(wlen) - 30 and wgame.forecast().next[0] == wpat[(wrain + 1) % wpat.size()], "the forecast names this spell, its time left and the next")
+	check(wgame.snapshot().weather == "rain", "the renderer is told the sky")
+	check(wgame.tend(0) == "" and wgame.tend(0) == "", "planting and watering in the rain work")
+	var wrec: Dictionary = whost.records[-1]
+	check(int(wrec.seconds) == WorldCatalogue.duration(WorldCatalogue.FIRST_FIELD_SECONDS / 2.0) and wrec.get("weather") == "rain", "rain halves the field's timer and notes why (%s)" % [wrec])
+	var wfrozen := wgame.state.field_total(0)
+	wclock.t = (wrain + 1) * wlen + 1.0
+	wgame.refresh()
+	check(wgame.state.field_total(0) == wfrozen and wfrozen < WorldCatalogue.FIELD_SECONDS, "a running timer keeps its rainy length when the sky changes")
+	var whost2 := MemoryHost.new()
+	var wclock2 := {"t": wsun * wlen + 30.0}
+	var wgame2 := WorldGame.new(whost2)
+	wgame2.clock = func(): return wclock2.t
+	check(wgame2.tend(0) == "" and wgame2.tend(0) == "" and int(whost2.records[-1].seconds) == WorldCatalogue.duration(WorldCatalogue.FIRST_FIELD_SECONDS) and not whost2.records[-1].has("weather"), "a sunny spell leaves timers as they are")
 	print("game rules: %d checks, %d failed" % [checks, failures])
 	host.free()
 	quit(1 if failures > 0 else 0)
