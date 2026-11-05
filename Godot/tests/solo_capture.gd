@@ -142,7 +142,11 @@ func _process(delta: float) -> bool:
 		65: main.ui.close(); main.ui.open("place", "place:workshop:cap"); wait = 1.5
 		66: shot("29-workshop")
 		67: main.ui.close(); main.ui.open("place", "base:cottage", "oven"); wait = 1.0
-		68: shot("30-cottage-five-products")
-		69: return true
+		68: shot("30-oven-card")
+		69: main.ui.close(); main.ui.place_tapped("base:cottage"); wait = 1.0
+		70: shot("31-cottage-card")
+		71: main.ui.open("place", "base:cottage", "pantry"); wait = 1.0
+		72: shot("32-kitchen-card")
+		73: return true
 	step += 1
 	return false

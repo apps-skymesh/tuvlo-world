@@ -1575,6 +1575,11 @@ func place_tapped(id: String, tapped_station := "") -> void:
 	if item.is_empty(): return
 	var now := game.now()
 	fly_from = root.get_viewport_rect().size / 2
+	# The cottage itself is neither the oven nor the kitchen bench: a tap on
+	# the house never bakes, packs or collects on their behalf.
+	if _shared(item) and tapped_station == "":
+		open("place", id)
+		return
 	if mode == "" and not st.is_building(id, now):
 		if item.kind == "garden":
 			var stages := []
@@ -1972,7 +1977,7 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	if next_mode == "place":
 		var item: Dictionary = main.game.state.find(place_id)
 		var stations := C.stations_for(item.get("kind", ""))
-		if station == "" and not stations.is_empty(): station = stations[0]
+		if station == "" and stations.size() == 1: station = stations[0]
 		if station == "field": station = ""
 	_fill()
 	was_new = false
@@ -2124,6 +2129,8 @@ func _place_products(item: Dictionary) -> Array:
 			return [{"target": "orchard", "recipe": "", "output": "fruit", "quantity": C.ORCHARD_YIELD, "seconds": C.ORCHARD_SECONDS}]
 	var out := []
 	for each in C.stations_for(item.kind):
+		# A house with several places shows only the one that was opened.
+		if _shared(item) and each != station: continue
 		for id in C.recipes_for(each):
 			var r: Dictionary = C.RECIPES[id]
 			out.append({"target": each, "recipe": id, "output": r.output, "quantity": r.quantity, "seconds": float(r.seconds)})
@@ -2405,7 +2412,7 @@ func _fill_place() -> void:
 		recipe = products[0].recipe
 		for p in products:
 			if p.recipe != "" and p.target == station and _have_all(p.recipe) and not st.jobs.has(p.target): recipe = p.recipe; break
-	var parts := _production_window(C.title(item.kind))
+	var parts := _production_window(C.title(station) if _shared(item) else C.title(item.kind))
 	var tabs: HBoxContainer = parts.tabs
 	var needs: VBoxContainer = parts.needs
 	var scene: ProductionScene = parts.scene
@@ -2523,9 +2530,21 @@ func _fill_quiet_place(item: Dictionary) -> void:
 	var picture := _icon(icons.get(item.kind, icons["star"]), 240)
 	picture.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_child(picture)
+	if _shared(item):
+		# The house's own card points at its places instead of opening one.
+		for each in C.stations_for(item.kind):
+			var go := _button(C.title(each), func(): open("place", place_id, each))
+			go.custom_minimum_size = Vector2(190, 52) * s
+			(parts.actions as HBoxContainer).add_child(go)
+		return
 	var done := _button("Close", close)
 	done.custom_minimum_size = Vector2(170, 52) * s
 	(parts.actions as HBoxContainer).add_child(done)
+
+## True for a place that holds more than one workplace (the cottage's oven
+## and kitchen bench), each with its own card.
+static func _shared(item: Dictionary) -> bool:
+	return C.stations_for(item.get("kind", "")).size() > 1
 
 func _update_ring() -> void:
 	if not ring or not is_instance_valid(ring): return
