@@ -24,7 +24,7 @@ Passes 1–19 used the earlier 12-pillar score and the art-direction rung ladder
   - Non-goals: survival pressure, decay, aggressive monetisation.
 - **Core loop:** plant and water → mill/bake/craft on timers → sell at the market, fill orders and the barge → level up and build. Stars are a soft currency for finishing a job early.
 - **Real player evidence:** none yet. Builds are installed on Saeed's iPhone and three family iPads (the iPhone missed the latest build, PR #26), but there has been no playtest feedback so far. Every "fun" and "feel" claim since Pass 1 is design judgment, not a measured result.
-- **Pending, unmeasured changes on the same outcome (session feel):** Passes 16–19 (production window, drag, depth and life). Don't stack more feel and polish changes on this outcome until players have been observed.
+- **Pending, unmeasured changes on the same outcome (session feel):** Passes 16–20 (production window, drag, depth and life, pressed states, transitions and level-up). Passes 20 and later were explicit owner asks. Don't stack more feel and polish changes on this outcome until players have been observed.
 - **Rejected or retired:** noise-based ambience (Saeed disliked it, Pass 15→16); camera jumps when opening a place (replaced by the window, Pass 16); free placement (superseded by fixed spots).
 - **Next hypothesis:** observe the family playing a 10-minute session and note where they stop, hesitate or ask. Then run an M1 pass on seed choices: choosing what to plant should be a real decision with trade-offs, not a single default crop.
 - **Alternatives:**
@@ -519,3 +519,21 @@ Pass 18 added light and depth, but the room itself was a still picture, a state 
 - **Cost:** about 20 circles and 3 polylines per frame, plus one tween. There are no shaders, blurs or allocations.
 
 Tests: rules 136/0, feel spam 36/0. Captures: 20, 23, 26 and 30, before and after, plus 33 (the finish sweep, new). Not seen: motion on a device. Stills show only one frame of each effect.
+
+## Pass 20 · 2026-11-05 (owner requests: pressed states, smooth transitions, level-up, game-feel audit)
+
+Four asks done as one feel batch. The audit came first and decided where the work went.
+
+- **Audit, input and timing:**
+  - Buffering already exists: a tap on a place within `TIMER_BUFFER` (0.6 s) of its job finishing waits and collects, instead of opening a menu.
+  - Closing boxes stop taking taps on their first frame (`_close_out`), and a rebuilt box's old copy ignores taps while it fades (`_fade_out_old`), so no animation ever holds the player up.
+  - Hit-stop (`_hitstop`, 70 ms) freezes animation only; input and the save keep running.
+  - Buttons still fire on release, the iOS norm, so a finger can slide off to cancel. The pressed state gives the instant feedback on touch-down instead.
+  - **Bug found and fixed:** a tap pressed and lifted within the same frame left the control dim and squashed, because the release skipped its tween when nothing had moved yet. `press_out` and `_dim` now always replace the running tween. A new spam check covers it.
+- **Audit, easing:** the abrupt changes left were the rebuilt box (a hard swap on tab switch, a drop or Make), the Stars counter (jumped while coins rolled) and the level badge (a 0.08 s wind-up too short to read). Those became the three upgrades below.
+- **Pressed states (`world_ui.gd` `_juice`, `_press_card`, `press_in`/`press_out`, `_dim`; `feel.gd` `PRESS_*`, `CARD_PRESS_SCALE`):** every button squashes to 0.94 and every card, tile, tab, chip and toggle to 0.96, both dimmed to 82%, and spring back (TRANS_BACK) on release. Any touch-up anywhere releases everything held, so a scroll or drag can't leave a card stuck. Reduce Motion keeps the dim only.
+- **Transitions (`_fill`, `_fade_out_old`, `roll`; `REBUILD_FADE_TIME`):** a box rebuilt in place crossfades over 0.16 s from its old look. This covers the place card, the production window, the market and the Build tray. Coins and Stars both roll to their new totals through one helper. Reduce Motion: instant.
+- **Level-up (`_celebrate_level`, `_level_impact`, `_stamp_in`; `LEVEL_*`):** 0.28 s anticipation (the badge draws in while its ring charges to full, with a soft tick), then the impact on one frame (number turns over, haptic, flash, 70 ms hit-stop, confetti, the banner stamps in from 1.3×), then an elastic settle and a pop on the banner's number. Reduce Motion: haptic, number and a fade only.
+- **Intensity:** unchanged ladder. Taps are crisp (press only), gains scale by reward tier (Pass 14), and the level-up is the one layered celebration.
+
+Tests: rules 136/0, feel spam 38/0 (two new: release from anywhere, back to full size and brightness). Not seen: any of this on a device.

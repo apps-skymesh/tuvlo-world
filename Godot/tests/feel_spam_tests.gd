@@ -97,6 +97,11 @@ func _process(delta: float) -> bool:
 			# Rewards scale with the gain; a level-up holds the frame only briefly.
 			check(WorldUI.reward_tier(1) == 0 and WorldUI.reward_tier(F.REWARD_GOOD) == 1 and WorldUI.reward_tier(F.REWARD_BIG) == 2, "reward feedback tiers follow the gain")
 			for i in 5: ui._level_impact()
+			# A finger pressed on a card and lifted anywhere (even off the card)
+			# springs it back; spamming presses never leaves it squashed or dim.
+			for i in 8: ui.press_in(ui.weather_pill, F.CARD_PRESS_SCALE)
+			tap.call(corner)
+			check(ui.held.is_empty(), "any touch release lets go of every pressed card")
 			# Pass 14: a sky change spammed mid-morph, a hold bar sprung over
 			# and over, and a barge loaded crate after crate.
 			for sky in ["rain", "breeze", "warm", "sunny", "rain"]: ui._morph_sky(sky)
@@ -116,6 +121,7 @@ func _process(delta: float) -> bool:
 			check(ui.level_badge.scale.is_equal_approx(Vector2.ONE), "the level badge settles after its punch")
 			check(ui.root.get_children().filter(func(c): return c.has_meta("panel")).is_empty(), "closed boxes finish fading and are freed")
 			check(ui.market_button.scale.is_equal_approx(Vector2.ONE), "dock button back at rest after spam")
+			check(ui.weather_pill.scale.is_equal_approx(Vector2.ONE) and ui.weather_pill.modulate.r > 0.99, "a released card is back to full size and brightness")
 			check(shaken.position.is_equal_approx(Vector2(100, 100)), "a spammed shake settles where it started (at %s)" % shaken.position)
 			shaken.queue_free()
 			check(ui.weather_pill.scale.is_equal_approx(Vector2.ONE) and ui.weather_pill_label.text == "Rain", "a spammed sky change settles on the last spell")

@@ -888,13 +888,13 @@ func press_out(control: Control) -> void:
 	if not is_instance_valid(control): return
 	_dim(control, 1.0, F.RELEASE_TIME)
 	if reduce_motion: control.scale = Vector2.ONE; return
-	if control.scale.is_equal_approx(Vector2.ONE): return
+	# Always replace the press tween: a tap lifted on the same frame it landed
+	# would otherwise leave the squash running with nothing to undo it.
 	_solo_tween(control, "press").tween_property(control, "scale", Vector2.ONE, F.RELEASE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 ## Brightness only: alpha stays free for drag sockets and locked tabs.
 func _dim(control: Control, to: float, time: float) -> void:
 	var from := control.modulate.r
-	if is_equal_approx(from, to): return
 	_solo_tween(control, "dim").tween_method(func(v: float):
 		if is_instance_valid(control): control.modulate = Color(v, v, v, control.modulate.a), from, to, time)
 
