@@ -25,6 +25,7 @@ Passes 1–19 used the earlier 12-pillar score and the art-direction rung ladder
 - **Core loop:** plant and water → mill/bake/craft on timers → sell at the market, fill orders and the barge → level up and build. Stars are a soft currency for finishing a job early.
 - **Real player evidence:** none yet. Builds are installed on Saeed's iPhone and three family iPads (the iPhone missed the latest build, PR #26), but there has been no playtest feedback so far. Every "fun" and "feel" claim since Pass 1 is design judgment, not a measured result.
 - **Pending, unmeasured changes on the same outcome (session feel):** Passes 16–19 (production window, drag, depth and life). Don't stack more feel and polish changes on this outcome until players have been observed.
+- **World art direction (Pass 20):** the map now has a colour script (green-gold morning, crisp afternoon, amber dusk, cool blue hour with a warm hearth), a lit clearing that holds the eye on the homestead, and slow cloud shadows. All ground light lives in `scripts/ground_light.gdshaderinc`, fed by `GroundLight` and the `GROUND` table in `day_cycle.gd`.
 - **Rejected or retired:** noise-based ambience (Saeed disliked it, Pass 15→16); camera jumps when opening a place (replaced by the window, Pass 16); free placement (superseded by fixed spots).
 - **Next hypothesis:** observe the family playing a 10-minute session and note where they stop, hesitate or ask. Then run an M1 pass on seed choices: choosing what to plant should be a real decision with trade-offs, not a single default crop.
 - **Alternatives:**
@@ -519,3 +520,37 @@ Pass 18 added light and depth, but the room itself was a still picture, a state 
 - **Cost:** about 20 circles and 3 polylines per frame, plus one tween. There are no shaders, blurs or allocations.
 
 Tests: rules 136/0, feel spam 36/0. Captures: 20, 23, 26 and 30, before and after, plus 33 (the finish sweep, new). Not seen: motion on a device. Stills show only one frame of each effect.
+
+## Pass 20 · 2026-11-05 (owner request: art direction of the world map)
+
+**Objective:** make the map read as art-directed rather than evenly lit. **Primary outcome:** at every hour, the homestead is the brightest, most contrasted part of the frame and the evening has its own mood. **Guardrails:** no new lights, passes or draw calls; no camera moves; no noise ambience; Reduce Motion respected; the menus, HUD and buttons untouched (another pass is changing them).
+
+**Audit** (built farm at 8:30, 13:00, 18:00 and 21:00 on a pinned sunny day, each as colour, blur and grayscale; `tests/ground_light_review.gd`):
+- **Squint:** the red roofs read first, which is right. But the turf was one flat value from edge to edge, so the eye had nowhere to settle and the pale build plots competed with the cottage.
+- **Grayscale:** buildings separated from the ground by outline more than by value. Contrast fell as the day went on (frame luma s.d. 30.6 at 8:30, 32.6 at 21:00).
+- **Colour script:** dusk and evening only warmed the sun. Orange light on green grass turned the whole frame olive at 18:00 and 21:00, so the "hearth-glow" evening read as a dim, muddy afternoon, and the lit windows had nothing cool to glow against.
+- **Static world:** wind sways the trees and the air has pollen and fireflies, but the ground itself never changed.
+
+**Candidates:**
+1. *Refinement:* retune the day-cycle keys and vignette only. Cheap, but it can't make the ground hold a focal point.
+2. *Structural:* move the world to the Mobile renderer for real glow, SSAO and fog. Rejected: a large GPU and battery cost on the iPads, and it risks the Compatibility look everything was tuned for.
+3. *Novel (chosen):* paint the light into the ground. One shared shader include gives the turf and valley a colour script, a lit clearing, a hearth pool and drifting cloud shadows from four global uniforms.
+
+**Changes:**
+- **Ground light (`scripts/ground_light.gdshaderinc`, `scripts/ground_light.gd`):**
+  - The *lit clearing*: ground beyond about 11 m from the middle of the starting land settles darker and cooler (to 26 m), so the homestead holds the light and locked plots recede.
+  - *Cloud shadows*: soft, cool, ~15 m clouds drift along the wind at about 0.25 m/s, faster in a breeze. They fade out in rain (the sky is already grey) and at night. The offset is advanced on the CPU and wraps at the tiling noise period, so it never seams, and Reduce Motion holds the clouds where they are instead of snapping them back.
+  - The *hearth*: from dusk, a warm pool of light spreads on the ground in front of the cottage door, painted, not lit.
+- **Colour script (`day_cycle.gd`):** a new `GROUND` table on the same hours, with ground tint, cloud depth and edge dimming. Dusk now pairs the amber sun with a cool ambient. The evening is a blue hour: cool moonlight, a blue-violet ambient and a cool distance haze, so only the windows, the hearth pool and fireflies stay warm.
+- **Cost:** the turf and valley shaders gain a few ALU ops and two value-noise lookups per pixel. There are no textures, lights, passes, nodes or draw calls (perf probe: 631 start, 892 built, before and after; video memory unchanged at 96.8/99.8 MB). Global uniforms are only re-sent when a value changes.
+
+**Results:**
+- *Technical:* frame luma s.d. (play area) rose from 30.6/29.3/31.7/32.6 to 33.7/32.4/38.5/40.8 at 8:30/13:00/18:00/21:00, so value contrast is up 10% by day and 21–25% at dusk and evening. Rules 136/0, feel spam 41/0 (5 new: cool evening shade, day-only clouds, Reduce Motion holds them, they move, the offset wraps), runtime tests 0 failures.
+- *Design judgment:* the evening is the biggest change; the cottage now glows against a cool valley. By day the effect is quieter: depth at the edges and a passing shadow.
+- *Player outcomes:* not measured. Not seen: cloud motion on a device (the captures are stills), the blue hour on an OLED phone at night, or iPad 9th Gen frame time.
+
+Captures: `captures/ground-light/` in project files, before and after at each hour, plus colour and grayscale comparison sheets.
+
+**Rejected:** a full-screen colour-grade shader per hour (an extra full-screen pass); a real OmniLight3D at the hearth (an extra light on every lit mesh in range); cloud shadows on buildings (needs a shader on every material).
+
+**Next hypothesis:** unchanged — observe the family playing, then seed choices (M1). **Alternatives:** lantern pools at other places once they have night art; a dawn mist band in the valley.

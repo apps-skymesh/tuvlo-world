@@ -1182,6 +1182,7 @@ func ease_weather(delta: float):
  var blend=1.0-exp(-delta*0.9)
  for key in weather_mix: weather_mix[key]=lerpf(weather_mix[key],target[key],blend)
  HomesteadWind.set_gust(weather_mix.gust)
+ GroundLight.advance(delta,weather_mix.gust,reduced_motion)
  if sun:
   sun.light_energy*=weather_mix.sun
   sun.light_color=day.sun_color.lerp(Color(1.0,0.78,0.5),weather_mix.warm*0.45).lerp(Color(0.78,0.85,0.95),weather_mix.cool*0.5)
@@ -1200,6 +1201,12 @@ func apply_day_cycle():
   environment_settings.ambient_light_energy=day.ambient_energy
   environment_settings.background_color=day.haze
  if presentation: presentation.set_daylight(day.haze,day.glow)
+ GroundLight.apply(day,hearth_point(),weather_mix.cool/0.55)
+## In front of the cottage door, for the evening hearth pool.
+func hearth_point() -> Vector3:
+ for item in data.items:
+  if item.kind=="cottage": return HomesteadItems.item_center(item)+Vector3(0,0,2.4).rotated(Vector3.UP,int(item.rotation)*PI/2)
+ return HomesteadValley.CENTER
 func send_activity():
  emit_message("activity",{"key":resident.state,"destination":resident.destination_kind,"text":resident.activity})
 
