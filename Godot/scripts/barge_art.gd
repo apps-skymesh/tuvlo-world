@@ -68,8 +68,21 @@ func set_docked(next: bool, animate: bool) -> void:
 		travel.tween_callback(func(): visible = false; position = DOCK)
 
 ## Stacks crates on deck for the share of the manifest already loaded.
+## Loading has weight: each new crate pushes the hull down and it springs
+## back with a small, damped bounce (FEEL.BARGE_DIP_*).
+const FEEL = preload("res://scripts/ui/feel.gd")
+var dip := 0.0
+var dip_speed := 0.0
+var cargo_seen := -1
+
+var last_share := 0.0
 func set_cargo(share: float) -> void:
 	var shown := roundi(clampf(share, 0.0, 1.0) * crates.size())
+	# The first snapshot only sets the hold; later loads land with weight.
+	if cargo_seen >= 0 and share > last_share + 0.001 and not reduced_motion and visible:
+		dip_speed -= FEEL.BARGE_DIP_KICK
+	cargo_seen = shown
+	last_share = share
 	for i in crates.size():
 		var was := crates[i].visible
 		crates[i].visible = i < shown
@@ -82,6 +95,9 @@ func _process(delta: float) -> void:
 		hull.position.y = 0.0; hull.rotation = Vector3.ZERO
 		return
 	bob_time += delta
-	hull.position.y = sin(bob_time * 1.4) * 0.03
+	# A damped spring: the load's kick sinks the hull, it overshoots once and settles.
+	dip_speed += (-FEEL.BARGE_DIP_STIFFNESS * dip - FEEL.BARGE_DIP_DAMPING * dip_speed) * delta
+	dip += dip_speed * delta
+	hull.position.y = sin(bob_time * 1.4) * 0.03 + dip
 	hull.rotation.z = sin(bob_time * 0.9) * 0.025
-	hull.rotation.x = sin(bob_time * 1.1 + 1.0) * 0.012
+	hull.rotation.x = sin(bob_time * 1.1 + 1.0) * 0.012 + dip * 0.35

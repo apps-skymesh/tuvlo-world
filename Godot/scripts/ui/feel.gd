@@ -104,6 +104,24 @@ const ATMOSPHERE_FPS := 30.0
 # Weather rain over the map: streak count and how long a shower takes to
 # fade in or out (seconds).
 const RAIN_DROPS := 70
+# Loading the barge (barge_art.set_cargo): the hull's damped spring. A kick
+# of 0.9 m/s with these values sinks it about 10 cm, then bobs back up with
+# a couple of shrinking bounces over about a second.
+const BARGE_DIP_KICK := 0.9
+const BARGE_DIP_STIFFNESS := 70.0
+const BARGE_DIP_DAMPING := 6.0
+# Crates flying from a Load button into the hold bar, and the bar's spring.
+const BARGE_FLY_MAX := 4
+const BAR_FILL_TIME := 0.45
+# A good dropped into a place's slot: the ring's punch, with a pitch that
+# climbs as the slots fill.
+const SLOT_PUNCH := 1.07
+const SLOT_PITCH_STEP := 0.12
+# A new weather spell: the sky pill winds in, swaps, then springs out.
+const SKY_WIND_SCALE := 0.8
+const SKY_WIND_TIME := 0.08
+const SKY_POP_SCALE := 1.22
+const SKY_SETTLE_TIME := 0.5
 const RAIN_FADE := 2.5
 
 # Closing a box (world_ui._close_out): a quick shrink and fade; taps pass

@@ -357,3 +357,26 @@ Presentation:
 4. Switching straight from one card to another, such as Oven ↔ Kitchen, no longer re-pops the card. It stays steady while the camera glides.
 
 Tests: rules 118/0 (8 new weather checks, and the existing exact-timer checks hold the sky sunny), feel spam 32/0, runtime and collect pass. Checked in 1280×720 captures 17–19. The camera feel hasn't been tried on a device yet.
+
+## Pass 14 · 2026-11-05 (owner request: game feel, third pass)
+
+Audit:
+- **Input:** still instant. Taps act on touch-down release, the 0.6 s timer buffer covers early taps, and nothing waits on an animation. Coyote time doesn't apply because there is no movement.
+- **Easing:** no linear snaps were left in the older interactions. The three newest ones had no impact moment:
+  - **Loading the barge** rebuilt the screen. The count, the hold bar and the boat just changed.
+  - **Dropping a good into a place's slot** silently redrew the card.
+  - **A new weather spell** swapped the pill's emblem in one frame.
+
+Changes (tuning in `feel.gd`):
+- **Barge load (impact → follow-through):**
+  - The load is saved first.
+  - On the next frame the goods arc from the Load button into the hold bar (up to 4 sprites).
+  - The bar springs from its old share to the new one with a back-ease overshoot (0.45 s), and the tally punches as the first crate lands.
+  - On the map, the hull takes a 0.9 m/s kick on a damped spring (stiffness 70, damping 6): it sinks about 10 cm and bobs back over about a second.
+  - A reward haptic fires on the commit frame.
+  - A hold bar re-sprung mid-flight keeps its goal, so spam always lands on the true share.
+- **Goods into a slot (micro-action, crisp):** a 1.07× ring punch, a tick whose pitch climbs 12% per filled slot, and a light haptic on the drop frame. The last slot still starts the job through the existing place punch.
+- **Sky change (anticipation → impact → settle):** the pill winds in to 0.8× (80 ms). At the bottom of the wind-up it swaps emblem and name with a light haptic, pops to 1.22× and settles elastically (0.5 s). Spamming it lands on the last spell.
+- Reduce Motion keeps the haptics and the instant state changes only. Nothing here delays a tap or covers the map.
+
+Tests: feel spam 36/0 (4 new: sky morph spam, bar re-spring, hull kick and settle), rules 118/0, runtime and collect pass. Captures 00–19 unchanged. The haptic strengths and the boat's bounce haven't been felt on a device.

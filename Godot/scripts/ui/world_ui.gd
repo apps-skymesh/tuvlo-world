@@ -483,6 +483,17 @@ class BoatIcon extends Control:
 ## A slim rounded progress bar on paper or glass.
 class FillBar extends Control:
 	var share := 0.0
+	var goal := -1.0
+	var motion: Tween
+	## Springs from `from` to the share it was given, with a small overshoot.
+	## A new spring mid-flight keeps the same goal, so it always lands there.
+	func grow_from(from: float, time: float) -> void:
+		var busy := motion != null and motion.is_valid()
+		if not busy: goal = share
+		if busy: motion.kill()
+		share = from
+		motion = create_tween()
+		motion.tween_method(func(v: float): share = v; queue_redraw(), from, goal, time).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	var track := Color(0, 0, 0, 0.12)
 	var fill := Color("3F8F5A")
 	func _draw() -> void:
@@ -1252,8 +1263,9 @@ func _update_weather() -> void:
 	var cast: Dictionary = main.game.forecast()
 	var sky: String = cast.now
 	if atmosphere: atmosphere.sky = sky
-	weather_pill_icon.sky = sky
-	weather_pill_label.text = C.WEATHER[sky].title
+	if weather_shown < 0 or reduce_motion:
+		weather_pill_icon.sky = sky
+		weather_pill_label.text = C.WEATHER[sky].title
 	if is_instance_valid(weather_clock): weather_clock.text = "for %s" % _clock(int(cast.left))
 	for i in weather_later:
 		if is_instance_valid(weather_later[i]): weather_later[i].text = "in %s" % _clock(int(cast.left) + (int(i) - 1) * int(cast.length))
@@ -1265,15 +1277,34 @@ func _update_weather() -> void:
 		if not first:
 			if mode == "weather": _fill()
 			elif mode == "place": _fill()  # its boost badge follows the sky
+			_morph_sky(sky)
 			if sky != "sunny" and title_layer == null:
 				sfx("place_set")
-				bump(weather_pill)
 				show_toast("%s · %s" % [C.WEATHER[sky].title, C.WEATHER[sky].line])
 	weather_pill.visible = mode == "" and title_layer == null
 	if weather_pill.visible and settings_node:
 		weather_pill.reset_size()
 		weather_pill.position = Vector2(settings_node.position.x - weather_pill.size.x - 10 * s,
 			settings_node.position.y + (settings_node.size.y - weather_pill.size.y) / 2)
+
+## A new spell: the pill winds in, swaps its emblem and name at the bottom of
+## the wind-up, then springs out past full size and settles. Reduce Motion
+## swaps straight away.
+func _morph_sky(sky: String) -> void:
+	if reduce_motion:
+		weather_pill_icon.sky = sky; weather_pill_label.text = C.WEATHER[sky].title
+		weather_pill_icon.queue_redraw()
+		return
+	weather_pill.pivot_offset = weather_pill.size / 2
+	var tween := _solo_tween(weather_pill, "sky")
+	tween.tween_property(weather_pill, "scale", Vector2.ONE * F.SKY_WIND_SCALE, F.SKY_WIND_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_callback(func():
+		weather_pill_icon.sky = sky
+		weather_pill_label.text = C.WEATHER[sky].title
+		weather_pill_icon.queue_redraw()
+		haptic(F.HAPTIC_TAP))
+	tween.tween_property(weather_pill, "scale", Vector2.ONE * F.SKY_POP_SCALE, F.SKY_WIND_TIME * 1.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(weather_pill, "scale", Vector2.ONE, F.SKY_SETTLE_TIME).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 ## The forecast: this spell and the next two, each with what it speeds up.
 func _fill_weather() -> void:
@@ -1381,6 +1412,19 @@ var barge_docked_style: StyleBoxFlat
 var barge_away_style: StyleBoxFlat
 var barge_clock: Label
 var barge_shown := {}
+var barge_load := {}  # the load just committed, landed once the screen rebuilds
+
+## A load lands: crates arc from the Load button into the hold bar, the bar
+## springs to its new share and the tally punches as the first one arrives.
+## The load is already saved; none of this holds up the next tap.
+func _land_barge_load(load: Dictionary, bar: FillBar, tally: Label) -> void:
+	haptic(F.HAPTIC_REWARD)
+	if reduce_motion: return
+	get_tree().process_frame.connect(func():
+		if not is_instance_valid(bar): return
+		bar.grow_from(float(load.share), F.BAR_FILL_TIME)
+		fly(icons.get(load.good), load.from, bar, mini(int(load.count), F.BARGE_FLY_MAX), 40.0)
+		get_tree().create_timer(F.FLY_GROW_TIME + F.FLY_TRAVEL_TIME * 0.6).timeout.connect(func(): if is_instance_valid(tally): bump(tally, 1.25)), CONNECT_ONE_SHOT)
 var last_shipped := -1
 func _build_barge_chip() -> void:
 	barge_chip = PanelContainer.new()
@@ -2273,7 +2317,13 @@ func _ring_dropped(good: String) -> void:
 	filled[good] = true
 	for g in spec.input:
 		if not filled.get(g, false):
-			_fill(); return
+			_fill()
+			# The good lands in its slot: a crisp ring punch and a tick that
+			# climbs in pitch as the slots fill. Display only.
+			sfx("place_set", 1.0 + F.SLOT_PITCH_STEP * filled.size())
+			haptic(F.HAPTIC_TAP)
+			if ring: bump(ring, F.SLOT_PUNCH)
+			return
 	_act(main.game.make(recipe))
 
 func _open_source(good: String) -> void:
@@ -2569,6 +2619,9 @@ func _fill_barge() -> void:
 	tally.add_theme_font_size_override("font_size", int(14 * s))
 	tally.add_theme_color_override("font_color", MUTED)
 	hold.add_child(tally)
+	if not barge_load.is_empty():
+		_land_barge_load(barge_load, bar, tally)
+		barge_load = {}
 	column.add_child(hold)
 
 ## One manifest line as a paper crate label: the good, how many are aboard,
@@ -2634,7 +2687,12 @@ func _barge_crate(line: Dictionary, docked: bool) -> Control:
 		stack.add_child(stowed)
 	elif docked and want > 0:
 		var load_button: Button
-		load_button = _button("Load %d" % want, func(): fly_from = load_button.get_global_rect().get_center(); _act(game.load_barge(line.good)), true)
+		load_button = _button("Load %d" % want, func():
+			fly_from = load_button.get_global_rect().get_center()
+			var before := float(game.barge().get("loaded", 0)) / maxf(1.0, float(game.barge().get("wanted", 1)))
+			var result := game.load_barge(line.good)
+			if result == "": barge_load = {"good": line.good, "from": fly_from, "count": want, "share": before}
+			_act(result), true)
 		load_button.custom_minimum_size = Vector2(130, 46) * s
 		load_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		stack.add_child(load_button)
