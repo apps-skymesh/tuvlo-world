@@ -4,9 +4,9 @@ extends CanvasLayer
 ## Step-2 game UI, after Tuvlo's World design (owner decisions 2026-11-02/03):
 ## - the map keeps only places, ready goods, Build (hammer) and More;
 ## - one wallet at the top;
-## - each place opens its own centred card: goods → the real place framed inside
-##   a clear ring → products, with one primary action below the ring;
-## - goods can be dragged onto the ring (or the ring tapped) to start a job;
+## - a place opens a production window over the still map (2026-11-05): its
+##   products along the top with time and star price, what the chosen product
+##   needs on the left, and the animated inside of the place as the drop target;
 ## - the Build tray is a single row of places and land.
 ## Words appear only where a picture can't carry the meaning.
 
@@ -63,7 +63,7 @@ var station := ""
 var recipe := ""
 var filled := {}
 var build_pick := ""
-var ring: WorldRing
+var ring: ProductionScene
 var signature := ""
 var icons := {}
 var goal_box: PanelContainer
@@ -94,45 +94,6 @@ var last_stock := {}
 var gift_offered_day := -1
 
 # --- small drawing helpers -------------------------------------------------
-
-class WorldRing extends Control:
-	signal tapped
-	signal dropped(good: String)
-	var progress := -1.0
-	var label := ""
-	var glow := false
-	var ui
-	func _process(_delta: float) -> void:
-		if glow: queue_redraw()
-	func _draw() -> void:
-		var r := size.x / 2.0
-		var c := size / 2.0
-		var k: float = ui.s
-		if glow:
-			var pulse := 1.0 if ui.reduce_motion else 0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0)
-			for i in 7:
-				draw_arc(c, r + (3 + i * 4) * k, 0, TAU, 96, Color(WorldUI.GOLD, (0.34 - i * 0.045) * (0.5 + 0.5 * pulse)), 5 * k, true)
-		# A thin double rim: dark for contrast on bright turf, ivory on top.
-		draw_arc(c, r - 4 * k, 0, TAU, 128, Color(0, 0, 0, 0.28), 9 * k, true)
-		draw_arc(c, r - 4 * k, 0, TAU, 128, Color(1, 1, 1, 0.22), 7 * k, true)
-		draw_arc(c, r - 0.5 * k, 0, TAU, 128, Color(1, 1, 1, 0.9), 2 * k, true)
-		draw_arc(c, r - 8 * k, 0, TAU, 128, Color(1, 1, 1, 0.45), 1.2 * k, true)
-		if progress >= 0:
-			var tip := -PI / 2 + TAU * progress
-			draw_arc(c, r - 4 * k, -PI / 2, tip, 128, WorldUI.MINT, 7 * k, true)
-			draw_circle(c + Vector2.from_angle(tip) * (r - 4 * k), 6 * k, WorldUI.IVORY)
-		if label != "":
-			var font: Font = WorldUI.DISPLAY_SEMI
-			var fs := int(19 * k)
-			var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
-			var pill := Rect2(c.x - w / 2 - 14 * k, size.y - 44 * k, w + 28 * k, 32 * k)
-			draw_style_box(ui.glass(16, WorldUI.GLASS_DEEP, false), pill)
-			draw_string(font, Vector2(c.x - w / 2, pill.position.y + 23 * k), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, WorldUI.IVORY)
-	func _gui_input(event: InputEvent) -> void:
-		var press: bool = (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed) or (event is InputEventScreenTouch and not event.pressed)
-		if press and event.position.distance_to(size / 2) <= size.x / 2: tapped.emit()
-	func _can_drop_data(_at: Vector2, data: Variant) -> bool: return data is Dictionary and data.has("good")
-	func _drop_data(_at: Vector2, data: Variant) -> void: dropped.emit(str(data.good))
 
 ## A card or sheet title: display type on a glass chip with gold diamonds.
 ## A market stall's striped canvas valance with a scalloped hem: the Market
@@ -181,40 +142,6 @@ class Ribbon extends Control:
 			var x: float = size.x / 2 + side * (tw / 2 + 16 * k)
 			var d := 4.5 * k
 			draw_colored_polygon(PackedVector2Array([Vector2(x, h / 2 - d), Vector2(x + d, h / 2), Vector2(x, h / 2 + d), Vector2(x - d, h / 2)]), WorldUI.GOLD)
-
-## Dims the whole map except a soft circle around the ring: a spotlight on
-## the place, so the card reads as a focus mode rather than a pop-up.
-const SPOTLIGHT_SHADER := """
-shader_type canvas_item;
-uniform vec2 rect_size = vec2(1280.0, 720.0);
-uniform vec2 centre = vec2(640.0, 360.0);
-uniform float radius = 100.0;
-uniform float feather = 60.0;
-uniform vec4 tint : source_color = vec4(0.02, 0.06, 0.05, 0.62);
-void fragment() {
-	vec2 p = UV * rect_size;
-	float d = distance(p, centre);
-	float hole = smoothstep(radius, radius + feather, d);
-	float edge = smoothstep(rect_size.y * 0.35, rect_size.y * 1.1, d) * 0.25;
-	COLOR = vec4(tint.rgb, clamp(tint.a * hole + edge, 0.0, 0.9));
-}
-"""
-static var spotlight_shader: Shader
-
-class Spotlight extends ColorRect:
-	func aim(viewport: Vector2, at: Vector2, radius: float, feather: float) -> void:
-		if WorldUI.spotlight_shader == null:
-			WorldUI.spotlight_shader = Shader.new()
-			WorldUI.spotlight_shader.code = WorldUI.SPOTLIGHT_SHADER
-		var shading := ShaderMaterial.new()
-		shading.shader = WorldUI.spotlight_shader
-		shading.set_shader_parameter("rect_size", viewport)
-		shading.set_shader_parameter("centre", at)
-		shading.set_shader_parameter("radius", radius)
-		shading.set_shader_parameter("feather", feather)
-		material = shading
-		size = viewport
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 ## A small on/off switch in the iOS manner.
 class Switch extends Control:
@@ -530,6 +457,38 @@ class ToolIcon extends Control:
 			draw_rect(Rect2(c + Vector2(-r * 0.45, -r * 0.85), Vector2(r * 0.9, r * 0.35)), Color("9E6B38"))
 			for offset in [Vector2(-0.3, 0.2), Vector2(0.25, 0.05), Vector2(0.05, 0.5)]:
 				draw_circle(c + offset * r, r * 0.13, Color("F3D98B"))
+
+## A watch face drawn in code: gold rim, two hands, and a filled wedge for the
+## share of time already gone.
+static func draw_clock(canvas: CanvasItem, at: Vector2, r: float, color: Color, share := 1.0) -> void:
+	canvas.draw_circle(at, r, Color(0, 0, 0, 0.35))
+	if share < 1.0 and share > 0.0:
+		var wedge := PackedVector2Array([at])
+		for i in 25: wedge.append(at + Vector2.from_angle(-PI / 2 + TAU * share * i / 24.0) * r * 0.82)
+		canvas.draw_colored_polygon(wedge, Color(color, 0.35))
+	canvas.draw_arc(at, r, 0, TAU, 32, color, maxf(1.5, r * 0.22), true)
+	canvas.draw_line(at, at + Vector2(0, -r * 0.62), WorldUI.IVORY, maxf(1.2, r * 0.16), true)
+	canvas.draw_line(at, at + Vector2(r * 0.45, 0), WorldUI.IVORY, maxf(1.2, r * 0.16), true)
+	canvas.draw_circle(at, maxf(1.2, r * 0.14), color)
+
+class ClockIcon extends Control:
+	var share := 1.0
+	var color := WorldUI.GOLD
+	func _draw() -> void: WorldUI.draw_clock(self, size / 2, minf(size.x, size.y) * 0.46, color, share)
+
+## A field tool that can be dragged into the scene.
+class DragTool extends ToolIcon:
+	var draggable := false
+	func _get_drag_data(_at: Vector2) -> Variant:
+		if not draggable: return null
+		var preview := ToolIcon.new()
+		preview.tool = tool
+		preview.size = size
+		preview.position = -size / 2
+		var holder := Control.new()
+		holder.add_child(preview)
+		set_drag_preview(holder)
+		return {"good": tool}
 
 class GoodTile extends TextureRect:
 	var good := ""
@@ -1137,6 +1096,20 @@ func _build_hud() -> void:
 	coins_label = _number(26)
 	coins_label.custom_minimum_size = Vector2(36, 0) * s
 	top.add_child(coins_label)
+	# Stars: the purse that finishes timers at once.
+	var star_divider := ColorRect.new()
+	star_divider.color = Color(1, 1, 1, 0.14)
+	star_divider.custom_minimum_size = Vector2(maxf(1, 1.5 * s), 28 * s)
+	star_divider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(star_divider)
+	var star := _icon(icons["star"], 30)
+	star.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	star.tooltip_text = "Stars"
+	top.add_child(star)
+	star_pill = star
+	stars_label = _number(26)
+	stars_label.custom_minimum_size = Vector2(28, 0) * s
+	top.add_child(stars_label)
 	level_label = Label.new()
 	wallet.add_child(top)
 	wallet.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, int(14 * s))
@@ -1871,6 +1844,14 @@ func refresh() -> void:
 		if gained: sfx("world_harvest", _combo_pitch()); haptic(F.HAPTIC_REWARD)
 		elif coins == last_coins and game.state.stock.hash() != last_stock.hash(): sfx("world_plant")
 	last_stock = game.state.stock.duplicate()
+	var stars := game.state.stars()
+	stars_label.text = str(stars)
+	if last_stars >= 0 and stars > last_stars:
+		fly(icons["star"], from, star_pill, mini(stars - last_stars, 5), 36)
+		float_text("+%d" % (stars - last_stars), from + Vector2(0, -90 * s), GOLD, 28)
+	elif last_stars >= 0 and stars < last_stars:
+		bump(star_pill)
+	last_stars = stars
 	fly_from = Vector2(-1, -1)
 	if last_level >= 0 and level > last_level: _celebrate_level(level, last_level)
 	var shipped: int = game.state.barges_filled
@@ -1913,7 +1894,7 @@ func _signature() -> String:
 	var game: WorldGame = main.game
 	var st := game.state
 	var now := game.now()
-	var parts := [mode, place_id, station, recipe, build_pick, game.host.wallet(), game.host.progress(), JSON.stringify(st.stock), JSON.stringify(filled), st.land, st.items.size()]
+	var parts := [mode, place_id, station, recipe, build_pick, game.host.wallet(), game.host.progress(), JSON.stringify(st.stock), JSON.stringify(filled), st.land, st.items.size(), st.stars()]
 	if mode == "place":
 		parts.append(st.is_building(place_id, now))
 		parts.append(st.jobs.has(station) and st.job_remaining(station, now) == 0)
@@ -1953,7 +1934,7 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	if was == "" or was != next_mode: pass
 
 func close() -> void:
-	var was_place := mode == "place" or mode == "barge"
+	var was_place := mode == "barge"  # place windows never move the camera
 	mode = ""
 	place_id = ""
 	build_pick = ""
@@ -2062,93 +2043,283 @@ func _good_tile(good: String, count_text: String, short := false, draggable := f
 	column.add_child(label)
 	return column
 
-func _card_shell(title: String) -> Array:
-	# A picture sentence under a spotlight: goods › the place in a ring › products.
-	# Returns [left well, centre column, right well].
+## The production window: the map stays still and a framed window opens on the
+## inside of the place. Products run along the top (each with its time and its
+## price in stars to finish at once), what the chosen product needs waits on
+## the left to be dragged into the scene, and one action sits below.
+var tab_refs: Array = []   # {"time": Label, "star": Label, "target", "seconds", "recipe"}
+var finish_button: Button
+var finish_price: Label
+var star_pill: Control
+var stars_label: Label
+var last_stars := -1
+
+func _target() -> String:
+	var item: Dictionary = main.game.state.find(place_id)
+	if item.get("kind", "") == "garden": return "field"
+	if item.get("kind", "") == "orchard": return "orchard"
+	return station
+
+func _place_products(item: Dictionary) -> Array:
+	var st: WorldState = main.game.state
+	match item.kind:
+		"garden":
+			var grow := C.FIRST_FIELD_SECONDS if st.harvests == 0 else C.FIELD_SECONDS
+			return [{"target": "field", "recipe": "", "output": "wheat", "quantity": C.FIELD_YIELD * st.fields.size(), "seconds": grow}]
+		"orchard":
+			return [{"target": "orchard", "recipe": "", "output": "fruit", "quantity": C.ORCHARD_YIELD, "seconds": C.ORCHARD_SECONDS}]
+	var out := []
+	for each in C.stations_for(item.kind):
+		for id in C.recipes_for(each):
+			var r: Dictionary = C.RECIPES[id]
+			out.append({"target": each, "recipe": id, "output": r.output, "quantity": r.quantity, "seconds": float(r.seconds)})
+	return out
+
+## The goods the field still needs this round: seeds for bare soil, water for
+## anything planted and dry.
+func _field_needs() -> Array:
+	var st: WorldState = main.game.state
+	var now: float = main.game.now()
+	var stages := []
+	for i in st.fields.size(): stages.append(st.field_stage(i, now))
+	var needs := []
+	if 0 in stages: needs.append("seed")
+	if 0 in stages or 1 in stages: needs.append("water")
+	return needs
+
+func _needs() -> Array:
+	var st: WorldState = main.game.state
+	match _target():
+		"field": return _field_needs()
+		"orchard": return ["water"] if st.orchard_watered < 0 else []
+		"": return []
+	if st.jobs.has(station): return []
+	return C.RECIPES[recipe].input.keys() if recipe != "" else []
+
+static func _short_time(seconds: int) -> String:
+	if seconds < 60: return "%ds" % seconds
+	return "%dm" % (seconds / 60) if seconds % 60 == 0 else "%dm %ds" % [seconds / 60, seconds % 60]
+
+func _production_window(title: String) -> Dictionary:
 	var viewport := root.get_viewport_rect().size
-	var width := minf(760 * s, viewport.x - 24 * s)
-	var height := minf(340 * s, viewport.y - 4 * s)
-	var card := Control.new()
-	card.size = Vector2(width, height)
-	card.position = (viewport - card.size) / 2 + Vector2(0, 14 * s)
-	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var spotlight := Spotlight.new()
-	spotlight.aim(viewport, card.position + Vector2(width / 2, RING_DIAMETER * s / 2), RING_DIAMETER * s / 2 + 6 * s, 70 * s)
-	spotlight.position = -card.position
-	card.add_child(spotlight)
-	var band_top := 22 * s
-	var row := HBoxContainer.new()
-	row.size = Vector2(width, height)
-	row.add_theme_constant_override("separation", int(4 * s))
-	card.add_child(row)
-	var left := _well()
-	var right := _well()
-	for well in [left, right]:
-		well.custom_minimum_size = Vector2(150, 0) * s
-		well.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		well.alignment = BoxContainer.ALIGNMENT_CENTER
-	var left_holder := _well_holder(left)
-	row.add_child(left_holder)
-	row.add_child(_arrow())
-	var centre := VBoxContainer.new()
-	centre.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	centre.alignment = BoxContainer.ALIGNMENT_BEGIN
-	centre.add_theme_constant_override("separation", int(12 * s))
-	row.add_child(centre)
-	row.add_child(_arrow())
-	row.add_child(_well_holder(right))
+	var top_room := 84 * s + safe.position.y
+	var width := minf(920 * s, viewport.x - 32 * s - safe.position.x - safe.size.x)
+	var height := minf(560 * s, viewport.y - top_room - 14 * s)
+	var holder := Control.new()
+	holder.size = viewport
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var scrim := ColorRect.new()
+	scrim.color = Color(0.02, 0.05, 0.05, 0.5)
+	scrim.position = -viewport * 0.1
+	scrim.size = viewport * 1.2
+	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(scrim)
+	var panel := PanelContainer.new()
+	var box := glass(30, GLASS_DEEP)
+	box.border_color = Color(GOLD, 0.42)
+	box.set_content_margin_all(16 * s)
+	box.content_margin_top = 26 * s
+	box.shadow_size = int(30 * s)
+	box.shadow_color = Color(0, 0, 0, 0.45)
+	panel.add_theme_stylebox_override("panel", box)
+	panel.custom_minimum_size = Vector2(width, height)
+	panel.size = panel.custom_minimum_size
+	panel.position = Vector2((viewport.x - width) / 2, top_room + maxf(0, (viewport.y - top_room - 14 * s - height) / 2))
+	holder.add_child(panel)
+	holder.set_meta("panel", panel)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", int(12 * s))
+	panel.add_child(column)
+	var tabs := HBoxContainer.new()
+	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
+	tabs.add_theme_constant_override("separation", int(10 * s))
+	column.add_child(tabs)
+	var body := HBoxContainer.new()
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", int(14 * s))
+	column.add_child(body)
+	var needs_plate := PanelContainer.new()
+	var plate_box := tile_box(24)
+	plate_box.set_content_margin_all(12 * s)
+	needs_plate.add_theme_stylebox_override("panel", plate_box)
+	needs_plate.custom_minimum_size = Vector2(138 * s, 0)
+	body.add_child(needs_plate)
+	var needs := VBoxContainer.new()
+	needs.alignment = BoxContainer.ALIGNMENT_CENTER
+	needs.add_theme_constant_override("separation", int(12 * s))
+	needs_plate.add_child(needs)
+	# The scene sits in a rounded window that clips it; a gold hairline rim on top.
+	var frame := Panel.new()
+	var frame_box := StyleBoxFlat.new()
+	frame_box.bg_color = Color(0.1, 0.07, 0.05)
+	frame_box.set_corner_radius_all(int(22 * s))
+	frame_box.anti_aliasing_size = 0.8
+	frame.add_theme_stylebox_override("panel", frame_box)
+	frame.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
+	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	frame.custom_minimum_size = Vector2(320, 210) * s
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	body.add_child(frame)
+	var scene := ProductionScene.new()
+	scene.ui = self
+	scene.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame.add_child(scene)
+	var rim := Panel.new()
+	var rim_box := StyleBoxFlat.new()
+	rim_box.bg_color = Color(0, 0, 0, 0)
+	rim_box.set_corner_radius_all(int(22 * s))
+	rim_box.border_color = Color(GOLD, 0.55)
+	rim_box.set_border_width_all(int(maxf(1, 2 * s)))
+	rim_box.shadow_color = Color(0, 0, 0, 0)
+	rim_box.anti_aliasing_size = 0.8
+	rim.add_theme_stylebox_override("panel", rim_box)
+	rim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(rim)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	actions.add_theme_constant_override("separation", int(12 * s))
+	column.add_child(actions)
 	var close_button := _close_button()
-	close_button.position = Vector2(width - 44 * s, band_top - 26 * s)
-	card.add_child(close_button)
+	close_button.position = panel.position + Vector2(width - 30 * s, -16 * s)
+	holder.add_child(close_button)
 	var ribbon := Ribbon.new()
 	ribbon.ui = self
 	ribbon.text = title
 	var ribbon_width := DISPLAY.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * s)).x + 92 * s
 	ribbon.size = Vector2(ribbon_width, 44 * s)
-	ribbon.position = Vector2((width - ribbon_width) / 2, band_top - 74 * s)
+	ribbon.position = panel.position + Vector2((width - ribbon_width) / 2, -24 * s)
 	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_child(ribbon)
-	root.add_child(card)
+	holder.add_child(ribbon)
+	root.add_child(holder)
 	root.move_child(wallet_node, -1)
-	sheet_root = card
-	ring = WorldRing.new()
-	ring.ui = self
-	ring.custom_minimum_size = Vector2(RING_DIAMETER, RING_DIAMETER) * s
-	ring.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	centre.add_child(ring)
-	return [left, centre, right]
+	root.move_child(toast_box, -1)
+	sheet_root = holder
+	ring = scene
+	return {"tabs": tabs, "needs": needs, "scene": scene, "actions": actions}
 
-func _well_holder(well: VBoxContainer) -> Control:
-	# Keeps a well vertically centred on the ring.
-	var holder := CenterContainer.new()
-	holder.custom_minimum_size = Vector2(150 * s, RING_DIAMETER * s)
-	holder.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	var plate := PanelContainer.new()
-	var box := glass(28)
-	box.set_content_margin_all(10 * s)
-	plate.add_theme_stylebox_override("panel", box)
-	plate.custom_minimum_size = Vector2(140, 140) * s
-	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	plate.add_child(well)
-	holder.add_child(plate)
-	return holder
+## A product along the top: its picture and yield, its time, and its price in
+## stars to make at once.
+func _product_tab(product: Dictionary, selected: bool, busy: bool) -> Control:
+	var tab := PanelContainer.new()
+	var box := tile_box(20, selected)
+	box.content_margin_left = 14 * s; box.content_margin_right = 14 * s
+	box.content_margin_top = 8 * s; box.content_margin_bottom = 8 * s
+	tab.add_theme_stylebox_override("panel", box)
+	tab.mouse_filter = Control.MOUSE_FILTER_STOP
+	tab.tooltip_text = C.title(product.output)
+	if busy and not selected: tab.modulate.a = 0.5
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", int(10 * s))
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tab.add_child(row)
+	var picture := Control.new()
+	picture.custom_minimum_size = Vector2(52, 52) * s
+	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var art := _icon(icons.get(product.output), 52)
+	picture.add_child(art)
+	var yield_label := Label.new()
+	yield_label.text = "×%d" % product.quantity
+	yield_label.add_theme_font_override("font", DISPLAY)
+	yield_label.add_theme_font_size_override("font_size", int(15 * s))
+	yield_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	yield_label.add_theme_constant_override("outline_size", int(5 * s))
+	yield_label.position = Vector2(30, 30) * s
+	picture.add_child(yield_label)
+	row.add_child(picture)
+	var facts := VBoxContainer.new()
+	facts.alignment = BoxContainer.ALIGNMENT_CENTER
+	facts.add_theme_constant_override("separation", int(2 * s))
+	facts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(facts)
+	var time_row := HBoxContainer.new()
+	time_row.add_theme_constant_override("separation", int(6 * s))
+	var clock := ClockIcon.new()
+	clock.custom_minimum_size = Vector2(18, 18) * s
+	clock.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	time_row.add_child(clock)
+	var time_label := Label.new()
+	time_label.add_theme_font_override("font", DISPLAY_SEMI)
+	time_label.add_theme_font_size_override("font_size", int(17 * s))
+	time_row.add_child(time_label)
+	facts.add_child(time_row)
+	var star_row := HBoxContainer.new()
+	star_row.add_theme_constant_override("separation", int(6 * s))
+	var star := _icon(icons["star"], 18)
+	star.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	star_row.add_child(star)
+	var star_label := Label.new()
+	star_label.add_theme_font_override("font", DISPLAY_SEMI)
+	star_label.add_theme_font_size_override("font_size", int(17 * s))
+	star_label.add_theme_color_override("font_color", GOLD)
+	star_row.add_child(star_label)
+	facts.add_child(star_row)
+	tab_refs.append({"time": time_label, "star": star_label, "clock": clock, "target": product.target, "seconds": product.seconds, "recipe": product.recipe})
+	tab.gui_input.connect(func(e):
+		var up: bool = (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed)
+		if not up or selected: return
+		var st: WorldState = main.game.state
+		if st.jobs.has(product.target) and st.jobs[product.target].recipe != product.recipe: show_toast("Already making something"); return
+		sfx("tap"); haptic()
+		station = product.target if C.STATIONS.has(product.target) else station
+		recipe = product.recipe
+		filled = {}
+		_fill())
+	return tab
 
-func _arrow() -> Control:
-	var arrow := Arrow.new()
-	arrow.ui = self
-	arrow.custom_minimum_size = Vector2(40 * s, RING_DIAMETER * s)
-	arrow.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return arrow
-
-func _frame_camera(kind_station: String) -> void:
-	# The ring's place comes from the card's own geometry: the containers may
-	# not have laid out yet, and the pop-in scale would skew a measured rect.
-	if not ring or not is_instance_valid(ring) or not sheet_root: return
-	var viewport := root.get_viewport_rect().size
-	var centre := sheet_root.position + Vector2(sheet_root.size.x / 2, RING_DIAMETER * s / 2)
-	var shift := {"x": centre.x / viewport.x - 0.5, "y": centre.y / viewport.y - 0.5}
-	main.camera({"mode": "place", "id": place_id, "station": kind_station, "production": true, "focusShift": shift, "ring": RING_DIAMETER * s / viewport.y, "resetZoom": true})
+## One good the chosen product needs, ready to drag into the scene.
+func _need_slot(good: String, text: String, state: String) -> Control:
+	var column := VBoxContainer.new()
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_theme_constant_override("separation", int(2 * s))
+	var socket := PanelContainer.new()
+	var box := tile_box(20, state == "ready")
+	box.set_content_margin_all(6 * s)
+	if state == "filled": box.border_color = MINT; box.bg_color = Color(MINT, 0.14)
+	if state == "short": box.border_color = Color(SHORT, 0.8)
+	socket.add_theme_stylebox_override("panel", box)
+	socket.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var draggable := state == "ready"
+	var tap := func(): if state == "short": _open_source(good) elif state == "ready": _ring_dropped(good)
+	if good in ["seed", "water"]:
+		var tool := DragTool.new()
+		tool.tool = good
+		tool.draggable = draggable
+		tool.custom_minimum_size = Vector2(60, 60) * s
+		tool.tooltip_text = "Seeds" if good == "seed" else "Water"
+		tool.mouse_filter = Control.MOUSE_FILTER_STOP
+		tool.gui_input.connect(func(e): if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed): tap.call())
+		socket.add_child(tool)
+	else:
+		var tile := GoodTile.new()
+		tile.ui = self
+		tile.good = good
+		tile.draggable = draggable
+		tile.texture = icons.get(good)
+		tile.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tile.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tile.custom_minimum_size = Vector2(60, 60) * s
+		tile.tooltip_text = C.title(good)
+		tile.mouse_filter = Control.MOUSE_FILTER_STOP
+		tile.gui_input.connect(func(e): if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed): tap.call())
+		socket.add_child(tile)
+	if state == "used": socket.modulate.a = 0.45
+	column.add_child(socket)
+	var label := Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_override("font", DISPLAY_SEMI)
+	label.add_theme_font_size_override("font_size", int(18 * s))
+	label.add_theme_color_override("font_color", {"short": SHORT, "filled": MINT, "used": MUTED}.get(state, IVORY))
+	column.add_child(label)
+	if draggable and not reduce_motion:
+		# A ready good leans toward the scene now and then: drag me in.
+		var tween := socket.create_tween().set_loops()
+		tween.tween_interval(1.6)
+		tween.tween_property(socket, "position:x", socket.position.x + 6 * s, 0.22).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(socket, "position:x", socket.position.x, 0.3).set_trans(Tween.TRANS_SINE)
+	return column
 
 func _fill_place() -> void:
 	var game: WorldGame = main.game
@@ -2156,73 +2327,243 @@ func _fill_place() -> void:
 	var item := st.find(place_id)
 	if item.is_empty(): close(); return
 	var now := game.now()
-	var title := C.title(station) if station != "" and C.stations_for(item.kind).size() > 1 else C.title(item.kind)
-	var parts := _card_shell(title)
-	var left: VBoxContainer = parts[0]
-	var centre: VBoxContainer = parts[1]
-	var right: VBoxContainer = parts[2]
-	ring.tapped.connect(_ring_tapped)
-	ring.dropped.connect(_ring_dropped)
-	var action: Button
+	tab_refs = []
+	finish_button = null
+	var products := _place_products(item)
+	if products.is_empty() and not st.is_building(place_id, now):
+		_fill_quiet_place(item)
+		return
+	# A running job picks its own tab; otherwise the first product that can start.
+	if C.STATIONS.has(station) and st.jobs.has(station): recipe = st.jobs[station].recipe
+	elif not products.is_empty() and (recipe == "" or products.filter(func(p): return p.recipe == recipe).is_empty()):
+		recipe = products[0].recipe
+		for p in products:
+			if p.recipe != "" and p.target == station and _have_all(p.recipe) and not st.jobs.has(p.target): recipe = p.recipe; break
+	var parts := _production_window(C.title(item.kind))
+	var tabs: HBoxContainer = parts.tabs
+	var needs: VBoxContainer = parts.needs
+	var scene: ProductionScene = parts.scene
+	var actions: HBoxContainer = parts.actions
+	scene.tapped.connect(_ring_tapped)
+	scene.dropped.connect(_ring_dropped)
+	var target := _target()
 	if st.is_building(place_id, now):
-		left.add_child(_icon(icons["hammer"], 64))
-		right.add_child(_icon(icons.get(item.kind), 96))
-		action = _button("", func(): pass, false)
-	elif item.kind == "garden":
-		action = _fill_garden(left, right)
-	elif item.kind == "orchard":
-		action = _fill_orchard(left, right)
-	elif station != "":
-		action = _fill_station(left, right)
-	else:
-		right.add_child(_icon(icons.get(item.kind, icons["star"]), 96))
-		left.add_child(_icon(icons["star"], 48))
-		action = _button("Close", close)
-	action.custom_minimum_size = Vector2(170, 52) * s
-	action.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	centre.add_child(action)
-	var job := station if station != "" else ("field" if item.kind == "garden" else ("orchard" if item.kind == "orchard" else ""))
-	var badge := _weather_badge(job) if job != "" and not st.is_building(place_id, now) else null
-	if badge: centre.add_child(badge)
+		scene.kind = "build"
+		needs.add_child(_icon(icons["hammer"], 64))
+		var wait := _button("Building", func(): pass, false)
+		wait.custom_minimum_size = Vector2(190, 52) * s
+		actions.add_child(wait)
+		_update_ring()
+		return
+	for p in products:
+		tabs.add_child(_product_tab(p, p.recipe == recipe and p.target == target, st.jobs.has(p.target)))
+	var spec: Dictionary = C.RECIPES.get(recipe, {})
+	scene.kind = target
+	scene.output = products.filter(func(p): return p.recipe == recipe)[0].output if not products.filter(func(p): return p.recipe == recipe).is_empty() else ""
+	scene.quantity = int(spec.get("quantity", products[0].quantity))
+	var need_list := _needs()
+	scene.filled = filled.duplicate()
+	var primary: Button
+	match target:
+		"field":
+			var ripe := _any_field(4)
+			var growing := _any_field(2) or _any_field(3)
+			for tool in ["seed", "water"]:
+				var state := "filled" if filled.get(tool, false) else ("ready" if tool in need_list else "used")
+				needs.add_child(_need_slot(tool, "✓" if state != "ready" else "", state))
+			scene.inputs = need_list
+			if ripe: primary = _button("Harvest", _tend_all, true, "wheat")
+			elif not need_list.is_empty(): primary = _button("Plant", _plant_and_water, true)
+			else: primary = _button("Growing", func(): pass, false)
+			scene.working = growing and not ripe
+			scene.done = ripe
+		"orchard":
+			var dry := st.orchard_watered < 0
+			var ripe := not dry and st.orchard_remaining(now) == 0
+			needs.add_child(_need_slot("water", "" if dry and not filled.get("water", false) else "✓", "ready" if dry else "used"))
+			scene.inputs = ["water"] if dry else []
+			primary = _button("Water" if dry else ("Pick" if ripe else "Growing"), func(): _act(main.game.tend_orchard()), dry or ripe, "fruit" if ripe else "")
+			scene.working = not dry and not ripe
+			scene.done = ripe
+		_:
+			var working := st.jobs.has(station)
+			for good in spec.input:
+				var need: int = spec.input[good]
+				var have: int = st.stock[good]
+				var state := "used" if working else ("filled" if filled.get(good, false) else ("ready" if have >= need else "short"))
+				needs.add_child(_need_slot(good, "✓" if state in ["filled", "used"] else "%d/%d" % [mini(have, need), need], state))
+			scene.inputs = spec.input.keys()
+			var done := working and st.job_remaining(station, now) == 0
+			if working: primary = _button("Collect" if done else "Working", func(): _act(main.game.collect(station)), done, spec.output if done else "")
+			else: primary = _button("Make", func(): _act(main.game.make(recipe)), _have_all(recipe), spec.output)
+			scene.working = working and not done
+			scene.done = done
+	primary.custom_minimum_size = Vector2(190, 52) * s
+	actions.add_child(primary)
+	# Stars finish the job at once: a running timer, or a fresh one start to end.
+	if not scene.done:
+		finish_button = _button("", _instant, false, "", true)
+		var finish_box: StyleBoxFlat = finish_button.get_theme_stylebox("normal").duplicate()
+		finish_box.border_color = Color(GOLD, 0.8)
+		finish_box.set_border_width_all(int(maxf(1, 2 * s)))
+		finish_button.add_theme_stylebox_override("normal", finish_box)
+		finish_button.add_theme_stylebox_override("hover", finish_box)
+		finish_button.custom_minimum_size = Vector2(190, 52) * s
+		# Star, price, words: laid out by hand so the star reads at full size.
+		var finish_row := HBoxContainer.new()
+		finish_row.set_anchors_preset(Control.PRESET_FULL_RECT)
+		finish_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		finish_row.add_theme_constant_override("separation", int(8 * s))
+		finish_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var finish_star := _icon(icons["star"], 26)
+		finish_star.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		finish_row.add_child(finish_star)
+		finish_price = _number(22)
+		finish_price.add_theme_color_override("font_color", GOLD)
+		finish_row.add_child(finish_price)
+		var finish_words := Label.new()
+		finish_words.text = "Finish now"
+		finish_words.add_theme_font_override("font", DISPLAY_SEMI)
+		finish_words.add_theme_font_size_override("font_size", int(19 * s))
+		finish_row.add_child(finish_words)
+		finish_button.add_child(finish_row)
+		actions.add_child(finish_button)
+	var badge := _weather_badge(target)
+	if badge: actions.add_child(badge)
 	_update_ring()
-	_frame_camera(station if station != "" else ("field" if item.kind == "garden" else ""))
-	if C.stations_for(item.kind).size() > 1:
-		# The cottage hosts the oven and the kitchen bench: one card each, switched here.
-		var other: String = C.stations_for(item.kind)[1] if station == C.stations_for(item.kind)[0] else C.stations_for(item.kind)[0]
-		var switch := _button(C.title(other), func(): open("place", place_id, other), true, "", true)
-		switch.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		centre.add_child(switch)
+
+## Places that make nothing: their picture in the same window, and Close.
+func _fill_quiet_place(item: Dictionary) -> void:
+	var parts := _production_window(C.title(item.kind))
+	var panel: Control = sheet_root.get_meta("panel")
+	panel.custom_minimum_size = Vector2(minf(520 * s, panel.custom_minimum_size.x), minf(420 * s, panel.custom_minimum_size.y))
+	panel.size = panel.custom_minimum_size
+	var viewport := root.get_viewport_rect().size
+	panel.position = (viewport - panel.size) / 2 + Vector2(0, 30 * s)
+	for child in sheet_root.get_children():
+		if child is Ribbon: child.position = panel.position + Vector2((panel.size.x - child.size.x) / 2, -24 * s)
+		elif child is Button: child.position = panel.position + Vector2(panel.size.x - 30 * s, -16 * s)
+	var body: Control = (parts.needs as Control).get_parent().get_parent()
+	for child in body.get_children(): child.queue_free()
+	ring = null
+	var picture := _icon(icons.get(item.kind, icons["star"]), 240)
+	picture.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(picture)
+	var done := _button("Close", close)
+	done.custom_minimum_size = Vector2(170, 52) * s
+	(parts.actions as HBoxContainer).add_child(done)
 
 func _update_ring() -> void:
-	if not ring: return
+	if not ring or not is_instance_valid(ring): return
 	var game: WorldGame = main.game
 	var st := game.state
 	var now := game.now()
 	var item := st.find(place_id)
-	ring.progress = -1.0
-	ring.label = ""
 	if item.is_empty(): return
+	var scene: ProductionScene = ring
+	scene.progress = -1.0
+	scene.label = ""
 	if st.is_building(place_id, now):
 		var c: Dictionary = st.construction[place_id]
-		ring.progress = clampf((now - c.started) / c.seconds, 0, 1)
-		ring.label = _time(ceili(c.started + c.seconds - now))
-	elif item.kind == "garden":
-		var left := 0
-		for i in st.fields.size():
-			if st.field_stage(i, now) in [2, 3]: left = maxi(left, st.field_remaining(i, now))
-		if left > 0:
-			ring.progress = clampf(1.0 - left / st.field_total(0), 0, 1)
-			ring.label = _time(left)
-	elif item.kind == "orchard" and st.orchard_watered >= 0:
-		var left := st.orchard_remaining(now)
-		ring.progress = clampf(1.0 - left / st.orchard_grow, 0, 1)
-		if left > 0: ring.label = _time(left)
-	elif station != "" and st.jobs.has(station):
-		var left := st.job_remaining(station, now)
-		ring.progress = clampf(1.0 - float(left) / st.job_total(station), 0, 1)
-		if left > 0: ring.label = _time(left)
-	ring.glow = ring.progress >= 1.0 or (item.kind == "garden" and _any_field(4))
-	ring.queue_redraw()
+		scene.progress = clampf((now - c.started) / c.seconds, 0, 1)
+		scene.label = _time(ceili(c.started + c.seconds - now))
+		return
+	var target := _target()
+	var left := st.rush_left(target, now)
+	if target == "field":
+		scene.stages = []
+		for i in st.fields.size(): scene.stages.append(st.field_stage(i, now))
+		if left > 0: scene.progress = clampf(1.0 - left / st.field_total(0), 0, 1)
+	elif target == "orchard":
+		if left > 0: scene.progress = clampf(1.0 - left / st.orchard_grow, 0, 1)
+	elif st.jobs.has(station) and left > 0:
+		scene.progress = clampf(1.0 - float(left) / st.job_total(station), 0, 1)
+	if left > 0: scene.label = _time(left)
+	# Tabs: a running product counts down; the rest show their full time.
+	for ref in tab_refs:
+		var running: bool = st.rush_left(ref.target, now) > 0 and (ref.recipe == "" or st.jobs.get(ref.target, {}).get("recipe", "") == ref.recipe)
+		var seconds: int = st.rush_left(ref.target, now) if running else C.duration(ref.seconds / game.weather_boost(ref.target))
+		(ref.time as Label).text = _time(seconds) if running else _short_time(seconds)
+		(ref.time as Label).add_theme_color_override("font_color", MINT if running else IVORY)
+		(ref.clock as ClockIcon).share = clampf(1.0 - float(seconds) / maxf(1.0, C.duration(ref.seconds)), 0, 1) if running else 1.0
+		(ref.clock as ClockIcon).queue_redraw()
+		(ref.star as Label).text = str(game.rush_price(ref.target, 0.0 if running else ref.seconds))
+	if finish_button and is_instance_valid(finish_button):
+		var price := _instant_price()
+		finish_price.text = str(price)
+		finish_button.disabled = price <= 0 or st.stars() < price or not _can_instant()
+		finish_button.modulate.a = 0.45 if finish_button.disabled else 1.0
+		finish_button.tooltip_text = "Not enough stars" if st.stars() < price else "Make it now with stars"
+
+func _instant_price() -> int:
+	var game: WorldGame = main.game
+	var target := _target()
+	if game.state.rush_left(target, game.now()) > 0: return game.rush_price(target)
+	var p := _place_products(game.state.find(place_id)).filter(func(p): return p.target == target and p.recipe == recipe)
+	return game.rush_price(target, p[0].seconds) if not p.is_empty() else 0
+
+## Whether stars can finish this product now: a running timer, or one that
+## could start with what the farm has.
+func _can_instant() -> bool:
+	var st: WorldState = main.game.state
+	var now: float = main.game.now()
+	var target := _target()
+	if st.rush_left(target, now) > 0: return true
+	match target:
+		"field": return not _field_needs().is_empty()
+		"orchard": return st.orchard_watered < 0
+		"": return false
+	return not st.jobs.has(station) and _have_all(recipe)
+
+## Stars make it now: start it if needed, finish the timer, collect. Each step
+## is its own saved action and stops at the first that fails.
+func _instant() -> void:
+	var game: WorldGame = main.game
+	var target := _target()
+	var price := _instant_price()
+	if game.state.stars() < price: show_toast("Not enough stars"); return
+	var result := ""
+	var now := game.now()
+	match target:
+		"field":
+			if game.state.rush_left("field", now) <= 0: result = _plant_and_water_result()
+			if result == "": result = game.rush("field")
+			if result == "":
+				for i in game.state.fields.size():
+					if game.state.field_stage(i, game.now()) == 4:
+						result = game.tend(i)
+						if result != "": break
+		"orchard":
+			if game.state.orchard_watered < 0: result = game.tend_orchard()
+			if result == "": result = game.rush("orchard")
+			if result == "": result = game.tend_orchard()
+		_:
+			if not game.state.jobs.has(station): result = game.make(recipe)
+			if result == "": result = game.rush(station)
+			if result == "": result = game.collect(station)
+	if result == "" and star_pill and ring:
+		# The stars leave the purse for the scene before the goods fly home.
+		_spend_fx()
+	_act(result)
+
+func _spend_fx() -> void:
+	sfx("world_build_complete", 1.2)
+	haptic(F.HAPTIC_REWARD)
+	if reduce_motion or not is_instance_valid(ring): return
+	fly(icons["star"], star_pill.get_global_rect().get_center(), ring, 3, 34)
+	var scene: Control = ring
+	get_tree().create_timer(F.FLY_TRAVEL_TIME).timeout.connect(func(): if is_instance_valid(scene): bump(scene, F.SLOT_PUNCH))
+
+func _plant_and_water() -> void: _act(_plant_and_water_result())
+## Plants every bare field, then waters every planted one.
+func _plant_and_water_result() -> String:
+	var game: WorldGame = main.game
+	for pass_stage in [0, 1]:
+		for i in game.state.fields.size():
+			if game.state.field_stage(i, game.now()) == pass_stage:
+				var result := game.tend(i)
+				if result != "": return result
+	return ""
 
 func _any_field(stage: int) -> bool:
 	var st: WorldState = main.game.state
@@ -2233,27 +2574,6 @@ func _any_field(stage: int) -> bool:
 static func _time(seconds: int) -> String:
 	return "%d:%02d" % [seconds / 60, seconds % 60]
 
-func _fill_garden(left: VBoxContainer, right: VBoxContainer) -> Button:
-	var st: WorldState = main.game.state
-	var now: float = main.game.now()
-	var stages := []
-	for i in st.fields.size(): stages.append(st.field_stage(i, now))
-	var next := "harvest" if 4 in stages else ("plant" if 0 in stages else ("water" if 1 in stages else ""))
-	if next == "harvest": left.add_child(_icon(icons["wheat"], 72))
-	else:
-		var tool_icon := ToolIcon.new()
-		tool_icon.tool = "water" if next == "water" else "seed"
-		tool_icon.custom_minimum_size = Vector2(72, 72) * s
-		tool_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		left.add_child(tool_icon)
-	var tool := Label.new()
-	tool.text = {"plant": "Plant", "water": "Water", "harvest": "Harvest", "": "Growing"}[next]
-	tool.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	left.add_child(tool)
-	var ready := stages.count(4)
-	right.add_child(_good_tile("wheat", "×%d" % (C.FIELD_YIELD * maxi(1, ready if next == "harvest" else st.fields.size())), false, false))
-	return _button(tool.text, _tend_all, next != "", "wheat" if next == "harvest" else "")
-
 func _tend_all() -> void:
 	var game: WorldGame = main.game
 	var now := game.now()
@@ -2261,59 +2581,13 @@ func _tend_all() -> void:
 	for i in game.state.fields.size(): stages.append(game.state.field_stage(i, now))
 	var target := 4 if 4 in stages else (0 if 0 in stages else (1 if 1 in stages else -1))
 	if target < 0: show_toast("Still growing"); return
+	if target in [0, 1]: _plant_and_water(); return
 	var result := ""
 	for i in stages.size():
 		if stages[i] == target:
 			result = game.tend(i)
 			if result != "": break
 	_act(result)
-
-func _fill_orchard(left: VBoxContainer, right: VBoxContainer) -> Button:
-	var st: WorldState = main.game.state
-	var now: float = main.game.now()
-	var ready := st.orchard_watered >= 0 and st.orchard_remaining(now) == 0
-	left.add_child(_icon(icons["orchard"], 72))
-	right.add_child(_good_tile("fruit", "×%d" % C.ORCHARD_YIELD))
-	var text := "Water" if st.orchard_watered < 0 else ("Pick" if ready else "")
-	return _button(text if text != "" else "Growing", func(): _act(main.game.tend_orchard()), text != "", "fruit" if ready else "")
-
-func _fill_station(left: VBoxContainer, right: VBoxContainer) -> Button:
-	var st: WorldState = main.game.state
-	var now: float = main.game.now()
-	var recipes := C.recipes_for(station)
-	if st.jobs.has(station): recipe = st.jobs[station].recipe
-	elif recipe == "" or recipe not in recipes:
-		recipe = recipes[0]
-		for id in recipes:
-			if _have_all(id): recipe = id; break
-	var spec: Dictionary = C.RECIPES[recipe]
-	var working := st.jobs.has(station)
-	# Goods on the left: what the selected product needs. A short good shows a
-	# red count and opens its source.
-	for good in spec.input:
-		var need: int = spec.input[good]
-		var have: int = st.stock[good]
-		var is_filled: bool = filled.get(good, false)
-		var text := "✓" if is_filled else "%d/%d" % [mini(have, need), need]
-		left.add_child(_good_tile(good, "" if working else text, have < need and not working, not working and have >= need and not is_filled, func(): _open_source(good) if have < need else _ring_dropped(good)))
-	# Products on the right: each recipe this place makes; tap to choose.
-	for id in recipes:
-		var r: Dictionary = C.RECIPES[id]
-		var tile := _good_tile(r.output, "×%d" % r.quantity, false, false, func(): if not working: recipe = id; filled = {}; _fill())
-		if id == recipe:
-			var holder := PanelContainer.new()
-			var box := tile_box(18, true)
-			box.set_content_margin_all(4 * s)
-			holder.add_theme_stylebox_override("panel", box)
-			holder.add_child(tile)
-			right.add_child(holder)
-		else:
-			tile.modulate.a = 0.55 if not working else 0.3
-			right.add_child(tile)
-	if working:
-		var ready := st.job_remaining(station, now) == 0
-		return _button("Collect" if ready else "Working", func(): _act(main.game.collect(station)), ready, spec.output if ready else "")
-	return _button("Make", func(): _act(main.game.make(recipe)), _have_all(recipe), spec.output)
 
 func _have_all(id: String) -> bool:
 	var spec: Dictionary = C.RECIPES[id]
@@ -2334,21 +2608,33 @@ func _ring_tapped() -> void:
 	else: show_toast("Not enough yet")
 
 ## Dropping (or tapping) a good fills its slot; the last one starts the job.
+## The field takes seeds and water the same way.
+var landed := {}  # good -> when it landed in the scene (display only)
 func _ring_dropped(good: String) -> void:
-	if station == "" or recipe == "" or main.game.state.jobs.has(station): return
-	var spec: Dictionary = C.RECIPES[recipe]
-	if not spec.input.has(good) or main.game.state.stock[good] < spec.input[good]: return
+	var st: WorldState = main.game.state
+	var target := _target()
+	var wanted: Array = _needs()
+	if not good in wanted: return
+	if C.STATIONS.has(target):
+		if recipe == "" or st.jobs.has(station) or st.stock[good] < C.RECIPES[recipe].input[good]: return
 	filled[good] = true
-	for g in spec.input:
+	landed[good] = Time.get_ticks_msec() / 1000.0
+	for g in wanted:
 		if not filled.get(g, false):
 			_fill()
-			# The good lands in its slot: a crisp ring punch and a tick that
-			# climbs in pitch as the slots fill. Display only.
+			# The good lands in the scene: a crisp punch and a tick that climbs
+			# in pitch as the slots fill. Display only.
 			sfx("place_set", 1.0 + F.SLOT_PITCH_STEP * filled.size())
 			haptic(F.HAPTIC_TAP)
-			if ring: bump(ring, F.SLOT_PUNCH)
+			_punch_scene()
 			return
-	_act(main.game.make(recipe))
+	match target:
+		"field": _plant_and_water()
+		"orchard": _act(main.game.tend_orchard())
+		_: _act(main.game.make(recipe))
+
+func _punch_scene() -> void:
+	if ring and is_instance_valid(ring): bump(ring.get_parent() as Control, F.SLOT_PUNCH)
 
 func _open_source(good: String) -> void:
 	var sources := {"wheat": "garden", "fruit": "orchard"}

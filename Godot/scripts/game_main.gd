@@ -11,6 +11,7 @@ const REASONS := {
 	"claimed": "Already collected today",
 	"price": "Prices just changed. Try again",
 	"departed": "The barge has sailed", "hold-full": "That crate is already full",
+	"stars": "Not enough stars", "not-running": "Nothing to finish",
 }
 var host: WorldHost
 var game: WorldGame
