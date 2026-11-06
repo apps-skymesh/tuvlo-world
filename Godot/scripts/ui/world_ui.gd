@@ -534,6 +534,7 @@ static func _drag_start(source: Control, ui, picture: Control, good: String) -> 
 ## When a drag ends without landing anywhere, the good drifts back to its socket.
 static func _drag_end(source: Control, ui, texture: Texture2D, tool: String) -> void:
 	source.modulate.a = 1.0
+	ui.press_out(source)
 	if source.get_viewport().gui_is_drag_successful(): return
 	ui.fly_back(texture, tool, source.get_viewport().get_mouse_position(), source)
 
@@ -868,15 +869,45 @@ func bump(control: Control, size := F.BUMP_SCALE) -> void:
 	tween.tween_property(control, "scale", Vector2.ONE, F.BUMP_SETTLE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _juice(button: BaseButton) -> void:
-	button.button_down.connect(func():
-		if reduce_motion or button.disabled: return
-		button.pivot_offset = button.size / 2
-		_solo_tween(button, "press").tween_property(button, "scale", Vector2.ONE * F.PRESS_SCALE, F.PRESS_TIME))
-	button.button_up.connect(func():
-		if not is_instance_valid(button): return
-		if reduce_motion: button.scale = Vector2.ONE; return
-		_solo_tween(button, "press").tween_property(button, "scale", Vector2.ONE, F.RELEASE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
+	button.button_down.connect(func(): if not button.disabled: press_in(button, F.PRESS_SCALE))
+	button.button_up.connect(func(): press_out(button))
 	button.pressed.connect(func(): last_pressed = button; sfx("tap"); haptic())
+
+## A card, tile or chip that isn't a Button gets the same pressed state: it
+## dims and squashes while the finger is down, and springs back on release,
+## when the finger slides off, or when any touch ends anywhere (a scroll or a
+## drag can swallow the card's own release).
+func _press_card(card: Control) -> void:
+	card.gui_input.connect(func(e):
+		var touch: bool = (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT) or e is InputEventScreenTouch
+		if not touch: return
+		if e.pressed: press_in(card, F.CARD_PRESS_SCALE)
+		else: press_out(card))
+	card.mouse_exited.connect(func(): press_out(card))
+
+var held: Array[Control] = []
+func press_in(control: Control, to_scale: float) -> void:
+	if not is_instance_valid(control): return
+	if control not in held: held.append(control)
+	_dim(control, F.PRESS_DIM, F.PRESS_TIME)
+	if reduce_motion: return
+	control.pivot_offset = control.size / 2
+	_solo_tween(control, "press").tween_property(control, "scale", Vector2.ONE * to_scale, F.PRESS_TIME)
+
+func press_out(control: Control) -> void:
+	held.erase(control)
+	if not is_instance_valid(control): return
+	_dim(control, 1.0, F.RELEASE_TIME)
+	if reduce_motion: control.scale = Vector2.ONE; return
+	# Always replace the press tween: a tap lifted on the same frame it landed
+	# would otherwise leave the squash running with nothing to undo it.
+	_solo_tween(control, "press").tween_property(control, "scale", Vector2.ONE, F.RELEASE_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+## Brightness only: alpha stays free for drag sockets and locked tabs.
+func _dim(control: Control, to: float, time: float) -> void:
+	var from := control.modulate.r
+	_solo_tween(control, "dim").tween_method(func(v: float):
+		if is_instance_valid(control): control.modulate = Color(v, v, v, control.modulate.a), from, to, time)
 
 ## Icons fly from a screen point to a HUD target along an arc, then the target bumps.
 ## With Reduce Motion the target only acknowledges the gain.
@@ -912,20 +943,27 @@ func fly(texture: Texture2D, from: Vector2, target: Control, count := 3, side :=
 
 ## The wallet rolls to its new total as the coins land; a newer change
 ## retargets from whatever is showing, so rapid sales never skip or rewind.
-var shown_coins := -1.0
-func _count_to(coins: int) -> void:
-	if shown_coins < 0 or reduce_motion:
-		shown_coins = coins
-		coins_label.text = str(coins)
+func _count_to(coins: int) -> void: roll(coins_label, coins)
+
+## Any number label rolls to its new value instead of jumping. Gains wait for
+## the flying icons to land; a newer value retargets from whatever is showing,
+## so rapid changes never skip or rewind. Reduce Motion shows it at once.
+func roll(label: Label, value: int, wait_for_flight := true) -> void:
+	if not is_instance_valid(label): return
+	var shown: float = label.get_meta("shown", -1.0)
+	if shown < 0 or reduce_motion:
+		label.set_meta("shown", float(value))
+		_solo_tween(label, "count").kill()
+		label.text = str(value)
 		return
-	var gap := absf(coins - shown_coins)
+	var gap := absf(value - shown)
 	if gap < 0.5: return
 	var time := clampf(gap * F.COUNT_TIME_PER_COIN, F.COUNT_MIN_TIME, F.COUNT_MAX_TIME)
-	var tween := _solo_tween(coins_label, "count")
-	if coins > shown_coins: tween.tween_interval(F.COUNT_DELAY)
-	tween.tween_method(func(value: float):
-		shown_coins = value
-		coins_label.text = str(roundi(value)), shown_coins, float(coins), time).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	var tween := _solo_tween(label, "count")
+	if value > shown and wait_for_flight: tween.tween_interval(F.COUNT_DELAY)
+	tween.tween_method(func(v: float):
+		label.set_meta("shown", v)
+		label.text = str(roundi(v)), shown, float(value), time).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 ## 0 for a small gain, 1 for a good one, 2 for a big one (thresholds in feel.gd).
 static func reward_tier(gain: int) -> int:
@@ -1225,6 +1263,7 @@ func _build_hud() -> void:
 	goal_box.add_child(goal_row)
 	goal_box.position = Vector2(16 * s + safe.position.x, 14 * s + safe.position.y)
 	goal_box.mouse_filter = Control.MOUSE_FILTER_STOP
+	_press_card(goal_box)
 	goal_box.gui_input.connect(func(e):
 		if ((e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed)) and goal_action.is_valid():
 			sfx("tap"); bump(goal_box); goal_action.call())
@@ -1294,6 +1333,7 @@ func _build_weather_pill() -> void:
 	row.add_child(weather_pill_label)
 	weather_pill.add_child(row)
 	weather_pill.mouse_filter = Control.MOUSE_FILTER_STOP
+	_press_card(weather_pill)
 	weather_pill.gui_input.connect(func(e):
 		if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
 			sfx("tap"); bump(weather_pill); open("weather"))
@@ -1506,6 +1546,7 @@ func _build_barge_chip() -> void:
 	barge_chip.add_child(row)
 	barge_chip.mouse_filter = Control.MOUSE_FILTER_STOP
 	barge_chip.visible = false
+	_press_card(barge_chip)
 	barge_chip.gui_input.connect(func(e):
 		if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
 			sfx("tap"); bump(barge_chip); open("barge"))
@@ -1707,10 +1748,13 @@ func _confetti() -> void:
 		tween.tween_property(bit, "rotation", bit.rotation + randf_range(-8, 8), time)
 		tween.chain().tween_callback(bit.queue_free)
 
-func _celebrate_level(level: int, before: int) -> void:
-	sfx("level_up")
-	_level_impact()
-	_confetti()
+func _show_level(level: int, fill: float) -> void:
+	level_label.text = str(level)
+	level_badge.level = level
+	level_badge.progress = fill
+	level_badge.queue_redraw()
+
+func _celebrate_level(level: int, before: int, fill := 0.0) -> void:
 	var banner := PanelContainer.new()
 	var box := glass(32, GLASS_DEEP)
 	box.border_color = Color(GOLD, 0.7)
@@ -1761,12 +1805,20 @@ func _celebrate_level(level: int, before: int) -> void:
 		column.add_child(line)
 	banner.add_child(column)
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner.modulate.a = 0.0
 	fly_layer.add_child(banner)
 	await get_tree().process_frame
+	if not is_instance_valid(banner): return
 	banner.position = Vector2((root.size.x - banner.size.x) / 2, root.size.y * 0.16)
-	pop_in(banner)
+	banner.pivot_offset = banner.size / 2
+	sfx("tap", 0.7)  # a soft intake before the hit
+	_level_impact(func():
+		_show_level(level, fill)
+		sfx("level_up")
+		_confetti()
+		_stamp_in(banner, title))
 	var tween := create_tween()
-	tween.tween_interval(2.6)
+	tween.tween_interval(2.6 + F.LEVEL_WINDUP_TIME)
 	tween.tween_property(banner, "modulate:a", 0.0, 0.4)
 	tween.tween_callback(banner.queue_free)
 
@@ -1774,18 +1826,37 @@ func _celebrate_level(level: int, before: int) -> void:
 ## warm flash and a heavy haptic, then the badge springs back. Display only:
 ## input keeps flowing through the hold, and Reduce Motion gets the haptic.
 var hitstop_until := 0
-func _level_impact() -> void:
-	if reduce_motion: haptic(F.HAPTIC_BIG); return
+func _level_impact(on_impact := Callable()) -> void:
+	if reduce_motion:
+		haptic(F.HAPTIC_BIG)
+		if on_impact.is_valid(): on_impact.call()
+		return
 	var badge := level_badge
 	badge.pivot_offset = badge.size / 2
-	var tween := _solo_tween(badge, "bump")
-	tween.tween_property(badge, "scale", Vector2.ONE * F.LEVEL_WINDUP_SCALE, F.LEVEL_WINDUP_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_callback(func():
+	var tween := _solo_tween(badge, "bump").set_parallel()
+	# Anticipation: the badge draws in while its ring charges to full.
+	tween.tween_property(badge, "scale", Vector2.ONE * F.LEVEL_WINDUP_SCALE, F.LEVEL_WINDUP_TIME).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_method(func(v: float):
+		if is_instance_valid(badge): badge.progress = v; badge.queue_redraw(), badge.progress, 1.0, F.LEVEL_WINDUP_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	# Impact, then a springy settle.
+	tween.chain().tween_callback(func():
 		haptic(F.HAPTIC_BIG)
 		_flash()
 		badge.scale = Vector2.ONE * F.LEVEL_PUNCH_SCALE
+		if on_impact.is_valid(): on_impact.call()
 		_hitstop(F.HITSTOP_TIME))
-	tween.tween_property(badge, "scale", Vector2.ONE, F.LEVEL_SETTLE_TIME).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	tween.chain().tween_property(badge, "scale", Vector2.ONE, F.LEVEL_SETTLE_TIME).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+## The level banner lands like a stamp: in from larger, overshooting a touch
+## and springing to rest, then its number pops. Reduce Motion fades it in.
+func _stamp_in(banner: Control, number: Control) -> void:
+	if not is_instance_valid(banner): return
+	var tween := banner.create_tween().set_parallel()
+	tween.tween_property(banner, "modulate:a", 1.0, F.LEVEL_BANNER_FADE if not reduce_motion else F.FADE_IN_TIME)
+	if reduce_motion: return
+	banner.scale = Vector2.ONE * F.LEVEL_BANNER_FROM
+	tween.tween_property(banner, "scale", Vector2.ONE, F.LEVEL_BANNER_TIME).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.chain().tween_callback(func(): if is_instance_valid(number): bump(number, F.LEVEL_NUMBER_BUMP))
 
 ## Freezes animation (not input) for `seconds` of real time.
 func _hitstop(seconds: float) -> void:
@@ -1922,11 +1993,10 @@ func refresh() -> void:
 	var coins := game.host.wallet()
 	var level := game.host.progress()
 	_count_to(coins)
-	level_label.text = str(level)
 	var bar := game.next_level_progress()
-	level_badge.level = level
-	level_badge.progress = float(bar.x) / bar.y if bar.y > 0 else 0.0
-	level_badge.queue_redraw()
+	var fill := float(bar.x) / bar.y if bar.y > 0 else 0.0
+	# A new level turns the badge over on the impact beat, not before.
+	if not (last_level >= 0 and level > last_level): _show_level(level, fill)
 	var from := fly_from if fly_from.x >= 0 else root.get_viewport_rect().size / 2
 	if ring and is_instance_valid(ring): from = ring.tray_global()
 	if last_coins >= 0 and coins > last_coins:
@@ -1953,7 +2023,7 @@ func refresh() -> void:
 		elif coins == last_coins and game.state.stock.hash() != last_stock.hash(): sfx("world_plant")
 	last_stock = game.state.stock.duplicate()
 	var stars := game.state.stars()
-	stars_label.text = str(stars)
+	roll(stars_label, stars)
 	if last_stars >= 0 and stars > last_stars:
 		fly(icons["star"], from, star_pill, mini(stars - last_stars, 5), 36)
 		float_text("+%d" % (stars - last_stars), from + Vector2(0, -90 * s), GOLD, 28)
@@ -1961,7 +2031,7 @@ func refresh() -> void:
 		bump(star_pill)
 	last_stars = stars
 	fly_from = Vector2(-1, -1)
-	if last_level >= 0 and level > last_level: _celebrate_level(level, last_level)
+	if last_level >= 0 and level > last_level: _celebrate_level(level, last_level, fill)
 	var shipped: int = game.state.barges_filled
 	if last_shipped >= 0 and shipped > last_shipped:
 		_celebrate_barge(C.barge_bonus(game.state.barge.get("manifest", [])))
@@ -2055,6 +2125,16 @@ func close() -> void:
 	goal_box.visible = true
 	dock_node.visible = true
 
+## The old copy of a rebuilt box lies over the new one and fades away. It
+## takes no taps, and its scrim goes at once so the screen never darkens twice.
+func _fade_out_old(old: Control) -> void:
+	for child in old.get_children():
+		if child is ColorRect: child.visible = false
+	old.get_parent().move_child(old, -1)
+	var tween := old.create_tween()
+	tween.tween_property(old, "modulate:a", 0.0, F.REBUILD_FADE_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_callback(old.queue_free)
+
 ## The closed box shrinks and fades out instead of vanishing. It stops
 ## taking taps on the same frame, so the map is live at once.
 func _close_out(holder: Control) -> void:
@@ -2094,7 +2174,13 @@ var was_new := false
 
 func _fill() -> void:
 	signature = _signature()
-	if sheet_root: sheet_root.queue_free()
+	# A rebuilt box (a tab switch, a good dropped in, a job starting) fades
+	# from its old look instead of snapping; a newly opened one pops below.
+	var old_sheet: Control = null
+	if sheet_root and not was_new and not reduce_motion and sheet_root.is_inside_tree():
+		old_sheet = sheet_root
+		old_sheet.propagate_call("set_mouse_filter", [Control.MOUSE_FILTER_IGNORE])
+	elif sheet_root: sheet_root.queue_free()
 	sheet_root = null
 	ring = null
 	match mode:
@@ -2106,6 +2192,7 @@ func _fill() -> void:
 		"gift": _fill_gift()
 		"barge": _fill_barge()
 		"weather": _fill_weather()
+	if old_sheet: _fade_out_old(old_sheet)
 	# Switching straight from one place's card to another keeps the card
 	# steady (no second pop) while the camera glides to the new place.
 	if sheet_root and was_new and not switching_place:
@@ -2142,6 +2229,7 @@ func _good_tile(good: String, count_text: String, short := false, draggable := f
 	tile.custom_minimum_size = Vector2(64, 64) * s
 	tile.mouse_filter = Control.MOUSE_FILTER_STOP if draggable or tap.is_valid() else Control.MOUSE_FILTER_IGNORE
 	tile.tooltip_text = C.title(good)
+	if tap.is_valid(): _press_card(tile)
 	if tap.is_valid(): tile.gui_input.connect(func(e): if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed): tap.call())
 	column.add_child(tile)
 	var label := Label.new()
@@ -2393,6 +2481,7 @@ func _product_tab(product: Dictionary, selected: bool, busy: bool) -> Control:
 	star_row.add_child(star_label)
 	facts.add_child(star_row)
 	tab_refs.append({"time": time_label, "star": star_label, "clock": clock, "target": product.target, "seconds": product.seconds, "recipe": product.recipe})
+	_press_card(tab)
 	tab.gui_input.connect(func(e):
 		var up: bool = (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed)
 		if not up or selected: return
@@ -2427,6 +2516,7 @@ func _need_slot(good: String, text: String, state: String) -> Control:
 		tool.custom_minimum_size = Vector2(60, 60) * s
 		tool.tooltip_text = "Seeds" if good == "seed" else "Water"
 		tool.mouse_filter = Control.MOUSE_FILTER_STOP
+		_press_card(tool)
 		tool.gui_input.connect(func(e): if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed): tap.call())
 		socket.add_child(tool)
 	else:
@@ -2440,6 +2530,7 @@ func _need_slot(good: String, text: String, state: String) -> Control:
 		tile.custom_minimum_size = Vector2(60, 60) * s
 		tile.tooltip_text = C.title(good)
 		tile.mouse_filter = Control.MOUSE_FILTER_STOP
+		_press_card(tile)
 		tile.gui_input.connect(func(e): if (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed): tap.call())
 		socket.add_child(tile)
 	if state == "used": socket.modulate.a = 0.45
@@ -3531,6 +3622,7 @@ func _order_ticket(order: Dictionary) -> Control:
 	ticket.add_child(column)
 	if not ready:
 		ticket.mouse_filter = Control.MOUSE_FILTER_STOP
+		_press_card(ticket)
 		ticket.gui_input.connect(func(e):
 			if (e is InputEventMouseButton and not e.pressed) or (e is InputEventScreenTouch and not e.pressed): _open_source(order.good))
 	return ticket
@@ -3568,6 +3660,7 @@ func _fill_settings() -> void:
 		line.add_child(label)
 		var toggle := Switch.new()
 		toggle.ui = self
+		_press_card(toggle)
 		toggle.on = entry[1]
 		toggle.knob = 1.0 if entry[1] else 0.0
 		toggle.custom_minimum_size = Vector2(58, 34) * s
@@ -3624,6 +3717,8 @@ func _input(event: InputEvent) -> void:
 		down = event.pressed; up = not event.pressed; at = event.position
 	else:
 		return
+	if up:
+		for control in held.duplicate(): press_out(control)
 	if down:
 		press_at = at
 		press_time = Time.get_ticks_msec() / 1000.0
