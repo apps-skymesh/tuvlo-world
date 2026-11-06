@@ -704,7 +704,7 @@ func _show_title() -> void:
 	name_label.custom_minimum_size = Vector2(0, 150 * s)
 	column.add_child(name_label)
 	var tagline := Label.new()
-	tagline.text = "Grow  ·  Bake  ·  Trade"
+	tagline.text = WorldStory.TAGLINE
 	tagline.add_theme_constant_override("line_spacing", 0)
 	tagline.add_theme_font_override("font", _spaced(BODY, 3))
 	tagline.add_theme_font_size_override("font_size", int(20 * s))
@@ -749,6 +749,17 @@ func dismiss_title() -> void:
 	tween.tween_property(layer, "modulate:a", 0.0, 0.55).set_trans(Tween.TRANS_SINE)
 	for control in hud: tween.tween_property(control, "modulate:a", 1.0, 0.5).set_delay(0.25)
 	tween.chain().tween_callback(layer.queue_free)
+	tween.chain().tween_callback(_greet)
+
+## The valley speaks once as the game opens: the hook on a new farm, then the
+## day count and the sky on every later visit.
+func _greet() -> void:
+	if not main or not main.game: return
+	var game: WorldGame = main.game
+	var st := game.state
+	var day: int = game.today() - st.start_day + 1 if st.start_day >= 0 else 1
+	var words := WorldStory.greeting(st.harvests == 0, day, game.weather(), HomesteadDayCycle.phase(HomesteadDayCycle.local_hour()), st.owns("windmill"))
+	show_story(words.eyebrow, words.line)
 
 # --- sound -----------------------------------------------------------------
 
@@ -1458,6 +1469,11 @@ func _land_barge_load(load: Dictionary, bar: FillBar, tally: Label) -> void:
 		fly(icons.get(load.good), load.from, bar, mini(int(load.count), F.BARGE_FLY_MAX), 40.0)
 		get_tree().create_timer(F.FLY_GROW_TIME + F.FLY_TRAVEL_TIME * 0.6).timeout.connect(func(): if is_instance_valid(tally): bump(tally, 1.25)), CONNECT_ONE_SHOT)
 var last_shipped := -1
+# Story beats (WorldStory): firsts and places finishing, seen from the save.
+var last_harvests := -1
+var last_sales := -1
+var last_building := {}  # place id -> kind, while its build timer runs
+var story_queue: Array = []  # [eyebrow, line] waiting for the bubble to be free
 func _build_barge_chip() -> void:
 	barge_chip = PanelContainer.new()
 	barge_docked_style = glass(22)
@@ -1543,7 +1559,7 @@ func _goal() -> Array:
 	var now := game.now()
 	var garden := st.first_of("garden")
 	if game.gift_ready():
-		return [game.gift_basket().keys()[0], "Daily gift", func(): open("gift"), ""]
+		return [game.gift_basket().keys()[0], WorldStory.GIFT_GOAL, func(): open("gift"), ""]
 	var barge_info: Dictionary = game.barge()
 	if barge_info.get("docked", false):
 		for line in barge_info.lines:
@@ -1706,7 +1722,7 @@ func _celebrate_level(level: int, before: int) -> void:
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_theme_constant_override("separation", int(4 * s))
 	var eyebrow := Label.new()
-	eyebrow.text = "LEVEL UP"
+	eyebrow.text = WorldStory.LEVEL_EYEBROW.to_upper()
 	eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	eyebrow.add_theme_font_override("font", _spaced(BODY, 5))
 	eyebrow.add_theme_font_size_override("font_size", int(14 * s))
@@ -1809,7 +1825,33 @@ func show_toast(text: String) -> void:
 
 ## A neighbour's words after a delivery: their name over the line, briefly.
 var speech_box: Control
-func show_speech(who: String, line: String) -> void:
+## Peaks the save can only pass once: the first harvest, the first sale and
+## each place finishing its build. Opening the game only records where things
+## stand, so nothing replays. A neighbour's words are never talked over: the
+## line waits for the bubble to clear.
+func _story_beats(game: WorldGame) -> void:
+	var st := game.state
+	var now := game.now()
+	var beats := []
+	if last_harvests == 0 and st.harvests > 0: beats.append(WorldStory.FIRSTS.harvest)
+	if last_sales == 0 and st.lifetime_sales > 0: beats.append(WorldStory.FIRSTS.sale)
+	var building := {}
+	for id in st.construction:
+		if st.is_building(id, now): building[id] = st.find(id).get("kind", "")
+	if last_harvests >= 0:
+		for id in last_building:
+			var kind: String = last_building[id]
+			if not building.has(id) and not st.find(id).is_empty() and WorldStory.PLACE_LINES.has(kind):
+				beats.append({"eyebrow": C.title(kind), "line": WorldStory.PLACE_LINES[kind]})
+	last_harvests = st.harvests
+	last_sales = st.lifetime_sales
+	last_building = building
+	for beat in beats: story_queue.append([beat.eyebrow, beat.line])
+
+## The narrator: the same bubble without quotes, for the valley's own lines.
+func show_story(eyebrow: String, line: String) -> void: show_speech(eyebrow, line, false)
+
+func show_speech(who: String, line: String, quoted := true) -> void:
 	if is_instance_valid(speech_box): speech_box.queue_free()
 	var bubble := PanelContainer.new()
 	var box := glass(24, GLASS_DEEP)
@@ -1823,7 +1865,7 @@ func show_speech(who: String, line: String) -> void:
 	column.add_theme_constant_override("separation", int(2 * s))
 	column.add_child(_eyebrow(who))
 	var words := Label.new()
-	words.text = "“%s”" % line
+	words.text = "“%s”" % line if quoted else line
 	words.add_theme_font_override("font", DISPLAY_SEMI)
 	words.add_theme_font_size_override("font_size", int(20 * s))
 	words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1863,6 +1905,9 @@ func _process(delta: float) -> void:
 var hud_wait := 0.0
 var hud_seen := []
 func _hud_upkeep() -> void:
+	if not story_queue.is_empty() and not is_instance_valid(speech_box) and title_layer == null:
+		var beat: Array = story_queue.pop_front()
+		show_story(beat[0], beat[1])
 	_update_barge_chip()
 	_update_weather()
 	if is_instance_valid(season_clock) and main and main.game:
@@ -1923,6 +1968,7 @@ func refresh() -> void:
 	last_shipped = shipped
 	last_coins = coins
 	last_level = level
+	_story_beats(game)
 	# The first look at the farm each day opens the gift once; after that it
 	# waits on the goal ticket.
 	if mode == "" and title_layer == null and game.gift_ready() and gift_offered_day != game.today():
@@ -2351,7 +2397,7 @@ func _product_tab(product: Dictionary, selected: bool, busy: bool) -> Control:
 		var up: bool = (e is InputEventMouseButton and not e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed)
 		if not up or selected: return
 		var st: WorldState = main.game.state
-		if st.jobs.has(product.target) and st.jobs[product.target].recipe != product.recipe: show_toast("Already making something"); return
+		if st.jobs.has(product.target) and st.jobs[product.target].recipe != product.recipe: show_toast("Busy. Let this one finish"); return
 		sfx("tap"); haptic()
 		station = product.target if C.STATIONS.has(product.target) else station
 		recipe = product.recipe
@@ -2780,7 +2826,7 @@ func fly_back(texture: Texture2D, tool: String, from: Vector2, socket: Control) 
 func reject_drop(good: String, at: Vector2) -> void:
 	var socket: Control = need_sockets.get(good)
 	fly_back(icons.get(good), good if good in ["seed", "water"] else "", at, socket)
-	show_toast("Not needed here" if not filled.get(good, false) else "Already in")
+	show_toast("Not for this one" if not filled.get(good, false) else "Already in")
 
 func _punch_scene() -> void:
 	if ring and is_instance_valid(ring): bump(ring.get_parent() as Control, F.SLOT_PUNCH)
@@ -2937,10 +2983,10 @@ func _build_tile(key: String, spec: Dictionary, blocker: String) -> Control:
 func _pick_build(key: String, blocker: String) -> void:
 	var game: WorldGame = main.game
 	match blocker:
-		"owned": show_toast("Already built"); return
-		"locked": show_toast("Reach level %d" % (C.LAND[key].gate if C.LAND.has(key) else C.BUILDS[key].gate)); return
+		"owned": show_toast("You already have one"); return
+		"locked": show_toast("Opens at level %d" % (C.LAND[key].gate if C.LAND.has(key) else C.BUILDS[key].gate)); return
 		"land": show_toast("Needs the %s" % C.title(C.BUILDS[key].land).to_lower()); return
-		"full": show_toast("No free spot"); return
+		"full": show_toast("No room left for that"); return
 	build_pick = key
 	if C.LAND.has(key):
 		main.land_preview(key)
@@ -3206,7 +3252,7 @@ func _fill_gift() -> void:
 		return
 	var streak := game.state.gift_streak_on(game.today())
 	var today := (streak - 1) % C.GIFT_BASKETS.size()
-	var column := _sheet("Daily gift")
+	var column := _sheet(WorldStory.GIFT_TITLE)
 	var trail := HBoxContainer.new()
 	trail.alignment = BoxContainer.ALIGNMENT_CENTER
 	trail.add_theme_constant_override("separation", int(8 * s))
