@@ -22,6 +22,8 @@ var progress := -1.0      # 0..1 while a timer runs
 var label := ""           # time left, shown on the clock pill
 var glow := false
 var stages: Array = []    # field stages (field scene)
+var tap_cue := false      # a tap does something now (start, collect, harvest): rings call for it
+var hint_good := ""       # a good ready to go in: a faint copy shows the drag until one is held
 var t := 0.0
 var hover_until := 0.0
 
@@ -71,11 +73,16 @@ static var _radial: GradientTexture2D
 # Kept per place across rebuilt windows, so light eases instead of jumping.
 static var _moods := {}
 static var _was_done := {}
+static var _opened := {}   # kind -> when its window opened, for the drag hint's first delay
 var mood := 0.0
 var finish_at := -10.0
 
+var opened_at := 0.0
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	# The hint clock carries across rebuilt windows of the same place.
+	opened_at = float(_opened.get(kind, _now()))
+	_opened[kind] = opened_at
 
 func _process(delta: float) -> void:
 	if not is_visible_in_tree(): return
@@ -225,8 +232,11 @@ func _draw() -> void:
 		"field", "orchard", "fishing", "hive": _draw_outdoors()
 		"greenhouse": _draw_greenhouse()
 		_: _draw_workroom()
-	if not working and not done and kind != "build": _draw_slots()
+	if not working and not done and kind != "build":
+		_draw_slots()
+		_draw_drag_hint()
 	elif working: _draw_last_drop()
+	_draw_tap_cue()
 	_draw_bursts()
 	_draw_inset()
 	_draw_clock_pill()
@@ -335,6 +345,51 @@ func _draw_slots() -> void:
 				_landing_fx(good, at, e2, side)
 		else:
 			_ghost_slot(good, at, side, i)
+
+const HINT_CYCLE := 2.8   # s between hint glides
+const HINT_DELAY := 1.2   # s after opening before the first one
+## The way in: a faint copy of a ready good lifts off the left edge and glides
+## along an arc into its slot, then the slot ring flashes. It stops the moment
+## a good is held, and Reduce Motion leaves the still ghost slots alone.
+func _draw_drag_hint() -> void:
+	if ui.reduce_motion or hint_good == "" or hover_until > _now() or ui.get_viewport().gui_is_dragging(): return
+	var i := inputs.find(hint_good)
+	if i < 0 or filled.get(hint_good, false): return
+	var k := _k()
+	var e := _now() - opened_at - HINT_DELAY
+	if e < 0: return
+	var u := fposmod(e, HINT_CYCLE) / HINT_CYCLE
+	if u > 0.62: return
+	var v := ease(u / 0.62, -1.8)
+	var to := slot_point(i)
+	var from := Vector2(-10 * k, to.y + 30 * k)
+	var peak := (from + to) / 2 - Vector2(0, 60 * k)
+	var p := from.lerp(peak, v).lerp(peak.lerp(to, v), v)
+	var alpha := sin(v * PI) * 0.75 + (0.25 if v > 0.9 else 0.0)
+	# A trail of small dots behind it, and a fingertip under it.
+	for d in 6:
+		var w := clampf(v - 0.05 * (d + 1), 0, 1)
+		var q := from.lerp(peak, w).lerp(peak.lerp(to, w), w)
+		draw_circle(q, (3.2 - d * 0.4) * k, Color(WorldUI.GOLD, alpha * (0.5 - d * 0.07)))
+	draw_circle(p + Vector2(10, 18) * k, 11 * k, Color(1, 1, 1, alpha * 0.22))
+	draw_arc(p + Vector2(10, 18) * k, 11 * k, 0, TAU, 24, Color(1, 1, 1, alpha * 0.55), 1.5 * k, true)
+	_item(hint_good, p, 44 * k, alpha)
+	if v > 0.88: _glow(to, Vector2(60, 60) * k, Color(WorldUI.GOLD, (v - 0.88) * 3.0))
+
+## A tap does something now: two soft rings ripple out from the machine (or
+## the beds and tree) and the machine breathes, so a card with no buttons
+## still says "tap me".
+func _draw_tap_cue() -> void:
+	if not tap_cue: return
+	var k := _k()
+	var at := machine_point()
+	if done and kind not in ["field", "orchard"]: at = get_global_transform().affine_inverse() * tray_global()
+	if ui.reduce_motion:
+		draw_arc(at, 58 * k, 0, TAU, 48, Color(WorldUI.GOLD, 0.7), 3 * k, true)
+		return
+	for ring in 2:
+		var u := fposmod(t / 1.5 + ring * 0.5, 1.0)
+		draw_arc(at, (36 + 70 * ease(u, 0.5)) * k, 0, TAU, 56, Color(WorldUI.GOLD, 0.6 * (1.0 - u)), (4 - 3 * u) * k, true)
 
 ## The good that completed the set flies on into the machine as it starts.
 func _draw_last_drop() -> void:
