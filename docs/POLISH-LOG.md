@@ -30,6 +30,7 @@ Passes 1–19 used the earlier 12-pillar score and the art-direction rung ladder
 - **Alternatives:**
   - One challenge from the ideas doc, such as Fair Day or a puzzle order (M2).
   - A balance pass on prices and timers (M3), but only after real play data exists.
+- **Voice (Pass 21):** the story is "wake the sleepy valley", narrated by the valley itself. All narrator copy is in `scripts/game/story.gd`; the rules are in `docs/design/VOICE.md`.
 
 ## Pass 1 · 2026-11-04
 
@@ -519,3 +520,47 @@ Pass 18 added light and depth, but the room itself was a still picture, a state 
 - **Cost:** about 20 circles and 3 polylines per frame, plus one tween. There are no shaders, blurs or allocations.
 
 Tests: rules 136/0, feel spam 36/0. Captures: 20, 23, 26 and 30, before and after, plus 33 (the finish sweep, new). Not seen: motion on a device. Stills show only one frame of each effect.
+
+## Pass 21 · 2026-11-06 (owner request: narrative and world-building audit)
+
+**Objective:** make the story and the mechanics feel like one thing. **Primary outcome:** at each peak (opening, first harvest, a new place, a level-up) the player hears one short line that names what just changed in the valley. **Guardrails:** less wordy, nothing that scrolls, 17pt and up, no noise ambience, Reduce Motion respected, and no edits to the place menus or the map's light (two other passes are changing them).
+
+**Audit:**
+- *Ludonarrative:* the loop (grow → make → sell, feed neighbours, load the barge) already fits a homestead feeding a valley, and Pass 2 made levels wake scenery. But the story was never said. The title read "Grow · Bake · Trade" (a feature list), and the first minute had no hook.
+- *Peaks:* the level-up said "LEVEL UP". Levels 3, 5, 7, 9 and 11+ woke nothing, so most level-ups named nothing in the world. The first harvest, the first sale and a place finishing its build (the biggest saved-for moment) passed in silence.
+- *Copy:* the neighbours and the barge already had a voice. Errors were dry ("No free spot", "Reach a higher level first", "Can't do that now", "Prices just changed"), and the daily gift was a feature name.
+- *Show, don't tell:* strong already (tiers, lit windows, weather that speeds the right places), but the weather's effect lived only in the forecast's small print.
+
+**Candidates:**
+1. *Refinement:* rewrite the strings only. Cheap, but it leaves the peaks silent and the gaps between tiers.
+2. *Structural:* a story chapter system (named acts, villager quests). Rejected for now: a lot of new copy for a game Saeed wants less wordy, and Tuvlo's own villagers were retired (owner decision 2026-10-29).
+3. *Novel (chosen):* give the valley itself a narrator voice that speaks only at peaks, one short line each, always naming something visible or a real rule. Then fill the gaps in the waking so more level-ups have something to name.
+
+**Changes:**
+- **`WorldStory` (`scripts/game/story.gd`, new):** every narrator line in one table.
+  - Title tagline: "Wake the sleepy valley".
+  - *Arrival* on a new farm: "Cold oven. Quiet field. Seed in your pocket." It points at the first action.
+  - *Return greeting* on every later open: "Day N" plus the sky. Weather lines teach the rule ("Rain on the roof. The fields drink it in." = fields grow faster), and the breeze line only mentions the mill once one is built.
+  - *Firsts:* the first harvest ("The first wheat. The valley stirs.") and the first sale ("Coins in hand. Word gets around.").
+  - *A place's first breath* when its build timer ends, for every timed place and the west meadow ("Sails up. Flour, at last.", "Sheep in the straw. Milk by morning.").
+  - The level-up eyebrow is now "THE VALLEY WAKES". The daily gift is "A basket on the step" / "On the doorstep".
+- **Narrator bubble (`world_ui.gd` `show_story`, `_greet`, `_story_beats`):** the neighbour speech bubble without quotes. Beats read the save (harvests, lifetime sales, construction), so opening the game replays nothing. A line queues until a neighbour's words have cleared, so they never talk over each other.
+- **The valley wakes more often (`valley_awakening.gd`):** three new tiers.
+  - Level 3: lanterns between the flower beds. They glow faintly by day and warm at night with the windows (`set_glow`, from `presentation.set_daylight`).
+  - Level 5: a kite over the west meadow, on one stretched string mesh (no per-frame allocation).
+  - Level 12: a sailboat crossing the sea beyond the barge's cove.
+  - All three are scenery only and outside every building spot. Reduce Motion holds the kite and sail still.
+  - Existing tier lines got a little more life ("Butterflies find the flowers", "Songbirds come home").
+- **Interface copy (`game_main.gd` `REASONS`, toasts):** "Opens at level N", "No room left for that", "You already have one", "Busy. Let this one finish", "Today's basket is already in", "The market moved. Try again", "That won't work just now". "Couldn't save. Try again." stays plain on purpose.
+- **Voice guide:** `docs/design/VOICE.md` (who speaks, the rules, the lexicon).
+
+**Results:**
+- *Technical:* rules 136/0. Feel spam 45/0, with 9 new checks: lines are 44 characters or fewer and never use "!", every timed place and land has a line, arrival and return greetings, the breeze line respects the mill, lantern glow by day and night, and the firsts and place lines fire once. Captures 40–46 run end to end (`tests/story_capture.gd`).
+- *Design judgment:* the opening now has a reason, and the windmill finishing is a moment instead of a silent swap. The night capture runs without Pass 20's blue hour (a separate PR), so the lanterns read more strongly once both land.
+- *Player outcomes:* not measured. Not seen: any of it on a device, or whether a line each launch feels welcome or repetitive after a week.
+
+Captures: `captures/narrative-voice/` in project files (title, arrival, first harvest, level 3 lanterns, windmill finishing, return greeting, the awake valley at level 15).
+
+**Rejected:** voiced dialogue or a typewriter effect (wordy and slow); a story line on every sale or collect (noise); named chapters (more text than the game wants yet); quoting the narrator (it would read as a character).
+
+**Next hypothesis:** unchanged, observe the family playing. Watch whether anyone reads the narrator lines and whether the arrival line gets them to the field faster. **Alternatives:** a quiet "story so far" page in More listing what has woken; a tier at 20 (the west meadow's own life).
