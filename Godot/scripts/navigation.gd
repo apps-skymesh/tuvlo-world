@@ -11,8 +11,6 @@ var oven_cells: Dictionary={}
 var kitchen_centers: Dictionary={}
 var kitchen_cells: Dictionary={}
 var view_direction=Vector3(sin(0.25),0,cos(0.25))
-const OUTBUILDING_SIDE=5.0   # how far the oven and kitchen stand from the cottage's centre
-const OUTBUILDING_REACH=3.4
 func rebuild(world_data: HomesteadWorldData):
 	data=world_data
 	grid.region=HomesteadItems.WORLD_BOUNDS
@@ -97,14 +95,12 @@ func place_baking_ovens(occupied: Dictionary):
 	if well_center.is_finite(): silhouettes.append(HomesteadVisibility.projected_box(well_center,Vector3(1.05,2.6,0.95),view_direction))
 	for cottage in data.items:
 		if cottage.kind!="cottage" or not data.building(cottage.id).is_empty(): continue
-		# SOLO 2026-11-06: the oven and kitchen bench stand apart from the house,
-		# a clear step from its walls, so each reads (and taps) as its own place.
-		var oven=attach_beside(cottage,-OUTBUILDING_SIDE,previous_ovens.get(cottage.id,Vector2i(10000,10000)),occupied,silhouettes)
+		var oven=attach_beside(cottage,-3.0,previous_ovens.get(cottage.id,Vector2i(10000,10000)),occupied,silhouettes)
 		if oven.x!=10000:
 			oven_cells[cottage.id]=oven; oven_centers[cottage.id]=HomesteadItems.center(oven,Vector2i(2,2))
 		# The kitchen never stands in front of (or behind) the oven, so the oven card shows the oven.
 		var oven_outline=HomesteadVisibility.projected_box(oven_centers[cottage.id],Vector3(1.1,2.4,1.1),view_direction) if oven_centers.has(cottage.id) else Rect2()
-		var kitchen=attach_beside(cottage,OUTBUILDING_SIDE,previous_kitchens.get(cottage.id,Vector2i(10000,10000)),occupied,silhouettes,1,OUTBUILDING_REACH,Vector3.ZERO,oven_outline)
+		var kitchen=attach_beside(cottage,3.0,previous_kitchens.get(cottage.id,Vector2i(10000,10000)),occupied,silhouettes,1,2.6,Vector3.ZERO,oven_outline)
 		# A crowded older yard still gets its kitchen: a snug 2 x 2 against another wall.
 		for offset in [Vector3(3,0,0),Vector3(2.6,0,-2.2),Vector3(0,0,-3.2),Vector3(-2.6,0,-2.2),Vector3(2.6,0,2.4)]:
 			if kitchen.x!=10000: break
