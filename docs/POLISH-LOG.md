@@ -24,12 +24,13 @@ Passes 1–19 used the earlier 12-pillar score and the art-direction rung ladder
   - Non-goals: survival pressure, decay, aggressive monetisation.
 - **Core loop:** plant and water → mill/bake/craft on timers → sell at the market, fill orders and the barge → level up and build. Stars are a soft currency for finishing a job early.
 - **Real player evidence:** none yet. Builds are installed on Saeed's iPhone and three family iPads (the iPhone missed the latest build, PR #26), but there has been no playtest feedback so far. Every "fun" and "feel" claim since Pass 1 is design judgment, not a measured result.
-- **Pending, unmeasured changes on the same outcome (session feel):** Passes 16–21 (production window, drag, depth and life, pressed states, transitions and level-up, HIG text sizes in place cards). Passes 20 and later were explicit owner asks. Don't stack more feel and polish changes on this outcome until players have been observed.
+- **Pending, unmeasured changes on the same outcome (session feel):** Passes 16–22 (production window, drag, depth and life, pressed states, transitions and level-up, the valley's voice, HIG text sizes in place cards). Passes 20 and later were explicit owner asks. Don't stack more feel and polish changes on this outcome until players have been observed.
 - **Rejected or retired:** noise-based ambience (Saeed disliked it, Pass 15→16); camera jumps when opening a place (replaced by the window, Pass 16); free placement (superseded by fixed spots).
 - **Next hypothesis:** observe the family playing a 10-minute session and note where they stop, hesitate or ask. Then run an M1 pass on seed choices: choosing what to plant should be a real decision with trade-offs, not a single default crop.
 - **Alternatives:**
   - One challenge from the ideas doc, such as Fair Day or a puzzle order (M2).
   - A balance pass on prices and timers (M3), but only after real play data exists.
+- **Voice (Pass 21):** the story is "wake the sleepy valley", narrated by the valley itself. All narrator copy is in `scripts/game/story.gd`; the rules are in `docs/design/VOICE.md`.
 
 ## Pass 1 · 2026-11-04
 
@@ -538,7 +539,51 @@ Four asks done as one feel batch. The audit came first and decided where the wor
 
 Tests: rules 136/0, feel spam 38/0 (two new: release from anywhere, back to full size and brightness). Not seen: any of this on a device.
 
-## Pass 21 · 2026-11-05 (owner requests: premium place menus with HIG text sizes; game UI/UX audit)
+## Pass 21 · 2026-11-06 (owner request: narrative and world-building audit)
+
+**Objective:** make the story and the mechanics feel like one thing. **Primary outcome:** at each peak (opening, first harvest, a new place, a level-up) the player hears one short line that names what just changed in the valley. **Guardrails:** less wordy, nothing that scrolls, 17pt and up, no noise ambience, Reduce Motion respected, and no edits to the place menus or the map's light (two other passes are changing them).
+
+**Audit:**
+- *Ludonarrative:* the loop (grow → make → sell, feed neighbours, load the barge) already fits a homestead feeding a valley, and Pass 2 made levels wake scenery. But the story was never said. The title read "Grow · Bake · Trade" (a feature list), and the first minute had no hook.
+- *Peaks:* the level-up said "LEVEL UP". Levels 3, 5, 7, 9 and 11+ woke nothing, so most level-ups named nothing in the world. The first harvest, the first sale and a place finishing its build (the biggest saved-for moment) passed in silence.
+- *Copy:* the neighbours and the barge already had a voice. Errors were dry ("No free spot", "Reach a higher level first", "Can't do that now", "Prices just changed"), and the daily gift was a feature name.
+- *Show, don't tell:* strong already (tiers, lit windows, weather that speeds the right places), but the weather's effect lived only in the forecast's small print.
+
+**Candidates:**
+1. *Refinement:* rewrite the strings only. Cheap, but it leaves the peaks silent and the gaps between tiers.
+2. *Structural:* a story chapter system (named acts, villager quests). Rejected for now: a lot of new copy for a game Saeed wants less wordy, and Tuvlo's own villagers were retired (owner decision 2026-10-29).
+3. *Novel (chosen):* give the valley itself a narrator voice that speaks only at peaks, one short line each, always naming something visible or a real rule. Then fill the gaps in the waking so more level-ups have something to name.
+
+**Changes:**
+- **`WorldStory` (`scripts/game/story.gd`, new):** every narrator line in one table.
+  - Title tagline: "Wake the sleepy valley".
+  - *Arrival* on a new farm: "Cold oven. Quiet field. Seed in your pocket." It points at the first action.
+  - *Return greeting* on every later open: "Day N" plus the sky. Weather lines teach the rule ("Rain on the roof. The fields drink it in." = fields grow faster), and the breeze line only mentions the mill once one is built.
+  - *Firsts:* the first harvest ("The first wheat. The valley stirs.") and the first sale ("Coins in hand. Word gets around.").
+  - *A place's first breath* when its build timer ends, for every timed place and the west meadow ("Sails up. Flour, at last.", "Sheep in the straw. Milk by morning.").
+  - The level-up eyebrow is now "THE VALLEY WAKES". The daily gift is "A basket on the step" / "On the doorstep".
+- **Narrator bubble (`world_ui.gd` `show_story`, `_greet`, `_story_beats`):** the neighbour speech bubble without quotes. Beats read the save (harvests, lifetime sales, construction), so opening the game replays nothing. A line queues until a neighbour's words have cleared, so they never talk over each other.
+- **The valley wakes more often (`valley_awakening.gd`):** three new tiers.
+  - Level 3: lanterns between the flower beds. They glow faintly by day and warm at night with the windows (`set_glow`, from `presentation.set_daylight`).
+  - Level 5: a kite over the west meadow, on one stretched string mesh (no per-frame allocation).
+  - Level 12: a sailboat crossing the sea beyond the barge's cove.
+  - All three are scenery only and outside every building spot. Reduce Motion holds the kite and sail still.
+  - Existing tier lines got a little more life ("Butterflies find the flowers", "Songbirds come home").
+- **Interface copy (`game_main.gd` `REASONS`, toasts):** "Opens at level N", "No room left for that", "You already have one", "Busy. Let this one finish", "Today's basket is already in", "The market moved. Try again", "That won't work just now". "Couldn't save. Try again." stays plain on purpose.
+- **Voice guide:** `docs/design/VOICE.md` (who speaks, the rules, the lexicon).
+
+**Results:**
+- *Technical:* rules 136/0. Feel spam 45/0, with 9 new checks: lines are 44 characters or fewer and never use "!", every timed place and land has a line, arrival and return greetings, the breeze line respects the mill, lantern glow by day and night, and the firsts and place lines fire once. Captures 40–46 run end to end (`tests/story_capture.gd`).
+- *Design judgment:* the opening now has a reason, and the windmill finishing is a moment instead of a silent swap. The night capture runs without Pass 20's blue hour (a separate PR), so the lanterns read more strongly once both land.
+- *Player outcomes:* not measured. Not seen: any of it on a device, or whether a line each launch feels welcome or repetitive after a week.
+
+Captures: `captures/narrative-voice/` in project files (title, arrival, first harvest, level 3 lanterns, windmill finishing, return greeting, the awake valley at level 15).
+
+**Rejected:** voiced dialogue or a typewriter effect (wordy and slow); a story line on every sale or collect (noise); named chapters (more text than the game wants yet); quoting the narrator (it would read as a character).
+
+**Next hypothesis:** unchanged, observe the family playing. Watch whether anyone reads the narrator lines and whether the arrival line gets them to the field faster. **Alternatives:** a quiet "story so far" page in More listing what has woken; a tier at 20 (the west meadow's own life).
+
+## Pass 22 · 2026-11-05 (owner requests: premium place menus with HIG text sizes; game UI/UX audit)
 
 - **Audit (4-second rule, Fitts):** on the map the state (wallet, level) and goal ticket read at once. On a landscape iPhone, though, the place cards failed: text was sized in layout units scaled to a 720-tall canvas, so 17 "units" came out near 10 pt, and the ✕ was 26 pt, under the 44 pt touch minimum. The iPads were fine (each unit is about 1 pt there). Wording was heavier than needed: "Finish now", "Rain ×2", and a Close button repeating the ✕.
 - **Change 1, a point-based type scale (`world_ui.gd` `TYPE_*`, `pt`, `fs()`, `title_px()`, `tap_px()`):** text is sized in points with the screen's own scale, and never below the old layout size. Body 17 pt minimum; button labels 20 pt; the card title a 34 pt large title, capped at 6.5% of the screen height (about 28 pt on a landscape iPhone). The ✕ and the action buttons are at least 44 pt. `TW_POINT_SCALE` forces the scale for device-sized renders.
@@ -547,3 +592,13 @@ Tests: rules 136/0, feel spam 38/0 (two new: release from anywhere, back to full
 - **Fallback:** if the screen scale would make the screen implausibly short (the viewport is not in pixels), the layout scale is used, which is the old behaviour.
 
 Tests: rules 136/0, feel spam 38/0, runtime 0 failures. The collect-feedback test fails one check ("new bubble pops in") on main as well, so it is not from this pass. Renders: an iPhone 15 Pro Max ratio (1864×860 at 2 px/pt) and an iPad 9th gen ratio (1080×810 at 1 px/pt), in `captures/place-menus/`. Not seen: a real device. The screen-scale reading on iOS is the main risk.
+
+## Pass 23 · 2026-11-06 (owner requests: no Make button, smooth drag, finish price under the machine, separate oven and kitchen, clearer map, premium ready goods, a better settings button)
+
+- **The scene is the control (`world_ui.gd` `_fill_place`; `production_scene.gd` `_draw_drag_hint`, `_draw_tap_cue`):** no Make, Collect, Plant, Harvest or Working buttons. Dropping the last good starts the job, as before; a tap on the scene starts, collects, harvests or waters. A faint copy of a ready good glides into its slot to show the drag, and rings ripple where a tap does something.
+- **Finishing with stars:** a star-and-price pill inside the window, under the machine (outdoors, in the lower right corner by the cart), with no word.
+- **Drag that holds:** the card no longer rebuilds while a good is held (a stock or wallet change used to cut the drag off mid-air), and the ready socket's nudge is a rotation instead of a position tween that fought its container.
+- **Oven and kitchen bench as their own places:** the cottage card lists nothing, a tap on the house never collects their jobs, and the kitchen keeps two open cells from the house (`navigation.gd` `OUTBUILDING_GAP`).
+- **Map:** the windmill's first spot moves clear of the farm beds; older saves move once on load, display only (`WorldState._spread_out`). Ready goods are about a third larger with a gold halo, slow rays and a larger tap target (`harvest_bubble.gdshader`, `presentation.gd`). Settings is a drawn gear that turns when pressed.
+
+Tests: rules 136/0, feel spam 47/0, runtime 0 failures (one test now picks an open cell instead of a fixed one). Renders: iPhone and iPad ratios on the before/after page. Not seen: the drag on a device.
