@@ -26,6 +26,14 @@ const TAB_BUSY_ALPHA := 0.62            # a tab locked while another job runs
 const TAB_BREATH := 2.4                 # s, the selected tab's gold edge breathing in and out
 const DISABLED_FILL := Color(1, 1, 1, 0.14)
 const DISABLED_INK := Color(1, 0.97, 0.9, 0.8)
+# Type scale in points (Apple HIG): nothing in a place card reads smaller than
+# body, and the title is a large title where the screen is tall enough for it.
+const TYPE_BODY := 17.0
+const TYPE_HEADLINE := 20.0
+const TYPE_TITLE := 34.0
+const TYPE_TITLE_MIN := 22.0
+const TYPE_TITLE_SHARE := 0.065          # the title's largest share of the screen's height
+const TAP_MIN := 44.0                    # points, the smallest comfortable touch target
 const IVORY := Color("FFF8EA")
 const MUTED := Color(1, 0.97, 0.9, 0.62)
 const GOLD := Color("F7C04A")
@@ -57,6 +65,7 @@ signal panel_changed(open: bool)
 
 var main  # game_main.gd
 var s := 1.0
+var pt := 1.0   # pixels per point; text sizes come from points so phones get real 17 pt
 var root: Control
 var coins_label: Label
 var level_label: Label
@@ -141,7 +150,7 @@ class Ribbon extends Control:
 		var h := size.y
 		draw_style_box(ui.glass(int(h / 2 / k), WorldUI.GLASS_DEEP), Rect2(Vector2.ZERO, size))
 		var font: Font = WorldUI.DISPLAY
-		var fs := int(h * 0.5)
+		var fs: int = ui.title_px() if ui.has_method("title_px") else int(h * 0.5)
 		var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		var at := Vector2((size.x - tw) / 2, h * 0.5 + fs * 0.36)
 		draw_string(font, at + Vector2(0, 2 * k), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.35))
@@ -479,6 +488,20 @@ static func draw_clock(canvas: CanvasItem, at: Vector2, r: float, color: Color, 
 	canvas.draw_line(at, at + Vector2(r * 0.45, 0), WorldUI.IVORY, maxf(1.2, r * 0.16), true)
 	canvas.draw_circle(at, maxf(1.2, r * 0.14), color)
 
+## The settings gear: eight rounded teeth in ivory around a gold hub.
+class GearIcon extends Control:
+	func _draw() -> void:
+		var c := size / 2
+		var r := minf(size.x, size.y) * 0.27
+		var points := PackedVector2Array()
+		for i in 64:
+			var a := TAU * i / 64.0
+			var tooth := 0.5 + 0.5 * cos(a * 8.0)
+			points.append(c + Vector2.from_angle(a) * r * (1.0 + 0.32 * smoothstep(0.25, 0.75, tooth)))
+		draw_colored_polygon(points, WorldUI.IVORY)
+		draw_circle(c, r * 0.62, Color(0.08, 0.16, 0.15))
+		draw_circle(c, r * 0.38, WorldUI.GOLD)
+
 class ClockIcon extends Control:
 	var share := 1.0
 	var color := WorldUI.GOLD
@@ -571,6 +594,7 @@ class GoodTile extends TextureRect:
 func setup(owner_main) -> void:
 	main = owner_main
 	s = clampf(main.get_viewport().get_visible_rect().size.y / 720.0, 1.0, 3.0)
+	pt = _point_scale()
 	_read_safe_area()
 	for good in C.GOODS: icons[good] = load("res://assets/ui/goods/%s.png" % good)
 	for kind in C.TITLES:
@@ -626,6 +650,32 @@ func setup(owner_main) -> void:
 
 ## Keeps the HUD clear of the iPhone's Dynamic Island and the home indicator.
 var safe := Rect2()  # insets: position = left/top, size = right/bottom
+## Pixels per point. On a phone or tablet, the screen's own scale. If that
+## would make the screen implausibly short (the viewport isn't in pixels after
+## all), fall back to the layout scale. TW_POINT_SCALE forces a value for
+## device-sized renders on a desktop.
+func _point_scale() -> float:
+	var forced := OS.get_environment("TW_POINT_SCALE")
+	if forced.is_valid_float(): return maxf(0.5, forced.to_float())
+	if not OS.has_feature("mobile"): return s
+	var scale := DisplayServer.screen_get_scale()
+	var tall: float = main.get_viewport().get_visible_rect().size.y / maxf(scale, 0.01)
+	return scale if scale >= 1.0 and tall >= 300.0 and tall <= 1400.0 else s
+
+## A font size in pixels for a size in points: never smaller than the layout's
+## own scale, so tablets keep their current look and phones grow to the HIG.
+func fs(points: float) -> int:
+	return int(roundf(maxf(points * pt, points * s)))
+
+## The card title: a 34 pt large title, smaller on a short (landscape phone) screen.
+func title_px() -> int:
+	var tall: float = root.get_viewport_rect().size.y / pt
+	return fs(clampf(tall * TYPE_TITLE_SHARE, TYPE_TITLE_MIN, TYPE_TITLE))
+
+## A touch target's side in pixels: the layout size, or 44 pt if that's larger.
+func tap_px(units: float) -> float:
+	return maxf(units * s, TAP_MIN * pt)
+
 func _read_safe_area() -> void:
 	if not OS.has_feature("mobile"): return
 	var screen := Vector2(DisplayServer.screen_get_size())
@@ -1114,8 +1164,8 @@ func _close_button() -> Button:
 	var button := _round_button("", close, "Close")
 	button.text = "✕"
 	button.add_theme_font_override("font", BODY)
-	button.add_theme_font_size_override("font_size", int(18 * s))
-	button.custom_minimum_size = Vector2(44, 44) * s
+	button.add_theme_font_size_override("font_size", fs(TYPE_BODY))
+	button.custom_minimum_size = Vector2.ONE * tap_px(44)
 	return button
 
 ## Primary actions are gold keys; "quiet" ones are glass.
@@ -1291,10 +1341,21 @@ func _build_hud() -> void:
 	hud.append(dock)
 	dock_node = dock
 	var sound := _round_button("", func(): open("settings"), "Settings")
-	sound.text = "•••"
-	sound.add_theme_font_override("font", DISPLAY)
-	sound.add_theme_font_size_override("font_size", int(15 * s))
-	sound.custom_minimum_size = Vector2(46, 46) * s
+	sound.custom_minimum_size = Vector2.ONE * tap_px(46)
+	# A drawn gear on gold-rimmed glass; it turns a little when pressed.
+	var rim: StyleBoxFlat = sound.get_theme_stylebox("normal").duplicate()
+	rim.border_color = Color(GOLD, 0.55)
+	rim.set_border_width_all(int(maxf(1, 1.5 * s)))
+	sound.add_theme_stylebox_override("normal", rim)
+	sound.add_theme_stylebox_override("hover", rim)
+	var gear := GearIcon.new()
+	gear.set_anchors_preset(Control.PRESET_FULL_RECT)
+	gear.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sound.add_child(gear)
+	sound.resized.connect(func(): gear.pivot_offset = gear.size / 2)
+	sound.button_down.connect(func():
+		if reduce_motion: return
+		_solo_tween(gear, "turn").tween_property(gear, "rotation", gear.rotation + PI / 4, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
 	sound.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, int(16 * s))
 	sound.offset_left -= safe.size.x; sound.offset_right -= safe.size.x
 	sound.grow_horizontal = Control.GROW_DIRECTION_BEGIN
@@ -1469,13 +1530,14 @@ func _weather_badge(job: String) -> Control:
 	row.add_theme_constant_override("separation", int(4 * s))
 	var emblem := WeatherIcon.new()
 	emblem.sky = sky
-	emblem.custom_minimum_size = Vector2(26, 26) * s
+	emblem.custom_minimum_size = Vector2.ONE * maxf(26 * s, fs(TYPE_BODY) * 1.5)
 	emblem.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(emblem)
+	# The sky's picture says which weather; the words only say how much faster.
 	var words := Label.new()
-	words.text = "%s ×%s" % [C.WEATHER[sky].title, ("%d" % boost) if is_equal_approx(boost, roundf(boost)) else ("%.1f" % boost)]
+	words.text = "×%s" % [("%d" % boost) if is_equal_approx(boost, roundf(boost)) else ("%.1f" % boost)]
 	words.add_theme_font_override("font", DISPLAY_SEMI)
-	words.add_theme_font_size_override("font_size", int(14 * s))
+	words.add_theme_font_size_override("font_size", fs(TYPE_BODY))
 	words.add_theme_color_override("font_color", GOLD)
 	words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(words)
@@ -1666,6 +1728,8 @@ func place_tapped(id: String, tapped_station := "") -> void:
 		else:
 			for each in C.stations_for(item.kind):
 				if tapped_station != "" and each != tapped_station: continue
+				# The cottage itself isn't its oven or kitchen: a tap on the house never collects theirs.
+				if tapped_station == "" and _shared(item): break
 				if st.jobs.has(each) and st.job_remaining(each, now) == 0:
 					_quick(id, func(): return game.collect(each))
 					return
@@ -1694,6 +1758,7 @@ func _ready_in(item: Dictionary, tapped_station: String, now: float) -> float:
 		_:
 			for each in C.stations_for(item.kind):
 				if tapped_station != "" and each != tapped_station: continue
+				if tapped_station == "" and _shared(item): break
 				if st.jobs.has(each): soonest = _min_positive(soonest, st.jobs[each].started + st.job_total(each) - now)
 	return soonest
 static func _min_positive(a: float, b: float) -> float:
@@ -2066,6 +2131,9 @@ func refresh() -> void:
 	if mode == "": return
 	# Rebuild only when something visible changed; timers update in place.
 	var next := _signature()
+	# Never rebuild under a finger that's holding a good: the drag would be
+	# cut off mid-air. The change lands as soon as the good is let go.
+	if next != signature and root.get_viewport().gui_is_dragging(): _update_ring(); return
 	if next != signature: _fill()
 	elif ring: _update_ring()
 
@@ -2092,6 +2160,7 @@ func open(next_mode: String, arg := "", arg_station := "") -> void:
 	mode = next_mode
 	place_id = arg if next_mode == "place" else ""
 	station = arg_station
+	ProductionScene._opened.clear()
 	recipe = ""
 	filled = {}
 	build_pick = ""
@@ -2322,7 +2391,7 @@ func _production_window(title: String) -> Dictionary:
 	var box := glass(30, GLASS_DEEP)
 	box.border_color = Color(GOLD, 0.42)
 	box.set_content_margin_all(16 * s)
-	box.content_margin_top = 26 * s
+	box.content_margin_top = maxf(26 * s, title_px() * 0.8)
 	box.shadow_size = int(30 * s)
 	box.shadow_color = Color(0, 0, 0, 0.45)
 	panel.add_theme_stylebox_override("panel", box)
@@ -2386,19 +2455,27 @@ func _production_window(title: String) -> Dictionary:
 	rim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	rim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.add_child(rim)
+	# Controls that sit inside the scene (the star price, the weather): taps
+	# between them still reach the scene.
+	var overlay := Control.new()
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(overlay)
 	var actions := HBoxContainer.new()
 	actions.alignment = BoxContainer.ALIGNMENT_CENTER
 	actions.add_theme_constant_override("separation", int(12 * s))
 	column.add_child(actions)
 	var close_button := _close_button()
-	close_button.position = panel.position + Vector2(width - 30 * s, -16 * s)
+	close_button.position = panel.position + Vector2(width - close_button.custom_minimum_size.x * 0.7, -close_button.custom_minimum_size.y * 0.36)
 	holder.add_child(close_button)
 	var ribbon := Ribbon.new()
 	ribbon.ui = self
 	ribbon.text = title
-	var ribbon_width := DISPLAY.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * s)).x + 92 * s
-	ribbon.size = Vector2(ribbon_width, 44 * s)
-	ribbon.position = panel.position + Vector2((width - ribbon_width) / 2, -24 * s)
+	var title_size := title_px()
+	var ribbon_height := maxf(44 * s, title_size * 1.5)
+	var ribbon_width := DISPLAY.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, title_size).x + 64 * s + ribbon_height
+	ribbon.size = Vector2(ribbon_width, ribbon_height)
+	ribbon.position = panel.position + Vector2((width - ribbon_width) / 2, -ribbon_height * 0.55)
 	ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.add_child(ribbon)
 	root.add_child(holder)
@@ -2406,7 +2483,7 @@ func _production_window(title: String) -> Dictionary:
 	root.move_child(toast_box, -1)
 	sheet_root = holder
 	ring = scene
-	return {"tabs": tabs, "needs": needs, "scene": scene, "actions": actions}
+	return {"tabs": tabs, "needs": needs, "scene": scene, "actions": actions, "overlay": overlay}
 
 ## A product along the top: its picture and yield, its time, and its price in
 ## stars to make at once.
@@ -2439,10 +2516,10 @@ func _product_tab(product: Dictionary, selected: bool, busy: bool) -> Control:
 	var yield_label := Label.new()
 	yield_label.text = "×%d" % product.quantity
 	yield_label.add_theme_font_override("font", DISPLAY)
-	yield_label.add_theme_font_size_override("font_size", int(15 * s))
-	yield_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
-	yield_label.add_theme_constant_override("outline_size", int(5 * s))
-	yield_label.position = Vector2(30, 30) * s
+	yield_label.add_theme_font_size_override("font_size", fs(TYPE_BODY))
+	yield_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+	yield_label.add_theme_constant_override("outline_size", int(6 * s))
+	yield_label.position = Vector2(52 * s - fs(TYPE_BODY) * 1.1, 52 * s - fs(TYPE_BODY) * 1.25)
 	picture.add_child(yield_label)
 	if product.recipe != "" and product.get("twin", false):
 		# Two products share a picture (bread, meals): a small badge names what
@@ -2461,22 +2538,25 @@ func _product_tab(product: Dictionary, selected: bool, busy: bool) -> Control:
 	var time_row := HBoxContainer.new()
 	time_row.add_theme_constant_override("separation", int(6 * s))
 	var clock := ClockIcon.new()
-	clock.custom_minimum_size = Vector2(18, 18) * s
+	clock.custom_minimum_size = Vector2.ONE * fs(TYPE_BODY)
 	clock.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	time_row.add_child(clock)
 	var time_label := Label.new()
 	time_label.add_theme_font_override("font", DISPLAY_SEMI)
-	time_label.add_theme_font_size_override("font_size", int(17 * s))
+	time_label.add_theme_font_size_override("font_size", fs(TYPE_BODY))
+	# Wide enough for the longest time, so a ticking countdown never nudges the row.
+	time_label.custom_minimum_size.x = DISPLAY_SEMI.get_string_size("88m 88s", HORIZONTAL_ALIGNMENT_LEFT, -1, fs(TYPE_BODY)).x
 	time_row.add_child(time_label)
 	facts.add_child(time_row)
 	var star_row := HBoxContainer.new()
 	star_row.add_theme_constant_override("separation", int(6 * s))
 	var star := _icon(icons["star"], 18)
+	star.custom_minimum_size = Vector2.ONE * fs(TYPE_BODY)
 	star.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	star_row.add_child(star)
 	var star_label := Label.new()
 	star_label.add_theme_font_override("font", DISPLAY_SEMI)
-	star_label.add_theme_font_size_override("font_size", int(17 * s))
+	star_label.add_theme_font_size_override("font_size", fs(TYPE_BODY))
 	star_label.add_theme_color_override("font_color", GOLD)
 	star_row.add_child(star_label)
 	facts.add_child(star_row)
@@ -2498,7 +2578,9 @@ func _product_tab(product: Dictionary, selected: bool, busy: bool) -> Control:
 func _need_slot(good: String, text: String, state: String) -> Control:
 	var column := VBoxContainer.new()
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	column.add_theme_constant_override("separation", int(2 * s))
+	# The count sits on the tile's lower edge as a badge, not on a line below,
+	# so three needs fit a landscape phone without scrolling.
+	column.add_theme_constant_override("separation", -int(fs(TYPE_BODY) * 0.7))
 	var socket := PanelContainer.new()
 	var box := tile_box(20, state == "ready")
 	box.set_content_margin_all(6 * s)
@@ -2538,17 +2620,28 @@ func _need_slot(good: String, text: String, state: String) -> Control:
 	column.add_child(socket)
 	var label := Label.new()
 	label.text = text
+	label.visible = text != ""
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	label.add_theme_font_override("font", DISPLAY_SEMI)
-	label.add_theme_font_size_override("font_size", int(18 * s))
+	label.add_theme_font_size_override("font_size", fs(TYPE_BODY))
 	label.add_theme_color_override("font_color", {"short": SHORT, "filled": MINT, "used": MUTED}.get(state, IVORY))
+	var badge := glass(int(fs(TYPE_BODY) / s), GLASS_DEEP, false)
+	badge.content_margin_left = fs(TYPE_BODY) * 0.55; badge.content_margin_right = badge.content_margin_left
+	badge.content_margin_top = 0; badge.content_margin_bottom = 0
+	if state == "short": badge.border_color = Color(SHORT, 0.8)
+	elif state == "filled": badge.border_color = Color(MINT, 0.7)
+	label.add_theme_stylebox_override("normal", badge)
 	column.add_child(label)
 	if draggable and not reduce_motion:
 		# A ready good leans toward the scene now and then: drag me in.
+		# Rotation, not position: the container owns position and would snap it back.
+		socket.resized.connect(func(): socket.pivot_offset = socket.size / 2)
 		var tween := socket.create_tween().set_loops()
 		tween.tween_interval(1.6)
-		tween.tween_property(socket, "position:x", socket.position.x + 6 * s, 0.22).set_trans(Tween.TRANS_SINE)
-		tween.tween_property(socket, "position:x", socket.position.x, 0.3).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(socket, "rotation", 0.09, 0.16).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(socket, "rotation", -0.06, 0.18).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(socket, "rotation", 0.0, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	return column
 
 func _fill_place() -> void:
@@ -2574,16 +2667,13 @@ func _fill_place() -> void:
 	var tabs: HBoxContainer = parts.tabs
 	var needs: VBoxContainer = parts.needs
 	var scene: ProductionScene = parts.scene
-	var actions: HBoxContainer = parts.actions
+	(parts.actions as Control).queue_free()
 	scene.tapped.connect(_ring_tapped)
 	scene.dropped.connect(_ring_dropped)
 	var target := _target()
 	if st.is_building(place_id, now):
 		scene.kind = "build"
 		needs.add_child(_icon(icons["hammer"], 64))
-		var wait := _button("Building", func(): pass, false)
-		wait.custom_minimum_size = Vector2(190, 52) * s
-		actions.add_child(wait)
 		_update_ring()
 		return
 	for p in products:
@@ -2594,7 +2684,9 @@ func _fill_place() -> void:
 	scene.quantity = int(spec.get("quantity", products[0].quantity))
 	var need_list := _needs()
 	scene.filled = filled.duplicate()
-	var primary: Button
+	# No action buttons: the scene is the control. Drop goods in (the last one
+	# starts the job), or tap it to start, collect, harvest or water.
+	var overlay: Control = parts.overlay
 	match target:
 		"field":
 			var ripe := _any_field(4)
@@ -2603,19 +2695,17 @@ func _fill_place() -> void:
 				var state := "filled" if filled.get(tool, false) else ("ready" if tool in need_list else "used")
 				needs.add_child(_need_slot(tool, "✓" if state != "ready" else "", state))
 			scene.inputs = need_list
-			if ripe: primary = _button("Harvest", _tend_all, true, "wheat")
-			elif not need_list.is_empty(): primary = _button("Plant", _plant_and_water, true)
-			else: primary = _button("Growing", func(): pass, false)
 			scene.working = growing and not ripe
 			scene.done = ripe
+			scene.tap_cue = ripe
 		"orchard":
 			var dry := st.orchard_watered < 0
 			var ripe := not dry and st.orchard_remaining(now) == 0
 			needs.add_child(_need_slot("water", "" if dry and not filled.get("water", false) else "✓", "ready" if dry else "used"))
 			scene.inputs = ["water"] if dry else []
-			primary = _button("Water" if dry else ("Pick" if ripe else "Growing"), func(): _act(main.game.tend_orchard()), dry or ripe, "fruit" if ripe else "")
 			scene.working = not dry and not ripe
 			scene.done = ripe
+			scene.tap_cue = ripe
 		_:
 			var working := st.jobs.has(station)
 			for good in spec.input:
@@ -2633,42 +2723,60 @@ func _fill_place() -> void:
 				needs.add_child(sun)
 			scene.inputs = spec.input.keys()
 			var done := working and st.job_remaining(station, now) == 0
-			if working: primary = _button("Collect" if done else "Working", func(): _act(main.game.collect(station)), done, spec.output if done else "")
-			else: primary = _button("Make", func(): _act(main.game.make(recipe)), _have_all(recipe), spec.output)
 			scene.working = working and not done
 			scene.done = done
-	primary.custom_minimum_size = Vector2(190, 52) * s
-	actions.add_child(primary)
-	# Stars finish the job at once: a running timer, or a fresh one start to end.
+			scene.tap_cue = done or (not working and spec.input.is_empty() and _have_all(recipe))
+	# The first good that's ready to go in shows the way: a faint copy glides
+	# from the left into its slot until the player drags one.
+	scene.hint_good = ""
+	if filled.is_empty() and not scene.working and not scene.done:
+		for good in scene.inputs:
+			var ready: bool = target in ["field", "orchard"] or (C.RECIPES.has(recipe) and st.stock.get(good, 0) >= int(C.RECIPES[recipe].input.get(good, 0)))
+			if ready: scene.hint_good = good; break
+	# Stars finish the job at once: a price on a pill under the machine.
 	if not scene.done:
 		finish_button = _button("", _instant, false, "", true)
-		var finish_box: StyleBoxFlat = finish_button.get_theme_stylebox("normal").duplicate()
-		finish_box.border_color = Color(GOLD, 0.8)
+		var finish_box: StyleBoxFlat = glass(int(tap_px(52) / s / 2), GLASS_DEEP, false)
+		finish_box.border_color = Color(GOLD, 0.85)
 		finish_box.set_border_width_all(int(maxf(1, 2 * s)))
-		finish_button.add_theme_stylebox_override("normal", finish_box)
-		finish_button.add_theme_stylebox_override("hover", finish_box)
-		finish_button.custom_minimum_size = Vector2(190, 52) * s
-		# Star, price, words: laid out by hand so the star reads at full size.
+		finish_box.shadow_color = Color(0, 0, 0, 0.35)
+		finish_box.shadow_size = int(10 * s)
+		var finish_down: StyleBoxFlat = finish_box.duplicate()
+		finish_down.bg_color = Color(GOLD, 0.25)
+		for state in ["normal", "hover", "focus", "disabled"]: finish_button.add_theme_stylebox_override(state, finish_box)
+		finish_button.add_theme_stylebox_override("pressed", finish_down)
+		finish_button.tooltip_text = "Finish now"
 		var finish_row := HBoxContainer.new()
 		finish_row.set_anchors_preset(Control.PRESET_FULL_RECT)
 		finish_row.alignment = BoxContainer.ALIGNMENT_CENTER
-		finish_row.add_theme_constant_override("separation", int(8 * s))
+		finish_row.add_theme_constant_override("separation", int(6 * s))
 		finish_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var finish_star := _icon(icons["star"], 26)
+		finish_star.custom_minimum_size = Vector2.ONE * maxf(26 * s, fs(TYPE_HEADLINE) * 1.2)
 		finish_star.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		finish_row.add_child(finish_star)
 		finish_price = _number(22)
+		finish_price.add_theme_font_size_override("font_size", fs(22))
 		finish_price.add_theme_color_override("font_color", GOLD)
 		finish_row.add_child(finish_price)
-		var finish_words := Label.new()
-		finish_words.text = "Finish now"
-		finish_words.add_theme_font_override("font", DISPLAY_SEMI)
-		finish_words.add_theme_font_size_override("font_size", int(19 * s))
-		finish_row.add_child(finish_words)
 		finish_button.add_child(finish_row)
-		actions.add_child(finish_button)
+		var finish_wide := finish_star.custom_minimum_size.x + DISPLAY.get_string_size("88", HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22)).x + 40 * s
+		finish_button.custom_minimum_size = Vector2(maxf(104 * s, finish_wide), tap_px(52))
+		# Under the machine indoors; outdoors the beds and trees fill the middle,
+		# so it sits in the lower right corner by the cart.
+		var outdoors := target in ["field", "orchard", "fishing", "hive", "greenhouse"]
+		var across := 1.0 if outdoors else 0.5
+		finish_button.anchor_left = across; finish_button.anchor_right = across
+		finish_button.anchor_top = 1.0; finish_button.anchor_bottom = 1.0
+		finish_button.offset_left = -finish_button.custom_minimum_size.x * (1.0 if outdoors else 0.5) - (16 * s if outdoors else 0.0)
+		finish_button.offset_right = finish_button.offset_left + finish_button.custom_minimum_size.x
+		finish_button.offset_top = -finish_button.custom_minimum_size.y - 14 * s
+		finish_button.offset_bottom = -14 * s
+		overlay.add_child(finish_button)
 	var badge := _weather_badge(target)
-	if badge: actions.add_child(badge)
+	if badge:
+		badge.position = Vector2(14, 14) * s
+		overlay.add_child(badge)
 	_update_ring()
 
 ## Places that make nothing: their picture in the same window, and Close.
@@ -2680,24 +2788,18 @@ func _fill_quiet_place(item: Dictionary) -> void:
 	var viewport := root.get_viewport_rect().size
 	panel.position = (viewport - panel.size) / 2 + Vector2(0, 30 * s)
 	for child in sheet_root.get_children():
-		if child is Ribbon: child.position = panel.position + Vector2((panel.size.x - child.size.x) / 2, -24 * s)
-		elif child is Button: child.position = panel.position + Vector2(panel.size.x - 30 * s, -16 * s)
+		if child is Ribbon: child.position = panel.position + Vector2((panel.size.x - child.size.x) / 2, -child.size.y * 0.55)
+		elif child is Button: child.position = panel.position + Vector2(panel.size.x - child.custom_minimum_size.x * 0.7, -child.custom_minimum_size.y * 0.36)
 	var body: Control = (parts.needs as Control).get_parent().get_parent()
 	for child in body.get_children(): child.queue_free()
 	ring = null
 	var picture := _icon(icons.get(item.kind, icons["star"]), 240)
 	picture.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body.add_child(picture)
-	if _shared(item):
-		# The house's own card points at its places instead of opening one.
-		for each in C.stations_for(item.kind):
-			var go := _button(C.title(each), func(): open("place", place_id, each))
-			go.custom_minimum_size = Vector2(190, 52) * s
-			(parts.actions as HBoxContainer).add_child(go)
-		return
-	var done := _button("Close", close)
-	done.custom_minimum_size = Vector2(170, 52) * s
-	(parts.actions as HBoxContainer).add_child(done)
+	# The oven and kitchen bench are places of their own on the map (tap them
+	# there), so the cottage's card lists nothing. ✕ or a tap outside closes it.
+	# Nothing to do here: the picture fills the card, and ✕ or a tap outside closes it.
+	(parts.actions as HBoxContainer).queue_free()
 
 ## True for a place that holds more than one workplace (the cottage's oven
 ## and kitchen bench), each with its own card.

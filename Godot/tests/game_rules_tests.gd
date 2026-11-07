@@ -70,7 +70,7 @@ func _initialize() -> void:
 	check(game.build("windmill") == "", "build windmill")
 	check(host.coins == 2, "windmill costs 6")
 	var mill := game.state.first_of("windmill")
-	check(mill.cell == Vector2i(1, 13), "windmill takes its first fixed spot")
+	check(mill.cell == Vector2i(0, 16), "windmill takes its first fixed spot, clear of the farm")
 	check(game.state.is_building(mill.id, clock.t), "windmill under construction")
 	check(game.build("windmill") == "owned", "only one windmill")
 	check(renderer.apply_snapshot(game.snapshot()), "renderer accepts construction snapshot")
