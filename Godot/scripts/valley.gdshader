@@ -10,6 +10,7 @@ uniform vec2 center = vec2(3.0, -3.0);
 uniform float shore_x = 27.6;
 uniform float haze_start = 20.0;
 uniform float haze_end = 62.0;
+#include "res://scripts/ground_light.gdshaderinc"
 varying vec3 world_point;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -27,6 +28,7 @@ void fragment() {
     float sand = smoothstep(shoreline - 1.4, shoreline - 0.6, ground.x);
     float sea = smoothstep(shoreline - 0.1, shoreline + 0.3, ground.x);
     vec3 color = mix(mix(grass, sand_color.rgb, sand), sea_color.rgb * (0.96 + broad * 0.08), sea);
+    color = ground_light(color, ground);
     float distance = length((ground - center) * vec2(0.8, 1.0));
     float haze = smoothstep(haze_start, haze_end, distance);
     ALBEDO = mix(color, haze_color.rgb, haze * 0.85);

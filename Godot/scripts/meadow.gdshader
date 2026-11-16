@@ -12,6 +12,7 @@ uniform vec4 haze_color : source_color = vec4(0.93, 0.90, 0.78, 1.0);
 uniform vec2 center = vec2(3.0, -3.0);
 uniform float haze_start = 20.0;
 uniform float haze_end = 62.0;
+#include "res://scripts/ground_light.gdshaderinc"
 varying vec3 world_point;
 varying vec2 node_center;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
@@ -36,7 +37,7 @@ void fragment() {
     float inside = min(half_size.x - local.x, half_size.y - local.y);
     float wobble = (noise(ground * 0.55 + vec2(5.0, 9.0)) - 0.5) * 1.0;
     float core = smoothstep(0.1, 1.5, inside + wobble);
-    vec3 color = mix(grass, quiet, dormant * core);
+    vec3 color = ground_light(mix(grass, quiet, dormant * core), ground);
     float haze = smoothstep(haze_start, haze_end, length((ground - center) * vec2(0.8, 1.0)));
     ALBEDO = mix(color, haze_color.rgb, haze * 0.85);
     ROUGHNESS=1.0;

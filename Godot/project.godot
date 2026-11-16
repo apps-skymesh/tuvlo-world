@@ -29,3 +29,22 @@ pointing/emulate_touch_from_mouse=false
 [tuvlo_world]
 
 quick_play=true
+
+[shader_globals]
+
+ground_grade={
+"type": "vec4",
+"value": Vector4(1, 1, 1, 0)
+}
+ground_hearth={
+"type": "vec4",
+"value": Vector4(0, 0, 1, 0)
+}
+ground_pool={
+"type": "vec4",
+"value": Vector4(0, 0, 100, 200)
+}
+ground_air={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
