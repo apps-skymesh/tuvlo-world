@@ -47,9 +47,20 @@ static func replay(records: Array) -> WorldState:
 	sorted.sort_custom(func(a, b): return [float(a.get("at", 0)), int(a.get("seq", 0)), str(a.get("id", ""))] < [float(b.get("at", 0)), int(b.get("seq", 0)), str(b.get("id", ""))])
 	for record in sorted:
 		if state.apply(record) != "": state.rejected += 1
+	state._spread_out()
 	state.notice = ""
 	state.speech = {}
 	return state
+
+## Display-only layout fixes for older saves, applied after every replay so
+## they never move anything twice and never touch a saved record: a windmill
+## on the old spot beside the farm moves to its new, clearer one.
+const LEGACY_SPOTS := {"windmill": [Vector2i(1, 13), Vector2i(0, 16)]}
+func _spread_out() -> void:
+	for item in items:
+		var move: Array = LEGACY_SPOTS.get(item.kind, [])
+		if move.is_empty() or item.cell != move[0]: continue
+		if fits(item.kind, move[1], item.id): item.cell = move[1]
 
 # --- queries ---------------------------------------------------------------
 

@@ -44,16 +44,29 @@ void vertex() {
 		INV_VIEW_MATRIX[1] * length(MODEL_MATRIX[1].xyz),
 		INV_VIEW_MATRIX[2] * length(MODEL_MATRIX[2].xyz), MODEL_MATRIX[3]);
 	// Ready tokens stand out by size and bob; idle ones stay small and quiet.
-	if (shows_product && production_state == 2) VERTEX.xy *= 1.18;
+	// Ready: the token grows to about twice its working size, and the extra
+	// quad around the disc carries a soft gold halo (see READY_ZOOM below).
+	if (shows_product && production_state == 2) VERTEX.xy *= 1.55 * 1.35;
 	if (shows_product && production_state == 0) VERTEX.xy *= 0.86;
-	if (shows_product && production_state == 2 && lively) VERTEX.y += sin(TIME * 4.0) * 0.05;
+	if (shows_product && production_state == 2 && lively) VERTEX.y += sin(TIME * 3.2) * 0.06;
 }
 
 void fragment() {
 	vec2 p = vec2(UV.x * 2.0 - 1.0, 1.0 - UV.y * 2.0);
 	if (production_state >= 0 && shows_product) {
+		// Ready tokens draw the disc smaller inside a larger quad, leaving room
+		// for the halo: a warm glow and eight slow rays behind the plate.
+		if (production_state == 2) p *= 1.35;
 		float r = length(p);
-		if (r > 0.99) discard;
+		if (r > 0.99 && (production_state != 2 || r > 1.35)) discard;
+		float halo = 0.0;
+		if (r > 0.97) {
+			float glow = 1.0 - smoothstep(0.96, 1.34, r);
+			float spin = lively ? TIME * 0.6 : 0.0;
+			float rays = pow(0.5 + 0.5 * cos(atan(p.x, p.y) * 8.0 + spin), 6.0);
+			float breathe = lively ? 0.85 + 0.15 * sin(TIME * 3.2) : 1.0;
+			halo = (glow * 0.55 + rays * glow * 0.35) * breathe;
+		}
 		vec3 gold = vec3(0.95, 0.71, 0.20);
 		vec3 col = vec3(1.0, 0.96, 0.86);
 		float plate_alpha = production_state == 0 ? 0.62 : 1.0;
@@ -82,6 +95,11 @@ void fragment() {
 		}
 		ALBEDO = col;
 		ALPHA = (1.0 - smoothstep(0.95, 0.99, r)) * fade * (production_state == 0 ? max(plate_alpha, 0.0) : 1.0);
+		if (production_state == 2 && r > 0.97) {
+			// Outside the plate's soft edge, the halo shows through.
+			ALBEDO = mix(vec3(1.0, 0.86, 0.45), col, ALPHA);
+			ALPHA = max(ALPHA, halo * fade);
+		}
 	} else if (production_state >= 0) {
         vec4 plate = production_state == 2 ? texture(sun_bloom, UV) : production_state == 0 ? texture(sun_waiting, UV) : texture(sun_track, UV);
         if (production_state == 1) {
