@@ -22,6 +22,10 @@ var quiet=false
 var ghost=false
 var pouring=false
 var nozzle=Vector3.ZERO
+# One watered mission swells the crown and lifts a few fresh leaves.
+const GROWTH_PULSE=0.9
+var pulse=0.0
+var sprouts: Array[Node3D]=[]
 
 func configure(earned: int, thirsty: bool, reduced: bool, preview=false):
  quiet=reduced
@@ -103,6 +107,40 @@ func prepare_fallen(node: Node):
   node.material_override.albedo_color=Color("d4a34b")
  for child in node.get_children(): prepare_fallen(child)
 
+var big_pulse=false
+func celebrate_growth(stage_up=false):
+ if quiet or ghost or body==null or form==0: return
+ pulse=GROWTH_PULSE
+ big_pulse=stage_up
+ for leaf in sprouts:
+  remove_child(leaf)
+  leaf.queue_free()
+ sprouts.clear()
+ for i in (6 if big_pulse else 3):
+  var leaf=LEAF.instantiate()
+  add_child(leaf)
+  prepare_sprout(leaf)
+  var angle=i*(1.05 if big_pulse else 2.09)+0.4
+  var radius=RADII[form]*target_size*0.45
+  leaf.set_meta("start",Vector3(cos(angle)*radius,HEIGHTS[form]*target_size*0.82,sin(angle)*radius))
+  leaf.visible=false
+  sprouts.append(leaf)
+
+# The first visit plants the tree: it rises from the soil with a soft swell.
+func plant_pop():
+ if quiet or ghost or body==null: return
+ body.scale=Vector3.ONE*target_size*0.05
+ unfold=0.2
+ pulse=GROWTH_PULSE
+ big_pulse=false
+
+func prepare_sprout(node: Node):
+ if node is MeshInstance3D:
+  node.material_override=node.get_active_material(0).duplicate()
+  node.material_override.albedo_color=Color("7cc35a")
+  node.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+ for child in node.get_children(): prepare_sprout(child)
+
 func set_water_source(world_nozzle: Vector3, active: bool):
  pouring=active and not quiet and not ghost
  if pouring: nozzle=to_local(world_nozzle)
@@ -121,8 +159,11 @@ func _process(delta):
  var blend=1.0 if quiet else 1.0-exp(-delta*2.8)
  body.scale=body.scale.lerp(Vector3.ONE*target_size,blend)
  unfold=lerpf(unfold,1.0,blend)
+ if quiet: pulse=0.0
+ else: pulse=maxf(0.0,pulse-delta)
+ var swell=0.0 if pulse<=0.0 else (0.22 if big_pulse else 0.14)*sin((1.0-pulse/GROWTH_PULSE)*PI)
  for i in crown.size():
-  crown[i].scale=Vector3.ONE*unfold
+  crown[i].scale=Vector3.ONE*unfold*(1.0+swell)
   crown[i].rotation.z=0.0 if quiet or ghost else sin(clock*0.85+i*1.6)*0.009
  thirst=lerpf(thirst,1.0 if yellow else 0.0,1.0 if quiet else 1.0-exp(-delta*1.3))
  apply_weather()
@@ -142,6 +183,18 @@ func _process(delta):
    remove_child(leaf)
    leaf.queue_free()
   fallen.clear()
+ var rise=1.0-pulse/GROWTH_PULSE
+ for i in sprouts.size():
+  var leaf=sprouts[i]
+  leaf.visible=pulse>0.0
+  leaf.position=leaf.get_meta("start")+Vector3(0,0.55*rise,0)
+  leaf.rotation=Vector3(0.3,i*2.1+rise*2.4,sin(rise*TAU)*0.3)
+  leaf.scale=Vector3.ONE*(0.6 if form<3 else 0.9)*maxf(0.01,sin(rise*PI))
+ if pulse<=0.0 and not sprouts.is_empty():
+  for leaf in sprouts:
+   remove_child(leaf)
+   leaf.queue_free()
+  sprouts.clear()
  for i in drops.size():
   if not pouring: break
   var t=fposmod(clock*1.6+float(i)/drops.size(),1.0)

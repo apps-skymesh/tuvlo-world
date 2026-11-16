@@ -367,6 +367,10 @@ func receive_host_json(json: String):
   "lifecycle": set_paused(payload.get("paused",true)==true,payload.get("previewing",false)==true)
   "sunrise": begin_sunrise()
   "waterTree": begin_tree_watering(maxi(0,int(payload.get("count",0))))
+  "treeHold": hold_tree_growth(maxi(0,int(payload.get("count",0))))
+  "treePlanted":
+   var planted=growth_tree()
+   if planted!=null and not reduced_motion: planted.plant_pop()
   "treeLeaves":
    var requested_yellow=payload.get("yellow",false)==true
    # The host clears its memory on approval; show recovery when water lands.
@@ -996,6 +1000,12 @@ func _process(delta):
    if item.kind=="cottage":
     focus=HomesteadItems.item_center(item)+Vector3(1.2,0.8,2.4)
     break
+  # A watering trip frames the well and the tree so each step is seen.
+  var watered=data.find(data.growth_tree_id)
+  if resident.watering_remaining>0 and not watered.is_empty() and navigation.well_center.is_finite():
+   var tree_center=HomesteadItems.item_center(watered)
+   focus=(tree_center+navigation.well_center)*0.5+Vector3(0,0.9,0)
+   size=clampf(Vector2(tree_center.x-navigation.well_center.x,tree_center.z-navigation.well_center.z).length()*1.3+6.0,8.0,arrival_size())*zoom
  elif camera_mode=="home":
   for item in data.items:
    if item.kind=="cottage":
@@ -1133,8 +1143,17 @@ func selected_item() -> Dictionary:
  var placed=data.find(selected_id)
  return placed if not placed.is_empty() else data.inventory.get(selected_id,{})
 
+# Before the walk can be seen, the tree waits at its pre-watering size.
+func hold_tree_growth(count: int):
+ if reduced_motion or resident.watering_remaining>0 or data.growth_tree_id=="" or data.find(data.growth_tree_id).is_empty(): return
+ var held=mini(count,data.approvals)
+ if held==presentation.pending_tree_growth: return
+ presentation.pending_tree_growth=held
+ presentation.rebuild()
 func begin_tree_watering(count: int):
  if count<=0 or data.growth_tree_id=="" or reduced_motion or data.find(data.growth_tree_id).is_empty(): return
+ # A held size is replaced by the trip that waters those same wins.
+ if resident.watering_remaining<=0: presentation.pending_tree_growth=0
  count=mini(count,maxi(0,data.approvals-presentation.pending_tree_growth))
  if count<=0: return
  presentation.pending_tree_growth+=count
@@ -1145,6 +1164,16 @@ func _on_tree_watered():
  presentation.pending_tree_growth-=1
  presentation.yellow_leaves=false
  presentation.rebuild()
+ # Seedling, young and grown trees begin at 1, 3 and 13 watered wins.
+ var shown=data.approvals-presentation.pending_tree_growth
+ var stage_up=shown in [1,3,13]
+ var tree=growth_tree()
+ if tree!=null: tree.celebrate_growth(stage_up)
+ emit_message("treeGrew",{"remaining":presentation.pending_tree_growth,"stageUp":stage_up})
+func growth_tree() -> HomesteadMissionTree:
+ if not presentation.nodes.has(data.growth_tree_id): return null
+ var tree=presentation.nodes[data.growth_tree_id].get_child(0).get_node_or_null("MissionTree")
+ return tree if tree is HomesteadMissionTree else null
 func begin_sunrise():
  if not reduced_motion: sunrise_remaining=SUNRISE_SECONDS
  resident.notice_sunny_day()

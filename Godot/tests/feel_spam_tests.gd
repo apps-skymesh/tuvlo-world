@@ -97,6 +97,11 @@ func _process(delta: float) -> bool:
 			# Rewards scale with the gain; a level-up holds the frame only briefly.
 			check(WorldUI.reward_tier(1) == 0 and WorldUI.reward_tier(F.REWARD_GOOD) == 1 and WorldUI.reward_tier(F.REWARD_BIG) == 2, "reward feedback tiers follow the gain")
 			for i in 5: ui._level_impact()
+			# A finger pressed on a card and lifted anywhere (even off the card)
+			# springs it back; spamming presses never leaves it squashed or dim.
+			for i in 8: ui.press_in(ui.weather_pill, F.CARD_PRESS_SCALE)
+			tap.call(corner)
+			check(ui.held.is_empty(), "any touch release lets go of every pressed card")
 			# Pass 14: a sky change spammed mid-morph, a hold bar sprung over
 			# and over, and a barge loaded crate after crate.
 			for sky in ["rain", "breeze", "warm", "sunny", "rain"]: ui._morph_sky(sky)
@@ -116,6 +121,7 @@ func _process(delta: float) -> bool:
 			check(ui.level_badge.scale.is_equal_approx(Vector2.ONE), "the level badge settles after its punch")
 			check(ui.root.get_children().filter(func(c): return c.has_meta("panel")).is_empty(), "closed boxes finish fading and are freed")
 			check(ui.market_button.scale.is_equal_approx(Vector2.ONE), "dock button back at rest after spam")
+			check(ui.weather_pill.scale.is_equal_approx(Vector2.ONE) and ui.weather_pill.modulate.r > 0.99, "a released card is back to full size and brightness")
 			check(shaken.position.is_equal_approx(Vector2(100, 100)), "a spammed shake settles where it started (at %s)" % shaken.position)
 			shaken.queue_free()
 			check(ui.weather_pill.scale.is_equal_approx(Vector2.ONE) and ui.weather_pill_label.text == "Rain", "a spammed sky change settles on the last spell")
@@ -135,6 +141,29 @@ func _process(delta: float) -> bool:
 			check(awake.parts.keys() == HomesteadAwakening.awake_keys(level), "renderer shows exactly the tiers for level %d" % level)
 			main.host.grant("feel-wake", 60, []); main.push()
 			check(awake.parts.size() == HomesteadAwakening.TIERS.size(), "a big level jump wakes every tier")
+			# The valley's voice: lines fit, every place has its first breath, the
+			# greeting follows the farm and the sky, and peaks fire once.
+			var lines: Array = [WorldStory.TAGLINE, WorldStory.ARRIVAL.line, WorldStory.BREEZE_NO_MILL] + WorldStory.WEATHER_LINES.values() + WorldStory.HOUR_LINES.values() + WorldStory.PLACE_LINES.values() + WorldStory.FIRSTS.values().map(func(f): return f.line) + HomesteadAwakening.TIERS.map(func(t): return t.line)
+			check(lines.all(func(l: String): return l.length() <= 44 and not l.contains("!")), "narrator lines are short and never shout")
+			check(WorldCatalogue.BUILDS.keys().filter(func(k): return WorldCatalogue.BUILDS[k].seconds > 0).all(func(k): return WorldStory.PLACE_LINES.has(k)) and WorldCatalogue.LAND.keys().all(func(k): return WorldStory.PLACE_LINES.has(k)), "every timed place and land has a line")
+			check(WorldStory.greeting(true, 1, "rain", "dusk", false) == WorldStory.ARRIVAL, "a new farm opens on the hook")
+			check(WorldStory.greeting(false, 4, "rain", "dusk", false).line == WorldStory.WEATHER_LINES.rain and WorldStory.greeting(false, 4, "sunny", "dusk", false).eyebrow == "Day 4", "a return names the day and the sky")
+			check(WorldStory.greeting(false, 2, "breeze", "morning", false).line == WorldStory.BREEZE_NO_MILL, "no mill, no promise about the mill")
+			check(awake.lantern_glow != null and awake.lantern_glow.emission_energy_multiplier < 1.0, "lanterns are lit faintly by day")
+			awake.set_glow(1.0)
+			check(awake.lantern_glow.emission_energy_multiplier > 2.0, "lanterns glow at night")
+			ui.story_queue.clear()
+			ui.last_harvests = 0; ui.last_sales = 0; ui.last_building = {"place:test": "windmill"}
+			main.game.state.harvests = maxi(1, main.game.state.harvests)
+			main.game.state.lifetime_sales = maxi(1, main.game.state.lifetime_sales)
+			main.game.state.items.append({"id": "place:test", "kind": "windmill"})
+			ui._story_beats(main.game)
+			check(ui.story_queue.map(func(b): return b[1]) == [WorldStory.FIRSTS.harvest.line, WorldStory.FIRSTS.sale.line, WorldStory.PLACE_LINES.windmill], "first harvest, first sale and a finished place each speak")
+			ui._story_beats(main.game)
+			check(ui.story_queue.size() == 3, "a peak speaks once")
+			main.game.state.items.pop_back()
+			ui.story_queue.clear()
+			main.game.refresh()
 			ui.set_reduce_motion(true)
 			check(main.host.player().reduced_motion, "renderer is told about Reduce Motion")
 			# Day cycle: morning keeps the original light, evening lights the windows,

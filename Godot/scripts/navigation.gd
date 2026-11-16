@@ -40,8 +40,48 @@ func rebuild(world_data: HomesteadWorldData):
 	revision+=1
 # Renderer utility only: never displace a saved object, path or unowned land.
 # A vacant one-square ring preserves routes around the new scenery obstacle.
+# The well stands from the first visit beside the tree's spot and stays put
+# as the cottage and later places are built (owner 2026-11-05).
+const TREE_SPOT=Vector2i(12,2)
+# Nearest clear spot whose outline stays apart from the tree's. Only the tree
+# and the squares it needs decide it, so later buildings never move it.
+func tree_well_cell(occupied: Dictionary) -> Vector2i:
+	var anchor={"kind":"tree","cell":TREE_SPOT,"rotation":0}
+	var trees=data.items.filter(func(item): return item.kind=="tree")
+	var growing=trees.filter(func(item): return item.id==data.growth_tree_id)
+	if not growing.is_empty(): anchor=growing[0]
+	elif not trees.is_empty(): anchor=trees[0]
+	var tree_outline=HomesteadVisibility.item_bounds(anchor,view_direction).grow(0.2)
+	var tree_center=HomesteadItems.item_center(anchor)
+	var best=Vector2i(10000,10000)
+	var best_distance=INF
+	for dz in range(-6,7):
+		for dx in range(-6,7):
+			var cell=anchor.cell+Vector2i(dx,dz)
+			var center=HomesteadItems.center(cell,HomesteadItems.WELL_SIZE)
+			var distance=center.distance_to(tree_center)
+			if distance>=best_distance: continue
+			var clear=true
+			for z in 2:
+				for x in 2:
+					var square=cell+Vector2i(x,z)
+					if not data.buildable(square) or occupied.has(square) or not open(square): clear=false
+			var approach=cell+Vector2i(-1,1)
+			if not clear or not data.buildable(approach) or occupied.has(approach) or not open(approach): continue
+			var outline=HomesteadVisibility.projected_box(center,Vector3(1.05,HomesteadItems.WELL_HEIGHT,0.95),view_direction).grow(0.25)
+			if HomesteadVisibility.overlap(outline,tree_outline)>=0.01: continue
+			best=cell
+			best_distance=distance
+	return best
 func place_water_source(occupied: Dictionary):
 	well_center=Vector3.INF
+	var fixed=tree_well_cell(occupied)
+	if fixed.x!=10000:
+		well_cell=fixed
+		well_center=HomesteadItems.center(fixed,HomesteadItems.WELL_SIZE)
+		for z in 2:
+			for x in 2: grid.set_point_solid(fixed+Vector2i(x,z),true)
+		return
 	if not data.items.any(func(item): return item.kind in ["tree","garden"]): return
 	var silhouettes=[]
 	var water_places=[]

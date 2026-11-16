@@ -8,11 +8,14 @@ extends Node3D
 
 const TIERS := [
 	{"level": 1, "key": "flowers", "line": "Wildflowers bloom"},
-	{"level": 2, "key": "butterflies", "line": "Butterflies arrive"},
-	{"level": 4, "key": "birds", "line": "Songbirds return"},
+	{"level": 2, "key": "butterflies", "line": "Butterflies find the flowers"},
+	{"level": 3, "key": "lanterns", "line": "Someone lit the lanterns"},
+	{"level": 4, "key": "birds", "line": "Songbirds come home"},
+	{"level": 5, "key": "kite", "line": "A kite tugs at the wind"},
 	{"level": 6, "key": "neighbours", "line": "A neighbour's lights come on"},
 	{"level": 8, "key": "balloon", "line": "A balloon drifts by"},
 	{"level": 10, "key": "rainbow", "line": "A rainbow over the hills"},
+	{"level": 12, "key": "sailboat", "line": "A sail on the sea"},
 ]
 const REVEAL_TIME := 0.7
 const FLOWER_TONES := ["f2a6b8", "f6d36b", "ffffff", "c9a7ec", "f4a259"]
@@ -30,6 +33,18 @@ const BALLOON_PERIOD := 70.0
 const RAINBOW_CENTRE := Vector3(2, -3, -21)
 const RAINBOW_RADIUS := 10.0
 const RAINBOW_BANDS := ["e86a6a", "f2a65a", "f6d36b", "8fcf7a", "6fb3e0", "9b87d9"]
+# Lanterns stand between the flower beds along the clearing's north and east
+# edges, outside every building spot. They glow with the evening windows.
+const LANTERNS := [Vector2(-5.75, -9.3), Vector2(-1.0, -9.3), Vector2(3.75, -9.3), Vector2(8.25, -9.3), Vector2(12.4, -2.0), Vector2(12.4, 3.0)]
+const LANTERN_DAY_GLOW := 0.25
+const LANTERN_NIGHT_GLOW := 2.4
+# The kite flies over the far west meadow on a long string.
+const KITE_ANCHOR := Vector3(-15.0, 0.0, 9.0)
+const KITE_HEIGHT := 7.0
+# The sailboat crosses the sea beyond the barge's cove, slowly.
+const SAIL_X := 37.0
+const SAIL_SWEEP := 16.0
+const SAIL_PERIOD := 120.0
 
 var level := -1
 var reduced_motion := false
@@ -38,6 +53,10 @@ var parts := {}  # tier key -> Node3D
 var flutter: Array[Node3D] = []
 var birds: Array[Node3D] = []
 var balloon: Node3D
+var kite: Node3D
+var sailboat: Node3D
+var lantern_glow: StandardMaterial3D
+var glow := 0.0
 
 ## Tiers newly reached when the level rises from `before` to `after`.
 static func woken(before: int, after: int) -> Array:
@@ -154,6 +173,71 @@ func _build_rainbow(root: Node3D) -> void:
 		var band := HomesteadMesh.torus(arc, Vector3.ZERO, RAINBOW_RADIUS - i * 0.42, 0.22, RAINBOW_BANDS[i])
 		band.material_override = HomesteadMesh.transparent(Color(RAINBOW_BANDS[i], 0.45))
 
+func _build_lanterns(root: Node3D) -> void:
+	lantern_glow = StandardMaterial3D.new()
+	lantern_glow.albedo_color = Color("ffe2a0")
+	lantern_glow.emission_enabled = true
+	lantern_glow.emission = Color("ffb84d")
+	set_glow(glow)
+	for spot: Vector2 in LANTERNS:
+		var post := Node3D.new()
+		post.position = Vector3(spot.x, 0, spot.y)
+		root.add_child(post)
+		HomesteadMesh.cylinder(post, Vector3(0, 0.6, 0), 0.05, 1.2, "5b4636")
+		HomesteadMesh.box(post, Vector3(0, 1.24, 0), Vector3(0.3, 0.06, 0.3), "3f3128", 0.02)
+		var lamp := HomesteadMesh.box(post, Vector3(0, 1.4, 0), Vector3(0.22, 0.26, 0.22), "ffe2a0", 0.03)
+		lamp.material_override = lantern_glow
+		HomesteadMesh.cylinder(post, Vector3(0, 1.58, 0), 0.19, 0.12, "3f3128", 0.02)
+
+## Lanterns follow the windows: a faint glow by day, warm at night.
+func set_glow(level: float) -> void:
+	glow = level
+	if lantern_glow: lantern_glow.emission_energy_multiplier = lerpf(LANTERN_DAY_GLOW, LANTERN_NIGHT_GLOW, clampf(level, 0.0, 1.0))
+
+func _build_kite(root: Node3D) -> void:
+	kite = Node3D.new()
+	root.add_child(kite)
+	# A diamond: a square turned on its corner, then narrowed.
+	var face := Node3D.new()
+	face.scale = Vector3(0.7, 1.0, 1.0)
+	kite.add_child(face)
+	HomesteadMesh.box(face, Vector3.ZERO, Vector3(0.9, 0.9, 0.04), "e86a6a", 0.02).rotation.z = PI / 4
+	HomesteadMesh.box(face, Vector3(0, 0, 0.03), Vector3(0.06, 1.25, 0.02), "f6d36b", 0.01)
+	HomesteadMesh.box(face, Vector3(0, 0, 0.03), Vector3(1.25, 0.06, 0.02), "f6d36b", 0.01)
+	for i in 4:
+		HomesteadMesh.ellipsoid(kite, Vector3(sin(i * 1.3) * 0.12, -0.8 - i * 0.32, 0), Vector3(0.08, 0.05, 0.02), ["8fc9ef", "f6d36b", "f2a6b8", "ffffff"][i])
+	# One unit-long string, stretched and turned each frame (no new meshes).
+	var string := Node3D.new()
+	string.name = "String"
+	string.position = KITE_ANCHOR
+	root.add_child(string)
+	HomesteadMesh.cylinder(string, Vector3(0, 0.5, 0), 0.012, 1.0, "f4ead6")
+	kite.set_meta("string", string)
+	_place_kite()
+
+func _build_sailboat(root: Node3D) -> void:
+	sailboat = Node3D.new()
+	root.add_child(sailboat)
+	HomesteadMesh.box(sailboat, Vector3(0, 0.15, 0), Vector3(0.7, 0.3, 1.9), "8a5a3a", 0.12)
+	HomesteadMesh.rod(sailboat, Vector3(0, 0.3, 0.1), Vector3(0, 2.6, 0.1), 0.04, "5b4636")
+	HomesteadMesh.box(sailboat, Vector3(0, 1.45, -0.35), Vector3(0.04, 2.0, 0.85), "fff4e0", 0.01)
+	HomesteadMesh.box(sailboat, Vector3(0, 2.7, 0.1), Vector3(0.03, 0.18, 0.36), "e86a6a", 0.01)
+	_place_sailboat()
+
+func _place_kite() -> void:
+	var sway := Vector3(sin(clock * 0.5) * 1.2, sin(clock * 0.9) * 0.4, cos(clock * 0.35) * 0.6)
+	kite.position = KITE_ANCHOR + Vector3(2.5, KITE_HEIGHT, -2.0) + sway
+	kite.rotation = Vector3(0, 0.6, sin(clock * 1.3) * 0.25)
+	var string: Node3D = kite.get_meta("string")
+	var reach := kite.position - KITE_ANCHOR
+	string.basis = Basis(Quaternion(Vector3.UP, reach.normalized())) * Basis.from_scale(Vector3(1, reach.length(), 1))
+
+func _place_sailboat() -> void:
+	var t := fposmod(clock / SAIL_PERIOD, 1.0)
+	var along := sin(t * TAU)
+	sailboat.position = Vector3(SAIL_X, sin(clock * 1.1) * 0.05, along * SAIL_SWEEP)
+	sailboat.rotation = Vector3(0, PI if cos(t * TAU) < 0 else 0.0, sin(clock * 0.9) * 0.05)
+
 func _place_birds() -> void:
 	for bird in birds:
 		var angle: float = bird.get_meta("phase") + clock * 0.22
@@ -181,3 +265,5 @@ func _process(delta: float) -> void:
 			fly.get_child(i).rotation.z = beat * (1 if i == 0 else -1)
 	if not birds.is_empty(): _place_birds()
 	if balloon: _place_balloon()
+	if kite: _place_kite()
+	if sailboat: _place_sailboat()

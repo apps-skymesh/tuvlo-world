@@ -720,6 +720,7 @@ const WINDOW_GLOW=0.9
 func set_daylight(haze: Color,glow: float):
 	daylight_haze=haze
 	window_glow=glow
+	if awakening: awakening.set_glow(glow)
 	if valley and valley.ground_material: valley.ground_material.set_shader_parameter("haze_color",haze)
 	var live: Array[StandardMaterial3D]=[]
 	for pane in window_panes:

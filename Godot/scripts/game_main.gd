@@ -4,12 +4,12 @@ extends Node
 ## saves on this device. Runs on Mac, iPhone and iPad from the same project.
 
 const REASONS := {
-	"short": "Not enough yet", "locked": "Reach a higher level first", "land": "Buy that land first",
-	"full": "No free spot", "owned": "Already built", "busy": "Already making something",
+	"short": "Not enough yet", "locked": "Opens at a higher level", "land": "Needs more land first",
+	"full": "No room left for that", "owned": "You already have one", "busy": "Busy. Let this one finish",
 	"not-ready": "Not ready yet", "growing": "Still growing", "save": "Couldn't save. Try again.",
-	"read-only": "Read only", "invalid": "Can't do that now", "occupied": "That spot is taken",
-	"claimed": "Already collected today",
-	"price": "Prices just changed. Try again",
+	"read-only": "Read only", "invalid": "That won't work just now", "occupied": "That spot is taken",
+	"claimed": "Today's basket is already in",
+	"price": "The market moved. Try again",
 	"departed": "The barge has sailed", "hold-full": "That crate is already full",
 	"stars": "Not enough stars", "not-running": "Nothing to finish",
 }
@@ -51,11 +51,15 @@ func land_preview(side: String) -> void: send("landPreview", {"side": side})
 func after_action(result: String) -> void:
 	if result == "":
 		# Gains fly to the HUD and fields change in place; only builds need words.
-		if game.state.notice.ends_with("built") or game.state.notice.ends_with("is yours"): ui.show_toast(game.state.notice)
+		# New land is a story beat; a build starting is a plain note.
+		if game.state.notice.ends_with("is yours"):
+			var side: String = game.state.land[-1]
+			ui.show_story(WorldCatalogue.title(side), WorldStory.PLACE_LINES.get(side, game.state.notice))
+		elif game.state.notice.ends_with("built"): ui.show_toast(game.state.notice)
 		if not game.state.speech.is_empty(): ui.show_speech(game.state.speech.name, game.state.speech.line)
 		push()
 	else:
-		ui.show_toast(REASONS.get(result, "Can't do that now"))
+		ui.show_toast(REASONS.get(result, REASONS.invalid))
 
 func _process(delta: float) -> void:
 	tick += delta
