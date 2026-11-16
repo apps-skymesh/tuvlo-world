@@ -11,6 +11,7 @@ var oven_cells: Dictionary={}
 var kitchen_centers: Dictionary={}
 var kitchen_cells: Dictionary={}
 var view_direction=Vector3(sin(0.25),0,cos(0.25))
+const OUTBUILDING_GAP=2   # open cells between the cottage and its kitchen (the oven keeps one: the yard's edge is near)
 func rebuild(world_data: HomesteadWorldData):
 	data=world_data
 	grid.region=HomesteadItems.WORLD_BOUNDS
@@ -155,6 +156,7 @@ func place_baking_ovens(occupied: Dictionary):
 # A 2 x 2 attachment beside the cottage with an empty ring, keeping doors,
 # paths and routes clear; it then blocks walking like a placed piece.
 func attach_beside(cottage: Dictionary,side: float,previous: Vector2i,occupied: Dictionary,silhouettes: Array,margin: int=1,reach: float=2.6,offset: Vector3=Vector3.ZERO,avoid: Rect2=Rect2()) -> Vector2i:
+	var cottage_rect=Rect2i(cottage.cell,HomesteadItems.footprint(cottage.kind,cottage.rotation))
 	var desired=HomesteadItems.item_center(cottage)+(offset if offset!=Vector3.ZERO else Vector3(side,0,0)).rotated(Vector3.UP,cottage.rotation*PI/2)
 	var best=Vector2i(10000,10000)
 	var best_score=INF
@@ -167,6 +169,9 @@ func attach_beside(cottage: Dictionary,side: float,previous: Vector2i,occupied: 
 					var square=cell+Vector2i(dx,dz)
 					if not data.buildable(square) or occupied.has(square) or not open(square): clear=false
 			if not clear: continue
+			# SOLO 2026-11-06: a strip of open grass between the house and each
+			# outbuilding, so the oven and kitchen read as places of their own.
+			if Rect2i(cell,Vector2i(2,2)).grow(OUTBUILDING_GAP if side>0 else 1).intersects(cottage_rect): continue
 			var center=HomesteadItems.center(cell,Vector2i(2,2))
 			# Only spots against the wall compete; a far, unobstructed spot never wins.
 			if side>0 and center.distance_to(desired)>reach: continue

@@ -453,6 +453,8 @@ func update_production():
 		var was=int(bubble.get_meta("state",-1))
 		bubble.set_meta("state",int(status.state))
 		if int(status.state)==2 and was!=-1 and was!=2 and not reduced_motion: pop_in(bubble.get_child(0))
+		# The larger ready token gets a matching, easier tap target.
+		(bubble.get_meta("body") as Node3D).scale=Vector3.ONE*(1.5 if int(status.state)==2 else 1.0)
 		var material: ShaderMaterial=bubble.get_meta("material")
 		material.set_shader_parameter("kind",(9 if status.good in ["meat","cheese"] else ["wood","stone","fruit","wheat","flour","bread","meal","tart"].find(status.good)))
 		material.set_shader_parameter("production_state",status.state)

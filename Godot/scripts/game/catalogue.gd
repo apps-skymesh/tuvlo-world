@@ -48,7 +48,9 @@ const LAND := {"west": {"price": 10, "gate": 20}}
 ## Fixed build spots (HomesteadSpots, A70). One tap builds at the first free spot.
 const SPOTS := {
 	"grill": [Vector2i(0, 6)],
-	"windmill": [Vector2i(1, 13), Vector2i(1, 16)],
+	# SOLO 2026-11-06: the mill stands clear of the farm's beds (it used to
+	# crowd them at (1, 13)); older saves move there on load (WorldState.replay).
+	"windmill": [Vector2i(0, 16), Vector2i(1, 13)],
 	"barn": [Vector2i(13, 13), Vector2i(13, 16)],
 	"doghouse": [Vector2i(17, 10), Vector2i(17, 13)],
 	"pond": [Vector2i(8, 8), Vector2i(11, 9)],

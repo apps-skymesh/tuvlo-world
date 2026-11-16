@@ -577,7 +577,12 @@ func run():
  check(scene.resident.blocked_samples==0,"Resident must not walk through obstacles")
  # Keep moving through a straight tile boundary and face the direction of travel.
  var walker=scene.resident
- walker.position=HomesteadItems.cell_center(Vector2i(7,7))
+ # A straight run of three open cells near the yard's middle (the layout
+ # decides which are free: the kitchen bench can stand on the old pick).
+ var start_cell=Vector2i(7,7)
+ for candidate in [Vector2i(7,7),Vector2i(6,7),Vector2i(8,7),Vector2i(7,8),Vector2i(11,8),Vector2i(12,10)]:
+  if [0,1,2,3].all(func(dz): return scene.navigation.open(candidate+Vector2i(0,dz))): start_cell=candidate; break
+ walker.position=HomesteadItems.cell_center(start_cell)
  walker.facing=0
  walker.desired_facing=0
  walker.speed=1.2
